@@ -1,4 +1,5 @@
 //	Copyright 2013-, Quan Qing, Nanoelectronics for Biophysics Lab, Arizona State University
+// Web: http://qinglab.physics.asu.edu
 // Email: quan.qing@asu.edu, quan.qing@yahoo.com
 //	
 //	Redistribution and use in source and binary forms, with or without
