@@ -31,7 +31,16 @@
 #pragma IgorVersion=6.35
 #include "VISACommunication"
 
-Menu "KeithleyControl"
+#if exists("LIH_InitInterface")==3
+#undef LIHDEBUG
+StrConstant KeithleyControlMenuStr="KeithleyControl"
+#else
+#define LIHDEBUG
+StrConstant KeithleyControlMenuStr="KeithleyControl(DEMO)"
+#endif
+
+
+Menu KeithleyControlMenuStr
 	"About", KeithleyPanelAbout()
 	"Init Keithley control panel", KeithleyPanelInit()
 	"Shutdown Keithley control panel", KeithleyPanelShutdown()
@@ -74,7 +83,7 @@ Function KeithleyPanelAbout()
 	
 	DrawPICT /W=AboutKeithleyPanel /RABS 20,20,180, 180, KeithleyControl#QingLabBadge
 	DrawText /W=AboutKeithleyPanel 25, 200, "QingLab Keithley Control Program"
-	DrawText /W=AboutKeithleyPanel 25, 220, "Programmed in 2014"
+	DrawText /W=AboutKeithleyPanel 25, 220, "Programmed by Quan Qing"
 	NewNotebook /F=1/N=AboutKeithleyPanel/OPTS=15 /W=(220,20,450,210) /HOST=AboutKeithleyPanel
 	Notebook # text=KeithleyControl_licesence
 	Notebook # text="\r\r"
