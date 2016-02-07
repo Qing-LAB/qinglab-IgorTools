@@ -28,15 +28,24 @@
 
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma moduleName=KeithleyControl
+#pragma Independent Module=KeithleyControl
 #pragma IgorVersion=6.35
 #include "VISACommunication"
 
 #if exists("LIH_InitInterface")==3
-#undef LIHDEBUG
-StrConstant KeithleyControlMenuStr="KeithleyControl"
+	#if defined(DEBUGONLY)
+		#define LIHDEBUG
+	#else
+		#undef LIHDEBUG
+	#endif
 #else
-#define LIHDEBUG
-StrConstant KeithleyControlMenuStr="KeithleyControl(DEMO)"
+	#define LIHDEBUG
+#endif
+
+#if defined(LIHDEBUG)
+	StrConstant KeithleyControlMenuStr="KeithleyControl(DEMO)"
+#else
+	StrConstant KeithleyControlMenuStr="KeithleyControl"
 #endif
 
 

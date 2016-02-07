@@ -24,15 +24,28 @@
 //	THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+#pragma moduleName=ITC18
+//#pragma IndependentModule=ITC18
 #include "TableMonitorHook"
 #include "WaveBrowser"
 
 #if exists("LIH_InitInterface")==3
+
+#if defined(DEBUGONLY)
+#define LIHDEBUG
+#else		
 #undef LIHDEBUG
-StrConstant ITCMenuStr="ITC18"
+#endif
+
 #else
 #define LIHDEBUG
+#endif
+
+
+#if defined(LIHDEBUG)
 StrConstant ITCMenuStr="ITC18(DEMO)"
+#else
+StrConstant ITCMenuStr="ITC18"
 #endif
 
 Menu ITCMenuStr
@@ -56,7 +69,7 @@ Function ITC_About()
 		res=72
 	endif
 	
-	DrawPICT /W=AboutITCPanel /RABS 20,20,180, 180, KeithleyControl#QingLabBadge
+	DrawPICT /W=AboutITCPanel /RABS 20,20,180, 180, ITC18#QingLabBadge
 	DrawText /W=AboutITCPanel 25, 200, "QingLab ITC18/EPC8 Control"
 	DrawText /W=AboutITCPanel 25, 220, "Programmed by Quan Qing"
 	NewNotebook /F=1/N=AboutITCPanel/OPTS=15 /W=(220,20,450,210) /HOST=AboutITCPanel
