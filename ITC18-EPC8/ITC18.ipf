@@ -96,6 +96,7 @@ Function ITC_KillNoteBookLog()
 End
 
 Constant ITC18TASK_TICK=1 //1/60 sec
+Constant ITC18_DefaultSamplingRate=20000 // 20KHz
 StrConstant ITC18_PackageName="ITC18"
 StrConstant ITC18_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
 StrConstant ITC18_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
@@ -180,7 +181,7 @@ Function ITC_init()
 	opname=operatorname
 	exptitle=experimenttitle
 	taskstatus=0 //idle
-	samplingrate=10000
+	samplingrate=ITC18_DefaultSamplingRate
 	recordnum=0
 	recordinglen=ITC18MinRecordingLen
 	continuous=0
@@ -541,11 +542,13 @@ Function itc_update_telegraphvar([commit])
 			scaleunit=tmpunit; AbortOnRTE
 			telegraphassignment=tmpassignment; AbortOnRTE
 			ChnOnGainBinFlags=tmpchnongainflag; AbortOnRTE
+			String factorstr
 			for(i=0; i<8; i+=1)
 				ctrlname="itc_cb_adc"+num2istr(i)
 				param=GetUserData("ITCPanel", ctrlname, "param")
 				param=ReplaceStringByKey("TELEGRAPH", param, num2istr(tmpadctelegraphflag[i]), "=", ";")
-				param=ReplaceStringByKey("SCALEFACTOR", param, num2istr(tmpfactor[i]), "=", ";")
+				sprintf factorstr, "%.6e", tmpfactor[i]
+				param=ReplaceStringByKey("SCALEFACTOR", param, factorstr, "=", ";")
 				param=ReplaceStringByKey("SCALEUNIT", param, tmpunit[i], "=", ";")
 				CheckBox $ctrlname,win=ITCPanel,userdata(param)=param
 			endfor
@@ -595,13 +598,13 @@ Function itc_setup_EPC8default(pulsev)
 	NVAR saverecording=$WBPkgGetName(fPath, "SaveRecording")
 	NVAR chn_gain_flag=$WBPkgGetName(fPath, "ChannelOnGainBinFlag")
 	
-	samplingrate=30000
+	samplingrate=ITC18_DefaultSamplingRate
 	recordinglen=0.2
 	continuous=inf
 	saverecording=0
 	Make /O/N=(samplingrate*recordinglen)/D root:W_sealtestCmdV=0
 	WAVE w=root:W_sealtestCmdV
-	w[samplingrate*recordinglen/4, samplingrate*recordinglen/2]=pulsev //generate 10 mV pulses
+	w[samplingrate*recordinglen/4, samplingrate*recordinglen/2]=pulsev*10 //generate pulses with the correct height, EPC8 has a scale factor of 10
 	
 	Variable i
 	String chninfo=GetUserData("ITCPanel", "itc_cb_adc0", "param")
@@ -645,7 +648,7 @@ Function itc_btnproc_sealtest(ba) : ButtonControl
 		case 2: // mouse up
 			// click code here
 			Variable v=0.01 //10mV pulse
-			PROMPT v, "test pulse amplitude (between 0V-1V)"
+			PROMPT v, "test pulse (actual amplitude, between 0V-1V)"
 			DoPrompt "Seal Test Pulse", v
 			if(V_Flag==0 && (v>=0 && v<=1))
 				itc_setup_EPC8default(v)
