@@ -58,6 +58,14 @@ End
 Strconstant ITC_licesence="Igor Pro script for using ITC18/EPC8 in Igor Pro.\r\rAll rights reserved."
 Strconstant ITC_contact="The Qing Research Lab at Arizona State University\r\rhttp://qinglab.physics.asu.edu"
 
+static Function killwin(wname)
+	String wname
+	
+	if(WinType(wname)!=0)
+		KillWindow $wname
+	endif
+End
+
 Function ITC_About()
 	DoWindow /K AboutITCPanel
 	NewPanel /K=1 /W=(50,50,530,290) /N=AboutITCPanel
@@ -83,7 +91,7 @@ Function ITC_KillNoteBookLog()
 	PROMPT nblist,"notebook list", popup WinList("ITCPanelLog*",";","WIN:16")
 	DoPrompt "Please select the notebook to kill", nblist
 	if(V_flag==0 && WinType(nblist)==5)
-		KillWindow $nblist 
+		killwin(nblist)
 	endif
 End
 
@@ -385,7 +393,7 @@ Function itc_setup_telegraph()
 	String scaleunit
 	String notestr="Telegraph assignments have to be unique.\rSetting scale unit to '#GAIN' will scale the signal \rusing the gain telegraph signal."
 	
-	KillWindow ITCTelegraph
+	killwin("ITCTelegraph")
 	NewPanel /N=ITCTelegraph /W=(100, 100, 450, 450) /K=1
 	SetDrawEnv textxjust=0, textyjust=2,textrgb=(0, 0, 63000)
 	DrawText /W=ITCTelegraph 20, 20, notestr
@@ -449,7 +457,7 @@ Function itc_btnproc_telegraph_commit(ba) : ButtonControl
 		case 2: // mouse up
 			// click code here
 			if(itc_update_telegraphvar(commit=1)!=0)
-				KillWindow ITCTelegraph
+				killwin("ITCTelegraph")
 			endif
 			break
 		case -1: // control being killed
@@ -578,7 +586,8 @@ Function itc_btnproc_updatedacdata(ba) : ButtonControl
 	return 0
 End
 
-Function itc_setup_EPC8default()
+Function itc_setup_EPC8default(pulsev)
+	Variable pulsev
 	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
 	NVAR samplingrate=$WBPkgGetName(fPath, "SamplingRate")
 	NVAR recordinglen=$WBPkgGetName(fPath, "RecordingLength")
@@ -592,7 +601,7 @@ Function itc_setup_EPC8default()
 	saverecording=0
 	Make /O/N=(samplingrate*recordinglen)/D root:W_sealtestCmdV=0
 	WAVE w=root:W_sealtestCmdV
-	w[samplingrate*recordinglen/4, samplingrate*recordinglen/2]=0.01 //generate 10 mV pulses
+	w[samplingrate*recordinglen/4, samplingrate*recordinglen/2]=pulsev //generate 10 mV pulses
 	
 	Variable i
 	String chninfo=GetUserData("ITCPanel", "itc_cb_adc0", "param")
@@ -635,8 +644,13 @@ Function itc_btnproc_sealtest(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			itc_setup_EPC8default()
-			itc_start_task(flag=1)			
+			Variable v=0.01 //10mV pulse
+			PROMPT v, "test pulse amplitude (between 0V-1V)"
+			DoPrompt "Seal Test Pulse", v
+			if(V_Flag==0 && (v>=0 && v<=1))
+				itc_setup_EPC8default(v)
+				itc_start_task(flag=1)
+			endif	
 			break
 		case -1: // control being killed
 			break
@@ -1420,8 +1434,8 @@ Function rtgraph_update_display()
 End
 
 Function itc_rtgraph_quit()	
-	KillWindow ITCPanel#rtgraph
-	KillWindow ITCPanel#rtgraphpanel
+	killwin("ITCPanel#rtgraph")
+	killwin("ITCPanel#rtgraphpanel")
 End
 
 Function itc_update_controls(runstatus)
