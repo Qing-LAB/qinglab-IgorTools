@@ -413,8 +413,28 @@ Function itc_setup_telegraph()
 		SetVariable $("sv_scaleunit_adc"+num2istr(i)),win=ITCTelegraph,pos={290,25*(i+1)+52},value=_STR:scaleunit,size={50, 20},proc=itc_svproc_scalefactor
 	endfor
 	TitleBox tb_errormsg, win=ITCTelegraph, pos={20, 280},size={320,30},fixedsize=1
-	Button btn_apply, win=ITCTelegraph, title="Apply", pos={100,310}, size={150,30},proc=itc_btnproc_telegraph_commit
+	Button btn_setEPC8default, win=ITCTelegraph, title="Defaults for EPC8", pos={20, 315}, size={150, 25}, proc=itc_btnproc_defaultTelegraph
+	Button btn_apply, win=ITCTelegraph, title="Apply", pos={185,315}, size={150,25},proc=itc_btnproc_telegraph_commit
 	itc_update_telegraphvar()
+End
+
+Function itc_btnproc_defaultTelegraph(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			itc_set_defaultTelegraphEPC8()
+			
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function itc_set_defaultTelegraphEPC8()
 End
 
 Function itc_popproc_telegraphchoice(pa) : PopupMenuControl
@@ -589,8 +609,8 @@ Function itc_btnproc_updatedacdata(ba) : ButtonControl
 	return 0
 End
 
-Function itc_setup_EPC8default(pulsev)
-	Variable pulsev
+Function itc_setup_EPC8default(pulsev, [clear_channels])
+	Variable pulsev, clear_channels
 	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
 	NVAR samplingrate=$WBPkgGetName(fPath, "SamplingRate")
 	NVAR recordinglen=$WBPkgGetName(fPath, "RecordingLength")
@@ -617,24 +637,28 @@ Function itc_setup_EPC8default(pulsev)
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtest_V","=", ";")
 	CheckBox itc_cb_adc1, win=ITCPanel, userdata(param)=chninfo, value=1
 	
-	for(i=2; i<8; i+=1)
-		chninfo=GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param")
-		chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "","=", ";")
-		chninfo=ReplaceStringByKey("WAVENAME", chninfo, "","=", ";")
-		CheckBox $("itc_cb_adc"+num2istr(i)), win=ITCPanel, userdata(param)=chninfo, value=0
-	endfor
+	if(!ParamIsDefault(clear_channels) && clear_channels==1)
+		for(i=2; i<8; i+=1)
+			chninfo=GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param")
+			chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "","=", ";")
+			chninfo=ReplaceStringByKey("WAVENAME", chninfo, "","=", ";")
+			CheckBox $("itc_cb_adc"+num2istr(i)), win=ITCPanel, userdata(param)=chninfo, value=0
+		endfor
+	endif
 	
 	chninfo=GetUserData("ITCPanel","itc_cb_dac0", "param")
 	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:","=", ";")
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtestCmdV","=", ";")
 	CheckBox itc_cb_dac0, win=ITCPanel, userdata(param)=chninfo, value=1
 	
-	for(i=1; i<4; i+=1)
-		chninfo=GetUserData("ITCPanel","itc_cb_dac"+num2istr(i), "param")
-		chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "","=", ";")
-		chninfo=ReplaceStringByKey("WAVENAME", chninfo, "","=", ";")
-		CheckBox $("itc_cb_dac"+num2istr(i)), win=ITCPanel, userdata(param)=chninfo, value=0
-	endfor
+	if(!ParamIsDefault(clear_channels) && clear_channels==1)
+		for(i=1; i<4; i+=1)
+			chninfo=GetUserData("ITCPanel","itc_cb_dac"+num2istr(i), "param")
+			chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "","=", ";")
+			chninfo=ReplaceStringByKey("WAVENAME", chninfo, "","=", ";")
+			CheckBox $("itc_cb_dac"+num2istr(i)), win=ITCPanel, userdata(param)=chninfo, value=0
+		endfor
+	endif
 	chn_gain_flag=floor(chn_gain_flag)|1
 	
 	itc_update_chninfo("", 11)
@@ -651,7 +675,7 @@ Function itc_btnproc_sealtest(ba) : ButtonControl
 			PROMPT v, "test pulse (actual amplitude, between 0V-1V)"
 			DoPrompt "Seal Test Pulse", v
 			if(V_Flag==0 && (v>=0 && v<=1))
-				itc_setup_EPC8default(v)
+				itc_setup_EPC8default(v, clear_channels=1)
 				itc_start_task(flag=1)
 			endif	
 			break
@@ -776,7 +800,8 @@ Function ITC_Quit()
 	Notebook $nbname setData=S_value,writeProtect=1
 	print "All logged messages have been saved to notebook "+nbname
 	print "Please make sure to save the notebook before you kill it."
-	DoWindow /K ITCPanel
+	killwin("ITCPanel")
+	killwin("ITCTelegraph")
 
 	print "ITCPanel closed."
 End
