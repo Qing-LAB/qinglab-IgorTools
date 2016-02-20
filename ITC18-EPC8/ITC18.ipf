@@ -95,7 +95,11 @@ Function ITC_KillNoteBookLog()
 	endif
 End
 
-Constant ITC18TASK_TICK=1 //1/60 sec
+#if defined(DEBUGONLY)
+Constant ITC18TASK_TICK=20 // 1/3 sec
+#else
+Constant ITC18TASK_TICK=1 // 1/60 sec
+#endif
 Constant ITC18_DefaultSamplingRate=20000 // 20KHz
 StrConstant ITC18_PackageName="ITC18"
 StrConstant ITC18_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
@@ -220,22 +224,22 @@ Function ITC_init()
 	NVAR chnongainbinflag=$WBPkgGetName(fPath, "ChannelOnGainBinFlag"); AbortOnRTE
 	chnongainbinflag=0
 	
-	NewPanel /N=ITCPanel /K=2 /W=(50,50,730,500) as "(ITCPanel) Experiment : "+exptitle
+	NewPanel /N=ITCPanel /K=2 /W=(50,50,850,500) as "(ITCPanel) Experiment : "+exptitle
 	ModifyPanel /W=ITCPanel fixedSize=1,noedit=1
 	SetVariable itc_sv_opname win=ITCPanel,title="Operator", pos={20,10},size={150,16},variable=opname,noedit=1
 	SetVariable itc_sv_opname win=ITCPanel,valueColor=(0,0,65280)
 	SetVariable itc_sv_opname win=ITCPanel,valueBackColor=(57344,65280,48896)
 	
-	Button itc_btn_recording win=ITCPanel,title="Start saving recording",pos={180,7}, fcolor=(0,65535,0),fsize=12,fstyle=0, size={140,22}
+	Button itc_btn_recording win=ITCPanel,title="Start saving recording",pos={190,7}, fcolor=(0,65535,0),fsize=12,fstyle=0, size={140,22}
 	Button itc_btn_recording win=ITCPanel,proc=itc_btnproc_saverecording,userdata(status)="0",disable=2
-	SetVariable itc_sv_recordnum win=ITCPanel,title="#",pos={320, 10},size={100,16},limits={0,inf,0},variable=recordnum,noedit=1,fstyle=1,disable=2
+	SetVariable itc_sv_recordnum win=ITCPanel,title="#",pos={345, 10},size={100,16},limits={0,inf,0},variable=recordnum,noedit=1,fstyle=1,disable=2
 	SetVariable itc_sv_recordnum win=ITCPanel,frame=0,valueColor=(65280,0,0)
 	
-	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={520, 10},size={150,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
-	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={520,30},size={150,16},limits={ITC18MinRecordingLen,inf,0},variable=recordinglen
+	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={600, 10},size={190,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
+	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITC18MinRecordingLen,inf,0},variable=recordinglen
 		
-	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={420,8},size={100,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
-	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={390,16},value=_STR:"",proc=itc_quicknote
+	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={440,8},size={140,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
+	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={400,16},value=_STR:"",proc=itc_quicknote
 	
 	GroupBox itc_grp_ADC win=ITCPanel,title="ADCs",pos={20,50},size={90,190}
 	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={40,75},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "0")
@@ -253,37 +257,39 @@ Function ITC_init()
 	CheckBox itc_cb_dac2  win=ITCPanel,title="DAC2",pos={40,310},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "2")
 	CheckBox itc_cb_dac3  win=ITCPanel,title="DAC3",pos={40,330},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "3")
 	
-	GroupBox itc_grp_rtdac win=ITCPanel,title="RealTime DACs (V)",pos={480, 60}, size={195,80}
-	SetVariable itc_sv_rtdac0 win=ITCPanel, title="DAC0", pos={490, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="0"
-	SetVariable itc_sv_rtdac1 win=ITCPanel,title="DAC1", pos={580, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="1"
-	SetVariable itc_sv_rtdac2 win=ITCPanel,title="DAC2", pos={490, 100},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="2"
-	SetVariable itc_sv_rtdac3 win=ITCPanel,title="DAC3", pos={580, 100},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="3"
-	GroupBox itc_grp_rtadc win=ITCPanel,title="RealTime ADCs (V)", pos={480,140},size={195, 110}
-	ValDisplay itc_vd_rtadc0 win=ITCPanel,title="ADC0",pos={485,160},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc1 win=ITCPanel,title="ADC1",pos={485,180},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc2 win=ITCPanel,title="ADC2",pos={485,200},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc3 win=ITCPanel,title="ADC3",pos={485,220},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc4 win=ITCPanel,title="ADC4",pos={580,160},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc5 win=ITCPanel,title="ADC5",pos={580,180},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc6 win=ITCPanel,title="ADC6",pos={580,200},size={90,16},format="%8.6f",value=_NUM:0
-	ValDisplay itc_vd_rtadc7 win=ITCPanel,title="ADC7",pos={580,220},size={90,16},format="%8.6f",value=_NUM:0
-	
-	
 	///TODO
 	Button itc_btn_telegraph win=ITCPanel,title="Scale&Telegraph",pos={10,360},size={105,20},proc=itc_btnproc_telegraph
 	Button itc_btn_setsealtest win=ITCPanel,title="Setup seal test",pos={10,380},size={105,20}, proc=itc_btnproc_sealtest
 	Button itc_btn_displastrecord win=ITCPanel,title="Last recording",pos={10,400},size={105,20},proc=itc_btnproc_lastrecord
 	Button itc_btn_updatedacdata win=ITCPanel,title="Update DAC",pos={10,420},size={105,20},proc=itc_btnproc_updatedacdata, disable=2
 	
-	Edit /HOST=ITCPanel /N=itc_tbl_adclist /W=(120, 60, 470, 265) as "ADC list" 
-	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 470, 410) as "DAC list"
+	Edit /HOST=ITCPanel /N=itc_tbl_adclist /W=(120, 60, 590, 265) as "ADC list" 
+	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 590, 410) as "DAC list"
 	
 	///TODO
-	GroupBox itc_grp_status win=ITCPanel,title="",pos={120,415},size={550,30}
-	debugstr=" "
-	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={130,419},fixedSize=1,frame=0,size={540,22},fColor=(32768,0,0)
 	
-	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(480,250,670,410)
+	debugstr=" "
+	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,419},fixedSize=1,frame=2,size={470,22},fColor=(32768,0,0)
+	
+	
+	GroupBox itc_grp_rtdac win=ITCPanel,title="RealTime DACs (V)",pos={600, 60}, size={195,75}
+	SetVariable itc_sv_rtdac0 win=ITCPanel, title="DAC0", pos={610, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="0"
+	SetVariable itc_sv_rtdac1 win=ITCPanel,title="DAC1", pos={700, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="1"
+	SetVariable itc_sv_rtdac2 win=ITCPanel,title="DAC2", pos={610, 100},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="2"
+	SetVariable itc_sv_rtdac3 win=ITCPanel,title="DAC3", pos={700, 100},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="3"
+	
+	GroupBox itc_grp_rtadc win=ITCPanel,title="RealTime ADCs (V)", pos={600,140},size={195, 110}
+	ValDisplay itc_vd_rtadc0 win=ITCPanel,title="ADC0",pos={605,160},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc1 win=ITCPanel,title="ADC1",pos={605,180},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc2 win=ITCPanel,title="ADC2",pos={605,200},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc3 win=ITCPanel,title="ADC3",pos={605,220},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc4 win=ITCPanel,title="ADC4",pos={700,160},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc5 win=ITCPanel,title="ADC5",pos={700,180},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc6 win=ITCPanel,title="ADC6",pos={700,200},size={90,16},format="%8.6f",value=_NUM:0
+	ValDisplay itc_vd_rtadc7 win=ITCPanel,title="ADC7",pos={700,220},size={90,16},format="%8.6f",value=_NUM:0
+	
+	
+	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(600,250,795,440)
 	Notebook ITCPanel#ITCPanelLog writeProtect=1,fSize=8
 	String initmsg="ITCPanel initialized.\r"
 	initmsg+="Experiment operator:"+opname+"\r"
@@ -298,7 +304,8 @@ Function ITC_init()
 	initmsg+="NumberOfDacs="+num2str(v4)+"\r"
 	initmsg+="NumberOfAdcs="+num2str(v5)
 	itc_updatenb(initmsg)
-		
+
+	
 	StartMonitorEditPanel("ITCPanel", "itc_tbl_adclist;itc_tbl_daclist", "itc_update_chninfo")
 	
 	itc_update_chninfo("", 11)
@@ -392,7 +399,7 @@ Function itc_setup_telegraph()
 	Variable telegraphsignal
 	Variable scalefactor
 	String scaleunit
-	String notestr="Telegraph assignments have to be unique.\rSetting scale unit to '#GAIN' will scale the signal \rusing the gain telegraph signal."
+	String notestr="Setting scale unit to '#GAIN' will scale the signal \rusing the gain telegraph signal."
 	
 	killwin("ITCTelegraph")
 	NewPanel /N=ITCTelegraph /W=(100, 100, 450, 450) /K=1
@@ -1515,7 +1522,7 @@ Function itc_update_controls(runstatus)
 		SetWindow ITCPanel#itc_tbl_daclist hide=0,needUpdate=1;DoUpdate
 		itc_rtgraph_quit()
 		
-		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(480,250,670,410); DoUpdate
+		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(600,250,795,440); DoUpdate
 		DoUpdate /W=ITCPanel
 	else
 	//running
@@ -1563,8 +1570,8 @@ Function itc_update_controls(runstatus)
 		SetWindow ITCPanel#itc_tbl_adclist hide=1,needUpdate=1; DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=1,needUpdate=1; DoUpdate
 
-		itc_rtgraph_init(118, 58, 672,318)
-		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(120, 320, 670, 405); DoUpdate
+		itc_rtgraph_init(118, 58, 795,318)
+		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(120, 320, 795, 405); DoUpdate
 		DoUpdate /W=ITCPanel
 	endif
 End
