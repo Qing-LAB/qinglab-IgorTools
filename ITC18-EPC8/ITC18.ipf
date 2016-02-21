@@ -1645,15 +1645,17 @@ Function itc_update_controls(runstatus)
 	endif
 End
 
-Function itc_copy_dac_src(countDAC, wavepaths, dacwave)
+Function itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
 	Variable countDAC
 	WAVE /T wavepaths
 	WAVE dacwave
 	
 	Variable i
 	String tmpstr
-	for(i=0; i<countDAC; i+=1)
-		if(strlen(wavepaths[i])>0)
+	for(i=0; i<countDAC; i+=1) //if countDAC==0, that means no DAC has been selected, 
+									 // and dacdata by default should have been filled with a single value set by 
+									 // the RealTime DAC controls with no changes
+		if(strlen(wavepaths[i])>0) // if no DAC is selected, this string should be ""
 			WAVE srcwave=$wavepaths[i]; AbortOnRTE
 			Variable n1=DimSize(dacwave, 0); AbortOnRTE
 			Variable n2=DimSize(srcwave, 0); AbortOnRTE
@@ -1707,9 +1709,9 @@ Function itc_update_taskinfo()
 	if(countADC==0)
 		return -1
 	endif
-	if(countDAC==0)
-		countDAC=1
-	endif
+	//if(countDAC==0)
+	//	countDAC=1
+	//endif
 	
 	try
 		//prepare ADCData and DACData
@@ -1720,26 +1722,23 @@ Function itc_update_taskinfo()
 			blocksize=recordingsize
 		endif
 		Make /O /D /N=(recordingsize, countADC) $adcdata=0; AbortOnRTE
-		Make /O /D /N=(recordingsize, countDAC) $dacdata=0; AbortOnRTE 
+		
+		if(countDAC==0) //if no DAC is selected, dac0 will be used for the task, and it will hold a constant vlaue as set by the 
+							//realtime dac setvariable control
+			ControlInfo /W=ITCPanel itc_sv_rtdac0	
+			Make /O /D /N=(recordingsize, 1) $dacdata=V_Value; AbortOnRTE
+		else
+			Make /O /D /N=(recordingsize, countDAC) $dacdata=0; AbortOnRTE
+		endif
+		
 		j=0
 		WAVE dacwave=$dacdata	
 		WAVE /T wavepaths=$dacdatawavepath
-		itc_copy_dac_src(countDAC, wavepaths, dacwave)
-//		for(i=0; i<countDAC; i+=1)
-//			if(strlen(wavepaths[i])>0)
-//				WAVE srcwave=$wavepaths[i]
-//				Variable n1=DimSize(dacwave, 0)
-//				Variable n2=DimSize(srcwave, 0)
-//				if(n1!=n2)
-//					sprintf tmpstr, "Warning: DAC source wave %s contains %d points while DAC buffer length is %d.", wavepaths[i], n2, n1
-//					itc_updatenb(tmpstr, r=32768, g=0, b=0)
-//					if(n1>n2)
-//						n1=n2
-//					endif
-//				endif
-//				multithread dacwave[0,n1-1][i]=srcwave[p]; AbortOnRTE
-//			endif
-//		endfor
+		
+		if(countDAC>0)
+			itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
+		endif
+
 		//preapare Telegraph assignments and scale factors
 		//Make /O /D /N=(ItemsInList(ITC18_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 		WAVE TelegraphAssignment=$WBPkgGetName(fPath, "TelegraphAssignment"); AbortOnRTE
@@ -2173,6 +2172,7 @@ Function ITC18_Task(s)
 						itc_updatenb(tmpstr, r=32768, g=0, b=0)
 						AbortOnValue 1, 940
 					endif
+					itc_reload_dac_from_src(countDAC, dacdatawavepath, dacdata) //refresh dac data when the next cycle starts.
 					multithread tmpstim[p0,p1][]=dacdata[p-p0][q]; AbortOnRTE
 				endif
 				
@@ -2210,7 +2210,7 @@ Function ITC18_Task(s)
 						
 						saved_len+=RecordingSize-ADCDataPointer
 					endif
-					itc_copy_dac_src(countDAC, dacdatawavepath, dacdata) //refresh dac data when the next cycle starts.
+
 					if(SaveRecording!=0)
 						String allwnames="Saved traces: "
 						String stamp
