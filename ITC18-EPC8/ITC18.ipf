@@ -100,7 +100,7 @@ Constant ITC18TASK_TICK=20 // 1/3 sec
 #else
 Constant ITC18TASK_TICK=1 // 1/60 sec
 #endif
-Constant ITC18_DefaultSamplingRate=20000 // 20KHz
+Constant ITC18_DefaultSamplingRate=25000 // 25KHz
 StrConstant ITC18_PackageName="ITC18"
 StrConstant ITC18_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
 StrConstant ITC18_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
@@ -392,6 +392,40 @@ Function itc_get_adc_scale_factor(ctrlname, telegraph, factor, unit, [param])
 	return 0
 End
 
+Function itc_set_adc_scale_factor(ctrlname, telegraph, factor, unit)
+	String ctrlname
+	Variable telegraph
+	Variable factor
+	String unit
+	
+	String tmpstr
+	try	
+		String tmpparam=GetUserData("ITCPanel", ctrlname, "param"); AbortOnRTE
+		if(numtype(telegraph)!=0 || telegraph<0 || telegraph>ItemsInList(ITC18_TelegraphList))
+			telegraph=1			
+		endif
+		tmpparam=ReplaceStringByKey("TELEGRAPH", tmpparam, num2istr(telegraph), "=", ";")
+		if(numtype(factor)!=0)
+			factor=1
+		endif
+		sprintf tmpstr, "%.6e", factor
+		tmpparam=ReplaceStringByKey("SCALEFACTOR", tmpparam, tmpstr, "=", ";")		
+		tmpparam=ReplaceStringByKey("SCALEUNIT", tmpparam, unit, "=", ";")
+		
+		CheckBox $ctrlname, win=ITCPanel, userdata(param)=tmpparam; AbortOnRTE
+	catch
+		sprintf tmpstr, "Error when setting telegraph/scale/units for %s. Telegraph[%d], Factor[%f], unit[%s]. ", ctrlname, telegraph, factor, unit
+		if(V_AbortCode==-4)
+			Variable err=GetRTError(0)
+			tmpstr+="Runtime error message: "+GetErrMessage(err)
+			err=GetRTError(1)
+		endif
+		itc_updatenb(tmpstr, r=32768, g=0, b=0)
+	endtry
+	
+	return 0
+End
+
 Function itc_setup_telegraph()
 	Variable i
 	String ctrlName
@@ -431,8 +465,7 @@ Function itc_btnproc_defaultTelegraph(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			itc_set_defaultTelegraphEPC8()
-			
+			itc_set_EPC8_telegraph_default()			
 			break
 		case -1: // control being killed
 			break
@@ -441,7 +474,16 @@ Function itc_btnproc_defaultTelegraph(ba) : ButtonControl
 	return 0
 End
 
-Function itc_set_defaultTelegraphEPC8()
+Function itc_set_EPC8_telegraph_default()
+	itc_set_adc_scale_factor("itc_cb_adc0", 1, 1, "#GAIN")
+	itc_set_adc_scale_factor("itc_cb_adc1", 1, 0.1, "V")
+	itc_set_adc_scale_factor("itc_cb_adc2", 1, 1, "V")
+	itc_set_adc_scale_factor("itc_cb_adc3", 1, 1, "V")
+	itc_set_adc_scale_factor("itc_cb_adc4", 5, 1, "V")
+	itc_set_adc_scale_factor("itc_cb_adc5", 2, 1, "V")
+	itc_set_adc_scale_factor("itc_cb_adc6", 4, 1, "V")
+	itc_set_adc_scale_factor("itc_cb_adc7", 3, 1, "V")
+	itc_setup_telegraph()
 End
 
 Function itc_popproc_telegraphchoice(pa) : PopupMenuControl
@@ -616,7 +658,7 @@ Function itc_btnproc_updatedacdata(ba) : ButtonControl
 	return 0
 End
 
-Function itc_setup_EPC8default(pulsev, [clear_channels])
+Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	Variable pulsev, clear_channels
 	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
 	NVAR samplingrate=$WBPkgGetName(fPath, "SamplingRate")
@@ -626,21 +668,24 @@ Function itc_setup_EPC8default(pulsev, [clear_channels])
 	NVAR chn_gain_flag=$WBPkgGetName(fPath, "ChannelOnGainBinFlag")
 	
 	samplingrate=ITC18_DefaultSamplingRate
-	recordinglen=0.2
+	recordinglen=0.2*3
 	continuous=inf
 	saverecording=0
-	Make /O/N=(samplingrate*recordinglen)/D root:W_sealtestCmdV=0
-	WAVE w=root:W_sealtestCmdV
-	w[samplingrate*recordinglen/4, samplingrate*recordinglen/2]=pulsev*10 //generate pulses with the correct height, EPC8 has a scale factor of 10
+	WBrowserCreateDF("root:seal_tests:")
+	Make /O/N=(samplingrate*recordinglen)/D root:seal_tests:W_sealtestCmdV=0
+	WAVE w=root:seal_tests:W_sealtestCmdV
+	w[samplingrate*0.2/4, samplingrate*0.2/2]=pulsev*10 //generate pulses with the correct height, EPC8 has a scale factor of 10
+	w[samplingrate*(0.2/4+0.2), samplingrate*(0.2/2+0.2)]=pulsev*10
+	w[samplingrate*(0.2/4+0.4), samplingrate*(0.2/2+0.4)]=pulsev*10 //three pulses in a row so that the total time for one trace is longer to avoid underflow
 	
 	Variable i
 	String chninfo=GetUserData("ITCPanel", "itc_cb_adc0", "param")
-	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:","=", ";")
+	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:seal_tests:","=", ";")
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtest_I","=", ";")
 	CheckBox itc_cb_adc0, win=ITCPanel, userdata(param)=chninfo, value=1
 	
 	chninfo=GetUserData("ITCPanel","itc_cb_adc1", "param")
-	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:","=", ";")
+	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:seal_tests:","=", ";")
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtest_V","=", ";")
 	CheckBox itc_cb_adc1, win=ITCPanel, userdata(param)=chninfo, value=1
 	
@@ -654,7 +699,7 @@ Function itc_setup_EPC8default(pulsev, [clear_channels])
 	endif
 	
 	chninfo=GetUserData("ITCPanel","itc_cb_dac0", "param")
-	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:","=", ";")
+	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:seal_tests:","=", ";")
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtestCmdV","=", ";")
 	CheckBox itc_cb_dac0, win=ITCPanel, userdata(param)=chninfo, value=1
 	
@@ -682,7 +727,7 @@ Function itc_btnproc_sealtest(ba) : ButtonControl
 			PROMPT v, "test pulse (actual amplitude, between 0V-1V)"
 			DoPrompt "Seal Test Pulse", v
 			if(V_Flag==0 && (v>=0 && v<=1))
-				itc_setup_EPC8default(v, clear_channels=1)
+				itc_setup_sealtest_default(v, clear_channels=1)
 				itc_start_task(flag=1)
 			endif	
 			break
@@ -1220,7 +1265,7 @@ Function itc_rtgraph_init(left, top, right, bottom)
 
 	CheckBox rtgraph_split win=ITCPanel#rtgraphpanel,title="Split Display",size={120,20},disable=2
 	Button rtgraph_update win=ITCPanel#rtgraphpanel,title="Update Display",size={120,20},proc=rtgraph_btnproc_update
-	
+	Button rtgraph_showinfo win=ITCPanel#rtgraphpanel,title="Show info cursors",size={120,20},proc=rtgraph_btnproc_showinfo,userdata(status)="0"
 	Display /HOST=ITCPanel /N=rtgraph /W=(left, top, right, bottom);
 
 	rtgraph_update_display()
@@ -1317,6 +1362,29 @@ Function rtgraph_btnproc_update(ba) : ButtonControl
 		case 2: // mouse up
 			// click code here
 			rtgraph_update_display()
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function rtgraph_btnproc_showinfo(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+	
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			rtgraph_update_display()
+			Variable status=str2num(GetUserData("ITCPanel#rtgraphpanel", ba.ctrlName, "status" ))
+			if(status==0)
+				ShowInfo /W=ITCPanel
+				Button rtgraph_showinfo win=ITCPanel#rtgraphpanel,title="Hide info cursors",userdata(status)="1"
+			else
+				HideInfo /W=ITCPanel
+				Button rtgraph_showinfo win=ITCPanel#rtgraphpanel,title="Show info cursors",userdata(status)="0"
+			endif
 			break
 		case -1: // control being killed
 			break
@@ -1471,6 +1539,7 @@ End
 Function itc_rtgraph_quit()	
 	killwin("ITCPanel#rtgraph")
 	killwin("ITCPanel#rtgraphpanel")
+	HideInfo /W=ITCPanel
 End
 
 Function itc_update_controls(runstatus)
@@ -1576,6 +1645,30 @@ Function itc_update_controls(runstatus)
 	endif
 End
 
+Function itc_copy_dac_src(countDAC, wavepaths, dacwave)
+	Variable countDAC
+	WAVE /T wavepaths
+	WAVE dacwave
+	
+	Variable i
+	String tmpstr
+	for(i=0; i<countDAC; i+=1)
+		if(strlen(wavepaths[i])>0)
+			WAVE srcwave=$wavepaths[i]; AbortOnRTE
+			Variable n1=DimSize(dacwave, 0); AbortOnRTE
+			Variable n2=DimSize(srcwave, 0); AbortOnRTE
+			if(n1!=n2)
+				sprintf tmpstr, "Warning: DAC source wave %s contains %d points while DAC buffer length is %d.", wavepaths[i], n2, n1; AbortOnRTE
+				itc_updatenb(tmpstr, r=32768, g=0, b=0); AbortOnRTE
+				if(n1>n2)
+					n1=n2
+				endif
+			endif
+			multithread dacwave[0,n1-1][i]=srcwave[p]; AbortOnRTE
+		endif
+	endfor
+End
+
 Function itc_update_taskinfo()
 	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
 	
@@ -1631,21 +1724,22 @@ Function itc_update_taskinfo()
 		j=0
 		WAVE dacwave=$dacdata	
 		WAVE /T wavepaths=$dacdatawavepath
-		for(i=0; i<countDAC; i+=1)
-			if(strlen(wavepaths[i])>0)
-				WAVE srcwave=$wavepaths[i]
-				Variable n1=DimSize(dacwave, 0)
-				Variable n2=DimSize(srcwave, 0)
-				if(n1!=n2)
-					sprintf tmpstr, "Warning: DAC source wave %s contains %d points while DAC buffer length is %d.", wavepaths[i], n2, n1
-					itc_updatenb(tmpstr, r=32768, g=0, b=0)
-					if(n1>n2)
-						n1=n2
-					endif
-				endif
-				multithread dacwave[0,n1-1][i]=srcwave[p]; AbortOnRTE
-			endif
-		endfor
+		itc_copy_dac_src(countDAC, wavepaths, dacwave)
+//		for(i=0; i<countDAC; i+=1)
+//			if(strlen(wavepaths[i])>0)
+//				WAVE srcwave=$wavepaths[i]
+//				Variable n1=DimSize(dacwave, 0)
+//				Variable n2=DimSize(srcwave, 0)
+//				if(n1!=n2)
+//					sprintf tmpstr, "Warning: DAC source wave %s contains %d points while DAC buffer length is %d.", wavepaths[i], n2, n1
+//					itc_updatenb(tmpstr, r=32768, g=0, b=0)
+//					if(n1>n2)
+//						n1=n2
+//					endif
+//				endif
+//				multithread dacwave[0,n1-1][i]=srcwave[p]; AbortOnRTE
+//			endif
+//		endfor
 		//preapare Telegraph assignments and scale factors
 		//Make /O /D /N=(ItemsInList(ITC18_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 		WAVE TelegraphAssignment=$WBPkgGetName(fPath, "TelegraphAssignment"); AbortOnRTE
@@ -1879,6 +1973,8 @@ Function ITC18_Task(s)
 	WAVE selecteddacchn=$WBPkgGetName(fPath, "SelectedDACChn")
 	
 	WAVE telegraphassignment=$WBPkgGetName(fPath, "TelegraphAssignment")
+
+	Variable countDAC=str2num(GetUserdata("ITCPanel", "itc_grp_DAC", "selected"))
 	
 	String tmpstr
 	Variable itcstatus
@@ -2114,7 +2210,7 @@ Function ITC18_Task(s)
 						
 						saved_len+=RecordingSize-ADCDataPointer
 					endif
-					
+					itc_copy_dac_src(countDAC, dacdatawavepath, dacdata) //refresh dac data when the next cycle starts.
 					if(SaveRecording!=0)
 						String allwnames="Saved traces: "
 						String stamp
@@ -2133,7 +2229,7 @@ Function ITC18_Task(s)
 							endif
 						endfor
 						RecordNum+=1
-						itc_updatenb(allwnames)
+						itc_updatenb(allwnames)						
 					endif
 					ADCDataPointer=0
 					
