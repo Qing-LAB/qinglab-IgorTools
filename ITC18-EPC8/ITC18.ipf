@@ -52,6 +52,7 @@ Menu ITCMenuStr
 	"About", ITC_About()
 	"Init ITC Panel", ITC_Init()
 	"Shutdown ITC", ITC_Quit()
+	"Plot Trace Record#", ITC_Plot_TraceRecord()
 	"Kill Notebook Log",ITC_KillNoteBookLog()
 End
 
@@ -330,40 +331,95 @@ Function itc_btnproc_lastrecord(ba) : ButtonControl
 	return 0
 End
 
+Function ITC_Plot_TraceRecord()
+	Variable recnum=0
+	try
+		String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)	
+		NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum"); AbortOnRTE
+		
+		PROMPT recnum, "record number"
+		DoPROMPT "record number", recnum
+		if(V_flag==0)
+			itc_display_trace(recnum)
+		endif
+	catch
+		String tmpstr
+		sprintf tmpstr, "Error when plotting trace record. V_AbortCode: %d. ", V_AbortCode
+		if(V_AbortCode==-4)
+			Variable err=GetRTError(0)
+			tmpstr+="Runtime error message: "+GetErrMessage(err)
+			err=GetRTError(1)
+		endif
+		print tmpstr
+	endtry
+End
+
 Function itc_display_trace(recNum)
 	Variable recNum
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
-	Variable i, n
-	n=DimSize(adcdatawavepath, 0)
-	if(n>0)
-		String displayname=UniqueName("record"+num2istr(recNum)+"_", 6, 0)
-		Display /K=1 /N=$displayname as displayname
-		ModifyGraph /W=$displayname height={Aspect, n/2}
-		
-//		•AppendToGraph/L=left1 :seal_tests:W_sealtest_I_0
-//		•ModifyGraph tick(left1)=2,mirror(left1)=1,axThick(left1)=2,standoff(left1)=0;DelayUpdate
-//		•ModifyGraph axisEnab(left1)={0.5,1},freePos(left1)=0
-		string xaxisname, yaxisname
-		variable range_start,range_end
-		range_end=1
-		xaxisname="bottom1"
-		
-		for(i=0; i<n; i+=1)
-			yaxisname="left"+num2istr(i)
-			range_start=1-(i+1)/n
-			if(WaveExists($(adcdatawavepath[i]+"_"+num2istr(recNum))))
-				AppendToGraph /W=$displayname /L=$yaxisname /B=$xaxisname $(adcdatawavepath[i]+"_"+num2istr(recNum))
-				ModifyGraph grid($yaxisname)=1,tick($yaxisname)=2,mirror($yaxisname)=1,axThick($yaxisname)=2,standoff($yaxisname)=0
-				ModifyGraph axisEnab($yaxisname)={range_start,range_end},freePos($yaxisname)=0
-			endif
-			SetAxis/A=2/N=2 $(yaxisname)
-			range_end=range_start
-		endfor
-		ModifyGraph grid($xaxisname)=1,tick($xaxisname)=2,mirror($xaxisname)=1,axThick($xaxisname)=2,freePos($xaxisname)=0
-		ModifyGraph axisEnab($xaxisname)={0,0.75}
-		
-	endif
+	
+	try
+		String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+		WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
+		Variable i, n
+		n=DimSize(adcdatawavepath, 0)
+		if(n>0)
+			String displayname=UniqueName("record"+num2istr(recNum)+"_", 6, 0)
+			WBrowserCreateDF("root:tmpHistograms")
+			
+			Display /K=1 /N=$displayname as displayname
+			ModifyGraph /W=$displayname height={Aspect, n/2}
+			string xaxisname, yaxisname,wfullname,wname,hname
+			variable range_start,range_end
+			range_end=1
+					
+			for(i=0; i<n; i+=1)
+				yaxisname="left"+num2istr(i)
+				range_start=1-(i+1)/n
+				wfullname=adcdatawavepath[i]+"_"+num2istr(recNum)
+				
+				if(WaveExists($wfullname))
+					AppendToGraph /W=$displayname /L=$yaxisname /B=timeaxis $wfullname
+					ModifyGraph /W=$displayname grid($yaxisname)=1,tick($yaxisname)=2,mirror($yaxisname)=1,axThick($yaxisname)=2,standoff($yaxisname)=0
+					ModifyGraph /W=$displayname axisEnab($yaxisname)={range_start,range_end},minor($yaxisname)=1,freePos($yaxisname)=0
+					ModifyGraph /W=$displayname axisOnTop($yaxisname)=1,sep($yaxisname)=15
+					wname=StringFromList(ItemsInList(wfullname, ":")-1, wfullname, ":")
+					ModifyGraph /W=$displayname rgb($PossiblyQuoteName(wname))=(1,12815,52428)
+					hname="root:tmpHistograms:"+PossiblyQuoteName("hist_"+wname)
+					Make/N=0/O $hname
+#if IgorVersion()<7
+					Histogram/B=4 $wfullname,$hname
+#else
+					Histogram/B=5 $wfullname,$hname
+#endif
+					xaxisname="hist"+num2istr(i)
+					AppendToGraph /W=$displayname /B=$xaxisname /L=$yaxisname /VERT $hname
+					wname=StringFromList(ItemsInList(hname, ":")-1, hname, ":")
+					ModifyGraph /W=$displayname mode($wname)=5,hbFill($wname)=4;
+					ModifyGraph /W=$displayname rgb($wname)=(52428,1,1)
+					
+					ModifyGraph tick($xaxisname)=1,axThick=2,standoff($xaxisname)=0;DelayUpdate
+					ModifyGraph axisEnab($xaxisname)={0.75,0.95},freePos($xaxisname)={range_start,kwFraction}
+					SetAxis /A /N=1 $xaxisname
+				endif
+				SetAxis /W=$displayname /A=2/N=2 $yaxisname
+				ModifyGraph /W=$displayname nticks($yaxisname)=3,lblPosMode($yaxisname)=2
+				Label /W=$displayname $yaxisname "\\c / \\U"
+				range_end=range_start
+			endfor
+			ModifyGraph /W=$displayname grid(timeaxis)=1,tick(timeaxis)=2,mirror(timeaxis)=1,axThick(timeaxis)=2,freePos(timeaxis)=0
+			ModifyGraph /W=$displayname axisEnab(timeaxis)={0,0.7},lblPosMode(timeaxis)=2
+			Label /W=$displayname timeaxis "Time / \\U"
+		endif
+	catch
+		String tmpstr
+		sprintf tmpstr, "Error when plotting last trace. V_AbortCode: %d. ", V_AbortCode
+		if(V_AbortCode==-4)
+			Variable err=GetRTError(0)
+			tmpstr+="Runtime error message: "+GetErrMessage(err)
+			err=GetRTError(1)
+		endif
+		itc_updatenb(tmpstr)
+	endtry	
 End
 
 Function itc_btnproc_telegraph(ba) : ButtonControl
@@ -482,7 +538,7 @@ Function itc_setup_telegraph()
 		SetVariable $("sv_scaleunit_adc"+num2istr(i)),win=ITCTelegraph,pos={290,25*(i+1)+52},value=_STR:scaleunit,size={50, 20},proc=itc_svproc_scalefactor
 	endfor
 	TitleBox tb_errormsg, win=ITCTelegraph, pos={20, 280},size={320,30},fixedsize=1
-	Button btn_setEPC8default, win=ITCTelegraph, title="Defaults for EPC8", pos={20, 315}, size={150, 25}, proc=itc_btnproc_defaultTelegraph
+	Button btn_setEPC8default, win=ITCTelegraph, title="Defaults for EPC8", pos={20, 315}, size={150, 25}, proc=itc_btnproc_defaultTelegraph,userdata(status)="0"
 	Button btn_apply, win=ITCTelegraph, title="Apply", pos={185,315}, size={150,25},proc=itc_btnproc_telegraph_commit
 	itc_update_telegraphvar()
 End
@@ -493,7 +549,14 @@ Function itc_btnproc_defaultTelegraph(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			itc_set_EPC8_telegraph_default()			
+			Variable status=str2num(GetUserData("ITCTelegraph", "btn_setEPC8default", "status"))
+			if(status==0)
+				itc_set_EPC8_telegraph_default(0)
+				Button btn_setEPC8default, win=ITCTelegraph, title="Clear All Telegraph",userdata(status)="1"
+			else
+				itc_set_EPC8_telegraph_default(1)
+				Button btn_setEPC8default, win=ITCTelegraph, title="Defaults for EPC8",userdata(status)="0"
+			endif
 			break
 		case -1: // control being killed
 			break
@@ -502,15 +565,28 @@ Function itc_btnproc_defaultTelegraph(ba) : ButtonControl
 	return 0
 End
 
-Function itc_set_EPC8_telegraph_default()
-	itc_set_adc_scale_factor("itc_cb_adc0", 1, 1, "#GAIN")
-	itc_set_adc_scale_factor("itc_cb_adc1", 1, 0.1, "V")
-	itc_set_adc_scale_factor("itc_cb_adc2", 1, 1, "V")
-	itc_set_adc_scale_factor("itc_cb_adc3", 1, 1, "V")
-	itc_set_adc_scale_factor("itc_cb_adc4", 5, 1, "V")
-	itc_set_adc_scale_factor("itc_cb_adc5", 2, 1, "V")
-	itc_set_adc_scale_factor("itc_cb_adc6", 4, 1, "V")
-	itc_set_adc_scale_factor("itc_cb_adc7", 3, 1, "V")
+Function itc_set_EPC8_telegraph_default(c)
+	Variable c
+	
+	if(c==0)
+		itc_set_adc_scale_factor("itc_cb_adc0", 1, 1, "#GAIN")
+		itc_set_adc_scale_factor("itc_cb_adc1", 1, 0.1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc2", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc3", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc4", 5, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc5", 2, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc6", 4, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc7", 3, 1, "V")
+	else
+		itc_set_adc_scale_factor("itc_cb_adc0", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc1", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc2", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc3", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc4", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc5", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc6", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc7", 1, 1, "V")
+	endif
 	itc_setup_telegraph()
 End
 
@@ -890,7 +966,7 @@ Function itc_update_chninfo(windowname, event)
 	String windowname
 	Variable event
 	
-	if(event!=11)
+	if(event!=11) //event is given by TableMonitorHook callback
 		return -1
 	endif
 	
@@ -1018,7 +1094,8 @@ Function itc_update_chninfo(windowname, event)
 			endif
 		endfor
 		
-		//For DAC channels, if no DAC channel is selected, zeros will be filled in the first DAC channel. otherwise the actual wave will be used.
+		//For DAC channels, if no DAC channel is selected, the first DAC channel will still be used as default (but filled with a constant value). 
+		//otherwise the actual wave will be used.
 		if(CountDAC==0)
 			CountDAC=1
 		endif
