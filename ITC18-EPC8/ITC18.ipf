@@ -258,10 +258,10 @@ Function ITC_init()
 	CheckBox itc_cb_dac3  win=ITCPanel,title="DAC3",pos={40,330},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "3")
 	
 	///TODO
-	Button itc_btn_telegraph win=ITCPanel,title="Scale&Telegraph",pos={10,360},size={105,20},proc=itc_btnproc_telegraph
-	Button itc_btn_setsealtest win=ITCPanel,title="Setup seal test",pos={10,380},size={105,20}, proc=itc_btnproc_sealtest
-	Button itc_btn_displastrecord win=ITCPanel,title="Last recording",pos={10,400},size={105,20},proc=itc_btnproc_lastrecord
-	Button itc_btn_updatedacdata win=ITCPanel,title="Update DAC",pos={10,420},size={105,20},proc=itc_btnproc_updatedacdata, disable=2
+	Button itc_btn_telegraph win=ITCPanel,title="Scale&Telegraph",pos={5,360},size={110,20},proc=itc_btnproc_telegraph
+	Button itc_btn_setsealtest win=ITCPanel,title="Setup seal test",pos={5,380},size={110,20}, proc=itc_btnproc_sealtest
+	Button itc_btn_displastrecord win=ITCPanel,title="Last recording",pos={5,400},size={110,20},proc=itc_btnproc_lastrecord
+	Button itc_btn_updatedacdata win=ITCPanel,title="New StimWave",pos={5,420},size={110,20},proc=itc_btnproc_generatewave
 	
 	Edit /HOST=ITCPanel /N=itc_tbl_adclist /W=(120, 60, 590, 265) as "ADC list" 
 	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 590, 410) as "DAC list"
@@ -317,25 +317,53 @@ Function itc_btnproc_lastrecord(ba) : ButtonControl
 	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
 	
 	NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum")
-	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
 		
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			Variable i, n
-			n=DimSize(adcdatawavepath, 0)
-			for(i=0; i<n; i+=1)
-				if(WaveExists($(adcdatawavepath[i]+"_"+num2istr(recordingnum-1))))
-					display /K=1 $(adcdatawavepath[i]+"_"+num2istr(recordingnum-1))
-				endif
-			endfor
-			
+			itc_display_trace(recordingnum-1)			
 			break
 		case -1: // control being killed
 			break
 	endswitch
 
 	return 0
+End
+
+Function itc_display_trace(recNum)
+	Variable recNum
+	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
+	Variable i, n
+	n=DimSize(adcdatawavepath, 0)
+	if(n>0)
+		String displayname=UniqueName("record"+num2istr(recNum)+"_", 6, 0)
+		Display /K=1 /N=$displayname as displayname
+		ModifyGraph /W=$displayname height={Aspect, n/2}
+		
+//		•AppendToGraph/L=left1 :seal_tests:W_sealtest_I_0
+//		•ModifyGraph tick(left1)=2,mirror(left1)=1,axThick(left1)=2,standoff(left1)=0;DelayUpdate
+//		•ModifyGraph axisEnab(left1)={0.5,1},freePos(left1)=0
+		string xaxisname, yaxisname
+		variable range_start,range_end
+		range_end=1
+		xaxisname="bottom1"
+		
+		for(i=0; i<n; i+=1)
+			yaxisname="left"+num2istr(i)
+			range_start=1-(i+1)/n
+			if(WaveExists($(adcdatawavepath[i]+"_"+num2istr(recNum))))
+				AppendToGraph /W=$displayname /L=$yaxisname /B=$xaxisname $(adcdatawavepath[i]+"_"+num2istr(recNum))
+				ModifyGraph grid($yaxisname)=1,tick($yaxisname)=2,mirror($yaxisname)=1,axThick($yaxisname)=2,standoff($yaxisname)=0
+				ModifyGraph axisEnab($yaxisname)={range_start,range_end},freePos($yaxisname)=0
+			endif
+			SetAxis/A=2/N=2 $(yaxisname)
+			range_end=range_start
+		endfor
+		ModifyGraph grid($xaxisname)=1,tick($xaxisname)=2,mirror($xaxisname)=1,axThick($xaxisname)=2,freePos($xaxisname)=0
+		ModifyGraph axisEnab($xaxisname)={0,0.75}
+		
+	endif
 End
 
 Function itc_btnproc_telegraph(ba) : ButtonControl
@@ -639,7 +667,7 @@ Function itc_update_telegraphvar([commit])
 	return commit
 End
 
-Function itc_btnproc_updatedacdata(ba) : ButtonControl
+Function itc_btnproc_generatewave(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
 	
@@ -1570,7 +1598,7 @@ Function itc_update_controls(runstatus)
 		Button itc_btn_telegraph win=ITCPanel,disable=0
 		Button itc_btn_setsealtest win=ITCPanel,disable=0
 		Button itc_btn_displastrecord win=ITCPanel,disable=0
-		Button itc_btn_updatedacdata win=ITCPanel,disable=2
+		Button itc_btn_updatedacdata win=ITCPanel,disable=0
 		
 		GroupBox itc_grp_rtdac win=ITCPanel,disable=0
 		SetVariable itc_sv_rtdac0 win=ITCPanel,disable=0
