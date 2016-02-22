@@ -266,7 +266,7 @@ Function ITC_init()
 	
 	Edit /HOST=ITCPanel /N=itc_tbl_adclist /W=(120, 60, 590, 265) as "ADC list" 
 	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 590, 410) as "DAC list"
-	
+
 	///TODO
 	
 	debugstr=" "
@@ -322,7 +322,7 @@ Function itc_btnproc_lastrecord(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			itc_display_trace(recordingnum-1)			
+			itc_plot_trace_record(recordingnum-1)			
 			break
 		case -1: // control being killed
 			break
@@ -340,7 +340,7 @@ Function ITC_Plot_TraceRecord()
 		PROMPT recnum, "record number"
 		DoPROMPT "record number", recnum
 		if(V_flag==0)
-			itc_display_trace(recnum)
+			itc_plot_trace_record(recnum)
 		endif
 	catch
 		String tmpstr
@@ -354,7 +354,7 @@ Function ITC_Plot_TraceRecord()
 	endtry
 End
 
-Function itc_display_trace(recNum)
+Function itc_plot_trace_record(recNum)
 	Variable recNum
 	
 	try
@@ -383,7 +383,7 @@ Function itc_display_trace(recNum)
 					ModifyGraph /W=$displayname axisEnab($yaxisname)={range_start,range_end},minor($yaxisname)=1,freePos($yaxisname)=0
 					ModifyGraph /W=$displayname axisOnTop($yaxisname)=1,sep($yaxisname)=15
 					wname=StringFromList(ItemsInList(wfullname, ":")-1, wfullname, ":")
-					ModifyGraph /W=$displayname rgb($PossiblyQuoteName(wname))=(1,12815,52428)
+					ModifyGraph /W=$displayname rgb($PossiblyQuoteName(wname))=(65535,0,0)
 					hname="root:tmpHistograms:"+PossiblyQuoteName("hist_"+wname)
 					Make/N=0/O $hname
 #if IgorVersion()<7
@@ -395,7 +395,8 @@ Function itc_display_trace(recNum)
 					AppendToGraph /W=$displayname /B=$xaxisname /L=$yaxisname /VERT $hname
 					wname=StringFromList(ItemsInList(hname, ":")-1, hname, ":")
 					ModifyGraph /W=$displayname mode($wname)=5,hbFill($wname)=4;
-					ModifyGraph /W=$displayname rgb($wname)=(52428,1,1)
+					ModifyGraph /W=$displayname rgb($wname)=(0,0,0),plusRGB($wname)=(1,16019,65535),negRGB($wname)=(1,16019,65535)
+					ModifyGraph /W=$displayname hbFill($wname)=2,usePlusRGB($wname)=1,useNegRGB($wname)=1
 					
 					ModifyGraph tick($xaxisname)=1,axThick=2,standoff($xaxisname)=0;DelayUpdate
 					ModifyGraph axisEnab($xaxisname)={0.75,0.95},freePos($xaxisname)={range_start,kwFraction}
@@ -982,6 +983,9 @@ Function itc_update_chninfo(windowname, event)
 	String selecteddacchn=WBPkgGetName(fPath, "SelectedDACChn")
 	String adcdatawavepath=WBPkgGetName(fPath, "ADCDataWavePath")
 	String dacdatawavepath=WBPkgGetName(fPath, "DACDataWavePath")
+	String adcscalefactor=WBPkgGetName(fPath, "ADCScaleFactor")
+	String adcscaleunit=WBPkgGetName(fPath, "ADCScaleUnit")
+	
 	Variable i, j
 	try
 		Make /N=8/O/T $adc_chn_wname;AbortOnRTE
@@ -1077,7 +1081,13 @@ Function itc_update_chninfo(windowname, event)
 		GroupBox itc_grp_DAC win=ITCPanel,userdata(selected)=num2istr(CountDAC);AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_daclist $dac_chnsrcfolder_wname;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_daclist $dac_chnsrcwave_wname	;AbortOnRTE
-
+		
+		AppendToTable /W=ITCPanel#itc_tbl_adclist $adcscalefactor;AbortOnRTE
+		AppendToTable /W=ITCPanel#itc_tbl_adclist $adcscaleunit;AbortOnRTE
+		
+		ModifyTable /W=ITCPanel#itc_tbl_adclist entryMode=0,showParts=(0+2+4+0+16+32+64+0),autosize={1,0,-1,0,0}
+		ModifyTable /W=ITCPanel#itc_tbl_daclist entryMode=0,showParts=(0+2+4+0+16+32+64+0),autosize={1,0,-1,0,0}
+	
 		//prepare the selected channels record
 		Make /O /N=(countADC) $selectedadcchn=0; AbortOnRTE
 		WAVE chnlist=$selectedadcchn; AbortOnRTE
