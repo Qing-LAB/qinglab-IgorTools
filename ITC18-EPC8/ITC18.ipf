@@ -68,7 +68,7 @@ Function /S ITC_MenuItem(itemNumber)
 	endif
 	
 	if(itemNumber==2)
-		if(WinType("ITCPanel")==7)
+		if(itc_get_recording_status()>0)
 			return "Shutdown ITCPanel"
 		else
 			return "(Shutdown ITCPanel"
@@ -135,7 +135,7 @@ Menu ITCMenuStr, dynamic
 	help={"Initialize ITCPanel", "ITCPanel already initialized."}
 	
 	ITC_MenuItem(2),/Q,ITC_Quit()
-	help={"Shutdown ITCPanel", "No ITCPanel present."}
+	help={"Shutdown ITCPanel", "No ITCPanel present or recording is going on."}
 	
 	ITC_MenuItem(3),/Q,ITC_Plot_TraceRecord()
 	help={"Plot trace with specified record number", "Recording is going on or no record has been saved, feature disabled."}
@@ -239,7 +239,6 @@ Function ITC_init()
 	
 	String fPath=ITC_setup_directory()
 		
-//TODO
 	Variable error
 	String errMsg=""
 #if defined(LIHDEBUG)
@@ -321,7 +320,7 @@ Function ITC_init()
 	
 	Button itc_btn_recording win=ITCPanel,title="Start saving recording",pos={190,7}, fcolor=(0,65535,0),fsize=12,fstyle=0, size={140,22}
 	Button itc_btn_recording win=ITCPanel,proc=itc_btnproc_saverecording,userdata(status)="0",disable=2
-	SetVariable itc_sv_recordnum win=ITCPanel,title="#",pos={345, 10},size={100,16},limits={0,inf,0},variable=recordnum,noedit=1,fstyle=1,disable=2
+	SetVariable itc_sv_recordnum win=ITCPanel,title="#",pos={345, 10},size={90,16},limits={0,inf,0},variable=recordnum,noedit=1,fstyle=1,disable=2
 	SetVariable itc_sv_recordnum win=ITCPanel,frame=0,valueColor=(65280,0,0)
 	
 	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={600, 10},size={190,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
