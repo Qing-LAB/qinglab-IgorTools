@@ -48,12 +48,100 @@ StrConstant ITCMenuStr="ITC18(DEMO)"
 StrConstant ITCMenuStr="ITC18"
 #endif
 
-Menu ITCMenuStr
-	"About", ITC_About()
-	"Init ITC Panel", ITC_Init()
-	"Shutdown ITC", ITC_Quit()
-	"Plot Trace Record#", ITC_Plot_TraceRecord()
-	"Kill Notebook Log",ITC_KillNoteBookLog()
+Function /S ITC_MenuItem(itemNumber)
+	Variable itemNumber
+	
+	if(itemNumber==0)
+		if(itc_get_recording_status()>=0)
+			return "About ITCPanel"
+		else
+			return "(About ITCPanel"
+		endif
+	endif
+	
+	if(itemNumber==1)
+		if(WinType("ITCPanel")==0)
+			return "Init ITCPanel"
+		else
+			return "(Init ITCPanel"
+		endif
+	endif
+	
+	if(itemNumber==2)
+		if(WinType("ITCPanel")==7)
+			return "Shutdown ITCPanel"
+		else
+			return "(Shutdown ITCPanel"
+		endif
+	endif
+	
+	if(itemNumber==3)
+		Variable n
+		if(itc_get_recording_status(recnum=n)>=0)
+			if(n>0)
+				return "Plot trace record..."
+			endif
+		endif
+		return "(Plot trace record..."
+	endif
+	
+	if(itemNumber==4)
+		if(itc_get_recording_status()>=0)
+			return "Kill Notebook Log..."
+		else
+			return "(Kill Notebook Log..."
+		endif
+	endif
+	
+	return "ERROR MENU ITEM NUMBER"
+End
+
+Function itc_get_recording_status([recnum])
+	Variable &recnum
+	
+	Variable retValue=0 //no itcpanel present
+	try
+		if(WinType("ITCPanel")==7)
+			String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)	
+			NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum")
+			NVAR status=$WBPkgGetName(fPath, "Status")
+			if(status==0 || status==4)
+				retValue=1 //itcpanel present and not in recording status
+				if(!ParamIsDefault(recnum))
+					recnum=recordingnum
+				endif
+			else
+				retValue=-1 //itcpanel present and recording is going on
+			endif
+		endif
+	catch
+		String tmpstr
+		if(V_AbortCode==-4)
+			Variable err=GetRTError(0)
+			tmpstr+="Runtime error message: "+GetErrMessage(err)
+			err=GetRTError(1)
+		endif
+		print tmpstr
+	endtry
+	
+	return retValue
+End
+
+Menu ITCMenuStr, dynamic
+	ITC_MenuItem(0),/Q, ITC_About()
+	help={"About ITCPanel", "Recording is going on, feature disabled."}
+	
+	ITC_MenuItem(1),/Q, ITC_Init()
+	help={"Initialize ITCPanel", "ITCPanel already initialized."}
+	
+	ITC_MenuItem(2),/Q,ITC_Quit()
+	help={"Shutdown ITCPanel", "No ITCPanel present."}
+	
+	ITC_MenuItem(3),/Q,ITC_Plot_TraceRecord()
+	help={"Plot trace with specified record number", "Recording is going on or no record has been saved, feature disabled."}
+	
+	ITC_MenuItem(4),/Q,ITC_KillNoteBookLog()
+	help={"Kill previous notebook logs", "Recording is going on, feature disabled."}
 End
 
 Strconstant ITC_licesence="Igor Pro script for using ITC18/EPC8 in Igor Pro.\r\rAll rights reserved."
@@ -322,7 +410,9 @@ Function itc_btnproc_lastrecord(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			itc_plot_trace_record(recordingnum-1)			
+			if(recordingnum>0)
+				itc_plot_trace_record(recordingnum-1, 0)
+			endif		
 			break
 		case -1: // control being killed
 			break
@@ -340,7 +430,7 @@ Function ITC_Plot_TraceRecord()
 		PROMPT recnum, "record number"
 		DoPROMPT "record number", recnum
 		if(V_flag==0)
-			itc_plot_trace_record(recnum)
+			itc_plot_trace_record(recnum, 1)
 		endif
 	catch
 		String tmpstr
@@ -354,8 +444,8 @@ Function ITC_Plot_TraceRecord()
 	endtry
 End
 
-Function itc_plot_trace_record(recNum)
-	Variable recNum
+Function itc_plot_trace_record(recNum, histogram_mode)
+	Variable recNum, histogram_mode
 	
 	try
 		String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
@@ -384,23 +474,24 @@ Function itc_plot_trace_record(recNum)
 					ModifyGraph /W=$displayname axisOnTop($yaxisname)=1,sep($yaxisname)=15
 					wname=StringFromList(ItemsInList(wfullname, ":")-1, wfullname, ":")
 					ModifyGraph /W=$displayname rgb($PossiblyQuoteName(wname))=(65535,0,0)
-					hname="root:tmpHistograms:"+PossiblyQuoteName("hist_"+wname)
-					Make/N=0/O $hname
+					if(histogram_mode==1)
+						hname="root:tmpHistograms:"+PossiblyQuoteName("hist_"+wname)
+						Make/N=0/O $hname
 #if IgorVersion()<7
-					Histogram/B=4 $wfullname,$hname
+						Histogram/B=4 $wfullname,$hname
 #else
-					Histogram/B=5 $wfullname,$hname
+						Histogram/B=5 $wfullname,$hname
 #endif
-					xaxisname="hist"+num2istr(i)
-					AppendToGraph /W=$displayname /B=$xaxisname /L=$yaxisname /VERT $hname
-					wname=StringFromList(ItemsInList(hname, ":")-1, hname, ":")
-					ModifyGraph /W=$displayname mode($wname)=5,hbFill($wname)=4;
-					ModifyGraph /W=$displayname rgb($wname)=(0,0,0),plusRGB($wname)=(1,16019,65535),negRGB($wname)=(1,16019,65535)
-					ModifyGraph /W=$displayname hbFill($wname)=2,usePlusRGB($wname)=1,useNegRGB($wname)=1
-					
-					ModifyGraph tick($xaxisname)=1,axThick=2,standoff($xaxisname)=0;DelayUpdate
-					ModifyGraph axisEnab($xaxisname)={0.75,0.95},freePos($xaxisname)={range_start,kwFraction}
-					SetAxis /A /N=1 $xaxisname
+						xaxisname="hist"+num2istr(i)
+						AppendToGraph /W=$displayname /B=$xaxisname /L=$yaxisname /VERT $hname
+						wname=StringFromList(ItemsInList(hname, ":")-1, hname, ":")
+						ModifyGraph /W=$displayname mode($wname)=5,hbFill($wname)=4;
+						ModifyGraph /W=$displayname rgb($wname)=(0,0,0),plusRGB($wname)=(1,16019,65535),negRGB($wname)=(1,16019,65535)
+						ModifyGraph /W=$displayname hbFill($wname)=2,usePlusRGB($wname)=1,useNegRGB($wname)=1					
+						ModifyGraph tick($xaxisname)=1,axThick=2,standoff($xaxisname)=0;DelayUpdate
+						ModifyGraph axisEnab($xaxisname)={0.75,0.95},freePos($xaxisname)={range_start,kwFraction}
+						SetAxis /A /N=1 $xaxisname
+					endif
 				endif
 				SetAxis /W=$displayname /A=2/N=2 $yaxisname
 				ModifyGraph /W=$displayname nticks($yaxisname)=3,lblPosMode($yaxisname)=2
@@ -408,7 +499,10 @@ Function itc_plot_trace_record(recNum)
 				range_end=range_start
 			endfor
 			ModifyGraph /W=$displayname grid(timeaxis)=1,tick(timeaxis)=2,mirror(timeaxis)=1,axThick(timeaxis)=2,freePos(timeaxis)=0
-			ModifyGraph /W=$displayname axisEnab(timeaxis)={0,0.7},lblPosMode(timeaxis)=2
+			ModifyGraph /W=$displayname lblPosMode(timeaxis)=2
+			if(histogram_mode==1)
+				ModifyGraph /W=$displayname axisEnab(timeaxis)={0,0.7}
+			endif
 			Label /W=$displayname timeaxis "Time / \\U"
 		endif
 	catch
