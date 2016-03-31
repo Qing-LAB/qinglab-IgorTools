@@ -98,13 +98,14 @@ End
 
 Function itc_get_recording_status([recnum])
 	Variable &recnum
-	
 	Variable retValue=0 //no itcpanel present
+	Variable instance=WBPkgDefaultInstance
+	
 	try
 		if(WinType("ITCPanel")==7)
-			String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)	
-			NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum")
-			NVAR status=$WBPkgGetName(fPath, "Status")
+			String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)	
+			NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
+			NVAR status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
 			if(status==0 || status==4)
 				retValue=1 //itcpanel present and not in recording status
 				if(!ParamIsDefault(recnum))
@@ -260,15 +261,15 @@ Function ITC_init()
 		return -1
 	endif
 	
-	SVAR opname=$WBPkgGetName(fPath, "OperatorName")
-	SVAR exptitle=$WBPkgGetName(fPath, "ExperimentTitle")
-	SVAR debugstr=$WBPkgGetName(fPath, "DebugStr")
-	NVAR taskstatus=$WBPkgGetName(fPath, "Status")
-	NVAR recordnum=$WBPkgGetName(fPath, "RecordingNum")
-	NVAR samplingrate=$WBPkgGetName(fPath, "SamplingRate")
-	NVAR recordinglen=$WBPkgGetName(fPath, "RecordingLength")
-	NVAR continuous=$WBPkgGetName(fPath, "ContinuousRecording")
-	NVAR saverecording=$WBPkgGetName(fPath, "SaveRecording")
+	SVAR opname=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
+	SVAR exptitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
+	SVAR debugstr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
+	NVAR taskstatus=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
+	NVAR recordnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
+	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
+	NVAR recordinglen=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingLength")
+	NVAR continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
+	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	
 	opname=operatorname
 	exptitle=experimenttitle
@@ -281,12 +282,12 @@ Function ITC_init()
 
 	//"V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"	
 	Variable v0,v1,v2,v3,v4,v5
-	NVAR V_SecPerTick=$WBPkgGetName(fPath, "V_SecPerTick")
-	NVAR MinSamplingTime=$WBPkgGetName(fPath, "MinSamplingTime")
-	NVAR MaxSamplingTime=$WBPkgGetName(fPath, "MaxSamplingTime")
-	NVAR FIFOLength=$WBPkgGetName(fPath, "FIFOLength")
-	NVAR NumberOfDacs=$WBPkgGetName(fPath, "NumberOfDacs")
-	NVAR NumberOfAdcs=$WBPkgGetName(fPath, "NumberOfAdcs")
+	NVAR V_SecPerTick=$WBPkgGetName(fPath, WBPkgDFVar, "V_SecPerTick")
+	NVAR MinSamplingTime=$WBPkgGetName(fPath, WBPkgDFVar, "MinSamplingTime")
+	NVAR MaxSamplingTime=$WBPkgGetName(fPath, WBPkgDFVar, "MaxSamplingTime")
+	NVAR FIFOLength=$WBPkgGetName(fPath, WBPkgDFVar, "FIFOLength")
+	NVAR NumberOfDacs=$WBPkgGetName(fPath, WBPkgDFVar, "NumberOfDacs")
+	NVAR NumberOfAdcs=$WBPkgGetName(fPath, WBPkgDFVar, "NumberOfAdcs")
 
 #if defined(LIHDEBUG)
 	v0=1e-6; v1=1e-5;v2=20;v3=16384;v4=8;v5=4;
@@ -301,15 +302,15 @@ Function ITC_init()
 	NumberOfDacs=v4
 	NumberOfAdcs=v5
 	
-	String telegraphassignment=WBPkgGetName(fPath, "TelegraphAssignment")
-	String adcscalefactor=WBPkgGetName(fPath, "ADCScaleFactor")
-	String adcscaleunit=WBPkgGetName(fPath, "ADCScaleUnit")
+	String telegraphassignment=WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
+	String adcscalefactor=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
+	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
 	
 	Make /O /D /N=(ItemsInList(ITC18_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 	Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
 	Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
 
-	NVAR chnongainbinflag=$WBPkgGetName(fPath, "ChannelOnGainBinFlag"); AbortOnRTE
+	NVAR chnongainbinflag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag"); AbortOnRTE
 	chnongainbinflag=0
 	
 	NewPanel /N=ITCPanel /K=2 /W=(50,50,850,500) as "(ITCPanel) Experiment : "+exptitle
@@ -402,9 +403,11 @@ End
 
 Function itc_btnproc_lastrecord(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+	Variable instance=WBPkgDefaultInstance
+		
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
-	NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum")
+	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
 		
 	switch( ba.eventCode )
 		case 2: // mouse up
@@ -422,9 +425,10 @@ End
 
 Function ITC_Plot_TraceRecord()
 	Variable recnum=0
+	Variable instance=WBPkgDefaultInstance
 	try
-		String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)	
-		NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum"); AbortOnRTE
+		String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)	
+		NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum"); AbortOnRTE
 		
 		PROMPT recnum, "record number"
 		DoPROMPT "record number", recnum
@@ -445,10 +449,10 @@ End
 
 Function itc_plot_trace_record(recNum, histogram_mode)
 	Variable recNum, histogram_mode
-	
+	Variable instance=WBPkgDefaultInstance
 	try
-		String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-		WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
+		String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+		WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
 		Variable i, n
 		n=DimSize(adcdatawavepath, 0)
 		if(n>0)
@@ -518,10 +522,11 @@ End
 
 Function itc_btnproc_telegraph(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
-	NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum")
-	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
+	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
+	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
 		
 	switch( ba.eventCode )
 		case 2: // mouse up
@@ -738,13 +743,13 @@ End
 
 Function itc_update_telegraphvar([commit])
 	Variable commit
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	
-	NVAR ChnOnGainBinFlags=$WBPkgGetName(fPath, "ChannelOnGainBinFlag")
-	WAVE scalefactor=$WBPkgGetName(fPath, "ADCScaleFactor")
-	WAVE /T scaleunit=$WBPkgGetName(fPath, "ADCScaleUnit")
-	WAVE telegraphassignment=$WBPkgGetName(fPath, "TelegraphAssignment")
+	NVAR ChnOnGainBinFlags=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
+	WAVE scalefactor=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
+	WAVE /T scaleunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
+	WAVE telegraphassignment=$WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
 	Make /FREE /N=(DimSize(scalefactor, 0)) tmpfactor
 	Make /FREE /T /N=(DimSize(scaleunit, 0)) tmpunit
 	Make /FREE /N=(ItemsInList(ITC18_TelegraphList)-1) tmpassignment=-1, tmpcount=0; AbortOnRTE
@@ -839,10 +844,11 @@ End
 
 Function itc_btnproc_generatewave(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
-	NVAR recordingnum=$WBPkgGetName(fPath, "RecordingNum")
-	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
+	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
+	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
 		
 	switch( ba.eventCode )
 		case 2: // mouse up
@@ -858,12 +864,13 @@ End
 
 Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	Variable pulsev, clear_channels
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	NVAR samplingrate=$WBPkgGetName(fPath, "SamplingRate")
-	NVAR recordinglen=$WBPkgGetName(fPath, "RecordingLength")
-	NVAR continuous=$WBPkgGetName(fPath, "ContinuousRecording")
-	NVAR saverecording=$WBPkgGetName(fPath, "SaveRecording")
-	NVAR chn_gain_flag=$WBPkgGetName(fPath, "ChannelOnGainBinFlag")
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
+	NVAR recordinglen=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingLength")
+	NVAR continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
+	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
+	NVAR chn_gain_flag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	
 	samplingrate=ITC18_DefaultSamplingRate
 	recordinglen=0.2*3
@@ -971,9 +978,9 @@ End
 
 Function itc_set_saverecording([flag])
 	Variable flag
-	
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	NVAR saverecording=$WBPkgGetName(fPath, "SaveRecording")
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	String titlestr
 	Variable fontsize, fontstyle
 	Variable r, g, b
@@ -1063,21 +1070,21 @@ Function itc_update_chninfo(windowname, event)
 	if(event!=11) //event is given by TableMonitorHook callback
 		return -1
 	endif
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String adc_chn_wname=WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel")
+	String dac_chn_wname=WBPkgGetName(fPath, WBPkgDFWave, "DAC_Channel")
+	String adc_chndestfolder_wname=WBPkgGetName(fPath, WBPkgDFWave, "ADC_DestFolder")
+	String adc_chndestwave_wname=WBPkgGetName(fPath, WBPkgDFWave, "ADC_DestWave")
+	String dac_chnsrcfolder_wname=WBPkgGetName(fPath, WBPkgDFWave, "DAC_SrcFolder")
+	String dac_chnsrcwave_wname=WBPkgGetName(fPath, WBPkgDFWave, "DAC_SrcWave")
 	
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	String adc_chn_wname=WBPkgGetName(fPath, "ADC_Channel")
-	String dac_chn_wname=WBPkgGetName(fPath, "DAC_Channel")
-	String adc_chndestfolder_wname=WBPkgGetName(fPath, "ADC_DestFolder")
-	String adc_chndestwave_wname=WBPkgGetName(fPath, "ADC_DestWave")
-	String dac_chnsrcfolder_wname=WBPkgGetName(fPath, "DAC_SrcFolder")
-	String dac_chnsrcwave_wname=WBPkgGetName(fPath, "DAC_SrcWave")
-	
-	String selectedadcchn=WBPkgGetName(fPath, "SelectedADCChn")
-	String selecteddacchn=WBPkgGetName(fPath, "SelectedDACChn")
-	String adcdatawavepath=WBPkgGetName(fPath, "ADCDataWavePath")
-	String dacdatawavepath=WBPkgGetName(fPath, "DACDataWavePath")
-	String adcscalefactor=WBPkgGetName(fPath, "ADCScaleFactor")
-	String adcscaleunit=WBPkgGetName(fPath, "ADCScaleUnit")
+	String selectedadcchn=WBPkgGetName(fPath, WBPkgDFWave, "SelectedADCChn")
+	String selecteddacchn=WBPkgGetName(fPath, WBPkgDFWave, "SelectedDACChn")
+	String adcdatawavepath=WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
+	String dacdatawavepath=WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
+	String adcscalefactor=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
+	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
 	
 	Variable i, j
 	try
@@ -1362,9 +1369,10 @@ End
 
 Function itc_start_task([flag])
 	Variable flag
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	NVAR TaskStatus=$WBPkgGetName(fPath, "Status")
-	NVAR Continuous=$WBPkgGetName(fPath, "ContinuousRecording")
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	NVAR TaskStatus=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
+	NVAR Continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
 
 	Variable countADC=str2num(GetUserdata("ITCPanel", "itc_grp_ADC", "selected"))
 	Variable runflag=0
@@ -1439,10 +1447,11 @@ End
 
 Function itc_rtgraph_init(left, top, right, bottom)
 	Variable left, top, right, bottom
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-	String wname=WBPkgGetName(fPath, "ADCData")
-	WAVE selectedchn=$WBPkgGetName(fPath, "selectedadcchn")
-	WAVE /T chnlist=$WBPkgGetName(fPath, "ADC_Channel")
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String wname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
+	WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn")
+	WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel")
 	String chnname=chnlist[selectedchn[0]]; AbortOnRTE
 	String selchn_list1="\""+chnname
 	String selchn_list2="\"_none_;"+chnname
@@ -1602,14 +1611,15 @@ Function rtgraph_btnproc_showinfo(ba) : ButtonControl
 End
 
 Function rtgraph_update_display()
+	Variable instance=WBPkgDefaultInstance
 	try
-		String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
-		String dataname=WBPkgGetName(fPath, "ADCData")
+		String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+		String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 		WAVE datawave=$dataname; AbortOnRTE
 		dataname=StringFromList(ItemsInList(dataname, ":")-1, dataname, ":")
-		WAVE selectedchn=$WBPkgGetName(fPath, "selectedadcchn"); AbortOnRTE
-		WAVE /T chnlist=$WBPkgGetName(fPath, "ADC_Channel"); AbortOnRTE
-		WAVE /T chnunit=$WBPkgGetName(fPath, "ADCScaleUnit"); AbortOnRTE
+		WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
+		WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
+		WAVE /T chnunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit"); AbortOnRTE
 		String chnname
 		
 		do
@@ -1880,28 +1890,29 @@ Function itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
 End
 
 Function itc_update_taskinfo()
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
 	Variable retVal=-1
 
 	itc_update_chninfo("", 11)
 	//fill ADC channel indice and wave names
-	WAVE /T wadcdestfolder=$WBPkgGetName(fPath, "ADC_DestFolder")
-	WAVE /T wadcdestwave=$WBPkgGetName(fPath, "ADC_DestWave")
-	WAVE /T wdacsrcfolder=$WBPkgGetName(fPath, "DAC_SrcFolder")
-	WAVE /T wdacsrcwave=$WBPkgGetName(fPath, "DAC_SrcWave")
-	String adcdata=WBPkgGetName(fPath, "ADCData")
-	String dacdata=WBPkgGetName(fPath, "DACData")
+	WAVE /T wadcdestfolder=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_DestFolder")
+	WAVE /T wadcdestwave=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_DestWave")
+	WAVE /T wdacsrcfolder=$WBPkgGetName(fPath, WBPkgDFWave, "DAC_SrcFolder")
+	WAVE /T wdacsrcwave=$WBPkgGetName(fPath, WBPkgDFWave, "DAC_SrcWave")
+	String adcdata=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
+	String dacdata=WBPkgGetName(fPath, WBPkgDFWave, "DACData")
 	
 	Variable countADC=str2num(GetUserdata("ITCPanel", "itc_grp_ADC", "selected"))
 	Variable countDAC=str2num(GetUserdata("ITCPanel", "itc_grp_DAC", "selected"))
 	
-	NVAR recordinglen=$WBPkgGetName(fPath, "RecordingLength")
-	NVAR samplingrate=$WBPkgGetName(fPath, "SamplingRate")
-	NVAR recordingsize=$WBPkgGetName(fPath, "RecordingSize")
-	NVAR blocksize=$WBPkgGetName(fPath, "BlockSize")
+	NVAR recordinglen=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingLength")
+	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
+	NVAR recordingsize=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingSize")
+	NVAR blocksize=$WBPkgGetName(fPath, WBPkgDFVar, "BlockSize")
 	
-	String dacdatawavepath=WBPkgGetName(fPath, "DACDataWavePath")
+	String dacdatawavepath=WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
 	
 	String tmpstr
 	
@@ -1949,11 +1960,11 @@ Function itc_update_taskinfo()
 
 		//preapare Telegraph assignments and scale factors
 		//Make /O /D /N=(ItemsInList(ITC18_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
-		WAVE TelegraphAssignment=$WBPkgGetName(fPath, "TelegraphAssignment"); AbortOnRTE
+		WAVE TelegraphAssignment=$WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment"); AbortOnRTE
 		//Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
-		WAVE adcscale=$WBPkgGetName(fPath, "ADCScaleFactor"); AbortOnRTE
+		WAVE adcscale=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor"); AbortOnRTE
 		//Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
-		WAVE /T adcunit=$WBPkgGetName(fPath, "ADCScaleUnit"); AbortOnRTE
+		WAVE /T adcunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit"); AbortOnRTE
 		
 		Variable telegraph, scalefactor
 		String scaleunit
@@ -2140,46 +2151,46 @@ Function ITC18_Task(s)
 	Variable tRefNum, tMicroSec
 	
 	tRefNum=StartMSTimer
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
-	String fPath=WBSetupPackageDir(ITC18_PackageName, should_exist=1)
+	SVAR Operator=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
+	SVAR ExperimentTitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
+	SVAR DebugStr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
 	
-	SVAR Operator=$WBPkgGetName(fPath, "OperatorName")
-	SVAR ExperimentTitle=$WBPkgGetName(fPath, "ExperimentTitle")
-	SVAR DebugStr=$WBPkgGetName(fPath, "DebugStr")
+	NVAR Status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
+	NVAR LastIdleTicks=$WBPkgGetName(fPath, WBPkgDFVar, "LastIdleTicks")
+	NVAR RecordNum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
+	NVAR SamplingRate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
+	NVAR RecordingLen=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingLength")
+	NVAR Continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
+	NVAR SaveRecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
+	NVAR TelegraphGain=$WBPkgGetName(fpath, WBPkgDFVar, "TelegraphGain")
+	SVAR TelegraphInfo=$WBPkgGetName(fpath, WBPkgDFStr, "TelegraphInfo")
 	
-	NVAR Status=$WBPkgGetName(fPath, "Status")
-	NVAR LastIdleTicks=$WBPkgGetName(fPath, "LastIdleTicks")
-	NVAR RecordNum=$WBPkgGetName(fPath, "RecordingNum")
-	NVAR SamplingRate=$WBPkgGetName(fPath, "SamplingRate")
-	NVAR RecordingLen=$WBPkgGetName(fPath, "RecordingLength")
-	NVAR Continuous=$WBPkgGetName(fPath, "ContinuousRecording")
-	NVAR SaveRecording=$WBPkgGetName(fPath, "SaveRecording")
-	NVAR TelegraphGain=$WBPkgGetName(fpath, "TelegraphGain")
-	SVAR TelegraphInfo=$WBPkgGetName(fpath, "TelegraphInfo")
-	
-	NVAR FIFOBegin=$WBPkgGetName(fPath, "FIFOBegin")
-	NVAR FIFOEnd=$WBPkgGetName(fPath, "FIFOEnd")
-	NVAR FIFOVirtualEnd=$WBPkgGetName(fPath, "FIFOVirtualEnd")
-	NVAR ADCDataPointer=$WBPkgGetName(fPath, "ADCDataPointer")
+	NVAR FIFOBegin=$WBPkgGetName(fPath, WBPkgDFVar, "FIFOBegin")
+	NVAR FIFOEnd=$WBPkgGetName(fPath, WBPkgDFVar, "FIFOEnd")
+	NVAR FIFOVirtualEnd=$WBPkgGetName(fPath, WBPkgDFVar, "FIFOVirtualEnd")
+	NVAR ADCDataPointer=$WBPkgGetName(fPath, WBPkgDFVar, "ADCDataPointer")
 
-	NVAR ChnOnGainBinFlag=$WBPkgGetName(fPath, "ChannelOnGainBinFlag")
+	NVAR ChnOnGainBinFlag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	
-	NVAR BlockSize=$WBPkgGetName(fPath, "BlockSize")
-	NVAR RecordingSize=$WBPkgGetName(fPath, "RecordingSize")
+	NVAR BlockSize=$WBPkgGetName(fPath, WBPkgDFVar, "BlockSize")
+	NVAR RecordingSize=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingSize")
 
-	WAVE adcdata=$WBPkgGetName(fPath, "ADCData")
-	WAVE dacdata=$WBPkgGetName(fPath, "DACData")
+	WAVE adcdata=$WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
+	WAVE dacdata=$WBPkgGetName(fPath, WBPkgDFWave, "DACData")
 	
-	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, "ADCDataWavePath")
-	WAVE /T dacdatawavepath=$WBPkgGetName(fPath, "DACDataWavePath")
+	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
+	WAVE /T dacdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
 	
-	WAVE adcscalefactor=$WBPkgGetName(fPath, "ADCScaleFactor")
-	WAVE /T adcscaleunit=$WBPkgGetName(fPath, "ADCScaleUnit")
+	WAVE adcscalefactor=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
+	WAVE /T adcscaleunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
 	
-	WAVE selectedadcchn=$WBPkgGetName(fPath, "SelectedADCChn")
-	WAVE selecteddacchn=$WBPkgGetName(fPath, "SelectedDACChn")
+	WAVE selectedadcchn=$WBPkgGetName(fPath, WBPkgDFWave, "SelectedADCChn")
+	WAVE selecteddacchn=$WBPkgGetName(fPath, WBPkgDFWave, "SelectedDACChn")
 	
-	WAVE telegraphassignment=$WBPkgGetName(fPath, "TelegraphAssignment")
+	WAVE telegraphassignment=$WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
 
 	Variable countDAC=str2num(GetUserdata("ITCPanel", "itc_grp_DAC", "selected"))
 	

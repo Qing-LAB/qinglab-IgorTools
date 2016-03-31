@@ -225,34 +225,78 @@ Function WBrowserCreateDF(dfstr)
 End
 
 StrConstant WB_PackageRoot="root:Packages:"
+Constant WBPkgNewInstance=-1
+Constant WBPkgDefaultInstance=0
+Constant WBPkgMaxInstances=100
 
-Function /T WBSetupPackageDir(PackageName, [instance, singular, should_exist]) //when error happens, return ""
-	String PackageName
-	Variable instance, singular
-	Variable should_exist
+//
+//WBSetupPackageDir setup the directory for a package
+//	If instance is not set, by default, the function will try to create a new instance with zero as index. In this case,
+// if a zero index instance already exists, the function will generate an error.
+// If instance is set, it should be a variable reference. If the variable is set to WBPkgNewInstance, then a new instance
+// will be created and the instance number will be stored in the variable reference. Otherwise, the instance number
+// will be used to check if the instance with that index exists. If so, the path will be returned. If not, an error will
+// be generated.
+//
+static Function /T wbgenerateDFName(root, packagename, instance)
+	String root, packagename
+	Variable instance
 	
+	return root+PossiblyQuoteName(PackageName)+":instance"+num2str(instance)+":"
+End
+
+Function /T WBSetupPackageDir(PackageName, [instance]) //when error happens, return ""
+	String PackageName
+	Variable & instance
+	
+	Variable createNew=0 // flag for creating new data folder
+	Variable idx=WBPkgDefaultInstance
 	String fullPath=""
-	if(!ParamIsDefault(instance))
-		fullPath=WB_PackageRoot+PossiblyQuoteName(PackageName+"_"+num2str(instance))+":"
+	if(ParamIsDefault(instance)) // no instance is provided, will create a new folder with index 0
+		//instance 0 should not exist and will be created
+		createNew=1
 	else
-		fullPath=WB_PackageRoot+PossiblyQuoteName(PackageName)+":"
-	endif
-	if(!DataFolderExists(fullPath))
-		if(!ParamIsDefault(should_exist) && should_exist!=0)
-			fullPath=""
+		if(instance==WBPkgNewInstance)
+			//request to create a new folder
+			createNew=1
+			for(idx=0; idx<WBPkgMaxInstances; idx+=1)
+				fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
+				if(!DataFolderExists(fullPath))
+					break
+				endif
+			endfor
+			if(idx>=WBPkgMaxInstances)
+				Abort "Trying to create too many instances for package "+PackageName
+			endif
 		else
-			if(WBrowserCreateDF(fullPath)!=0)
-				fullPath=""
+			createNew=0
+			idx=instance
+		endif			
+	endif
+	
+	fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
+	
+	if(!DataFolderExists(fullPath))
+		if(createNew!=0)
+			if(WBrowserCreateDF(fullPath)!=0 || WBrowserCreateDF(fullPath+"vars")!=0 || WBrowserCreateDF(fullPath+"strs")!=0 || WBrowserCreateDF(fullPath+"waves")!=0 || WBrowserCreateDF(fulLPath+"privateDF")!=0)
+				Abort "Error when trying to create a new instance for package "+PackageName
 			endif
 		endif
 	else
-		if(!ParamIsDefault(singular) && singular>0)
-			print "The preparation of data folder for Package ["+PackageName+"] failed singularity check."
-			fullPath=""
+		if(createNew!=0)
+			Abort "Trying to create an instance that already exists for package "+PackageName
 		endif
+	endif
+	if(!ParamIsDefault(instance))
+		instance=idx
 	endif
 	return fullPath
 End
+
+Constant WBPkgDFWave=0
+Constant WBPkgDFVar=1
+Constant WBPkgDFStr=2
+Constant WBPkgDFDF=3
 
 Function WBPrepPackageWaves(fullPath, wlist, [text, datatype])
 	String fullPath, wlist
@@ -264,7 +308,7 @@ Function WBPrepPackageWaves(fullPath, wlist, [text, datatype])
 	try
 		s=""
 		for(c=ItemsInList(wlist)-1;c>=0; c-=1)
-			s=fullPath+PossiblyQuoteName(StringFromList(c, wlist))
+			s=fullPath+"waves:"+PossiblyQuoteName(StringFromList(c, wlist))
 			//AbortOnValue exists(s)!=0, -1
 			if(!ParamIsDefault(text) && text>0)
 				Make /T /N=0 /O $s; AbortOnRTE
@@ -293,7 +337,7 @@ Function WBPrepPackageVars(fullPath, vlist, [complex])
 	try
 		s=""
 		for(c=ItemsInList(vlist)-1;c>=0; c-=1)
-			s=fullPath+PossiblyQuoteName(StringFromList(c, vlist))
+			s=fullPath+"vars:"+PossiblyQuoteName(StringFromList(c, vlist))
 			//AbortOnValue exists(s)!=0, -1
 			if(ParamIsDefault(complex))
 				Variable /G $s; AbortOnRTE
@@ -319,7 +363,7 @@ Function WBPrepPackageStrs(fullPath, slist)
 	try
 		s=""
 		for(c=ItemsInList(slist)-1;c>=0; c-=1)
-			s=fullPath+PossiblyQuoteName(StringFromList(c, slist))
+			s=fullPath+"strs:"+PossiblyQuoteName(StringFromList(c, slist))
 			//AbortOnValue exists(s)!=0, -1
 			String /G $s; AbortOnRTE
 			
@@ -333,10 +377,50 @@ Function WBPrepPackageStrs(fullPath, slist)
 	return retVal
 End
 
-Function /T WBPkgGetName(fullPath, name)
-	String fullPath, name
+Function WBPrepPackagePrivateDF(fullPath, dflist)
+	String fullPath, dflist
+
+	Variable c
+	String s
+	Variable retVal=-1
+	try
+		s=""
+		for(c=ItemsInList(dflist)-1;c>=0; c-=1)
+			s=fullPath+"privateDF:"+PossiblyQuoteName(StringFromList(c, dflist))
+			//AbortOnValue exists(s)!=0, -1
+			WBrowserCreateDF(s); AbortOnRTE
+			AbortOnValue !DataFolderExists(s), -1
+		endfor
+		retVal=0
+	catch
+		print "Error when trying to prepare private DF ["+s+"]"
+	endtry	
+	return retVal
+End
+
+Function /T WBPkgGetName(fullPath, type, name)
+	String fullPath
+	Variable type
+	String name
 	
-	String s=fullPath+PossiblyQuoteName(name)
+	String subfd=""
+	
+	switch(type)
+	case WBPkgDFWave:
+		subfd="waves:";
+		break
+	case WBPkgDFVar:
+		subfd="vars:";
+		break
+	case WBPkgDFStr:
+		subfd="strs:";
+		break
+	case WBPkgDFDF:
+		subfd="privateDF:";
+	default:
+	endswitch
+	
+	String s=fullPath+subfd+PossiblyQuoteName(name)
 	try
 		AbortOnValue exists(s)==0, -1
 	catch
