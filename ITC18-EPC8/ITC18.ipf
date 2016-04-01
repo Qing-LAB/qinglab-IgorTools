@@ -48,100 +48,21 @@ StrConstant ITCMenuStr="ITC18(DEMO)"
 StrConstant ITCMenuStr="ITC18"
 #endif
 
-Function /S ITC_MenuItem(itemNumber)
-	Variable itemNumber
-	
-	if(itemNumber==0)
-		if(itc_get_recording_status()>=0)
-			return "About ITCPanel"
-		else
-			return "(About ITCPanel"
-		endif
-	endif
-	
-	if(itemNumber==1)
-		if(WinType("ITCPanel")==0)
-			return "Init ITCPanel"
-		else
-			return "(Init ITCPanel"
-		endif
-	endif
-	
-	if(itemNumber==2)
-		if(itc_get_recording_status()>0)
-			return "Shutdown ITCPanel"
-		else
-			return "(Shutdown ITCPanel"
-		endif
-	endif
-	
-	if(itemNumber==3)
-		Variable n
-		if(itc_get_recording_status(recnum=n)>=0)
-			if(n>0)
-				return "Plot trace record..."
-			endif
-		endif
-		return "(Plot trace record..."
-	endif
-	
-	if(itemNumber==4)
-		if(itc_get_recording_status()>=0)
-			return "Kill Notebook Log..."
-		else
-			return "(Kill Notebook Log..."
-		endif
-	endif
-	
-	return "ERROR MENU ITEM NUMBER"
-End
 
-Function itc_get_recording_status([recnum])
-	Variable &recnum
-	Variable retValue=0 //no itcpanel present
-	Variable instance=WBPkgDefaultInstance
-	
-	try
-		if(WinType("ITCPanel")==7)
-			String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)	
-			NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
-			NVAR status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
-			if(status==0 || status==4)
-				retValue=1 //itcpanel present and not in recording status
-				if(!ParamIsDefault(recnum))
-					recnum=recordingnum
-				endif
-			else
-				retValue=-1 //itcpanel present and recording is going on
-			endif
-		endif
-	catch
-		String tmpstr
-		if(V_AbortCode==-4)
-			Variable err=GetRTError(0)
-			tmpstr+="Runtime error message: "+GetErrMessage(err)
-			err=GetRTError(1)
-		endif
-		print tmpstr
-	endtry
-	
-	return retValue
-End
-
-Menu ITCMenuStr, dynamic
-	ITC_MenuItem(0),/Q, ITC_About()
+Menu ITCMenuStr
+	"About ITCPanel",/Q, ITC_About()
 	help={"About ITCPanel", "Recording is going on, feature disabled."}
 	
-	ITC_MenuItem(1),/Q, ITC_Init()
+	"Init ITCPanel",/Q, ITC_Init()
 	help={"Initialize ITCPanel", "ITCPanel already initialized."}
 	
-	ITC_MenuItem(2),/Q,ITC_Quit()
+	"Shutdown ITCPanel",/Q,ITC_Quit()
 	help={"Shutdown ITCPanel", "No ITCPanel present or recording is going on."}
 	
-	ITC_MenuItem(3),/Q,ITC_Plot_TraceRecord()
+	"Plot trace record with histogram (slow)...",/Q,ITC_Plot_TraceRecord()
 	help={"Plot trace with specified record number", "Recording is going on or no record has been saved, feature disabled."}
 	
-	ITC_MenuItem(4),/Q,ITC_KillNoteBookLog()
+	"Kill Notebook Log...",/Q,ITC_KillNoteBookLog()
 	help={"Kill previous notebook logs", "Recording is going on, feature disabled."}
 End
 
@@ -198,7 +119,7 @@ StrConstant ITC18_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestW
 StrConstant ITC18_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
 StrConstant ITC18_DataWavesInfo="ADCDataWavePath;DACDataWavePath"
 
-StrConstant ITC18_AcquisitionSettingVars="SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
+StrConstant ITC18_AcquisitionSettingVars="ITCMODEL;SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
 StrConstant ITC18_AcquisitionControlVars="Status;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag"
 StrConstant ITC18_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"
 Constant ITC18MaxBlockSize=16383
@@ -240,27 +161,44 @@ Function ITC_init()
 	
 	String fPath=ITC_setup_directory()
 		
-	Variable error
-	String errMsg=""
-#if defined(LIHDEBUG)
-	error=0
-#else
-	error=LIH_InitInterface(errMsg, 11)
-	if(error!=0)
-		DoAlert /T="Initialize failed" 0, "Initialization of the ITC18 failed with message: "+errMsg
-		return -1
-	endif
-#endif
+
 	
 	String operatorname="unknown", experimenttitle="unknown"
+	Variable model=1
 	PROMPT operatorname, "Operator Name"
 	PROMPT experimenttitle, "Experiment title"
-	DoPrompt "Start experiment", operatorname, experimenttitle
+	PROMPT model, "ITC Model", popup, "USB-18;USB-16"
+	DoPrompt "Start experiment", operatorname, experimenttitle, model
 	if(V_Flag!=0)
 		print "experiment cancelled."
 		return -1
 	endif
 	
+	switch(model)
+		case 1: //USB-18
+			model=11;
+			break
+		case 2: //USB-16
+			model=10;
+			break
+		default: //unknown
+			model=0
+			break
+	endswitch
+	
+	Variable error
+	String errMsg=""
+#if defined(LIHDEBUG)
+	error=0
+#else
+	error=LIH_InitInterface(errMsg, model)
+	if(error!=0)
+		DoAlert /T="Initialize failed" 0, "Initialization of the ITC18 failed with message: "+errMsg
+		return -1
+	endif
+#endif
+
+	NVAR itcmodel=$WBPkgGetName(fPath, WBPkgDFVar, "ITCMODEL")
 	SVAR opname=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
 	SVAR exptitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
 	SVAR debugstr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
@@ -273,6 +211,7 @@ Function ITC_init()
 	
 	opname=operatorname
 	exptitle=experimenttitle
+	itcmodel=model
 	taskstatus=0 //idle
 	samplingrate=ITC18_DefaultSamplingRate
 	recordnum=0
@@ -2154,6 +2093,7 @@ Function ITC18_Task(s)
 	Variable instance=WBPkgDefaultInstance
 	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
 	
+	NVAR itcmodel=$WBPkgGetName(fPath, WBPkgDFVar, "ITCMODEL")
 	SVAR Operator=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
 	SVAR ExperimentTitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
 	SVAR DebugStr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
@@ -2235,7 +2175,7 @@ Function ITC18_Task(s)
 #if defined(LIHDEBUG)
 			success=0
 #else
-			success=LIH_InitInterface(errMsg, 11)
+			success=LIH_InitInterface(errMsg, itcmodel)
 #endif
 			if(success!=0)
 				sprintf tmpstr, "Initialization of the ITC18 failed with message: %s", errMsg

@@ -266,7 +266,8 @@ Function /T WBSetupPackageDir(PackageName, [instance]) //when error happens, ret
 				endif
 			endfor
 			if(idx>=WBPkgMaxInstances)
-				Abort "Trying to create too many instances for package "+PackageName
+				print "Trying to create too many instances for package "+PackageName
+				AbortOnValue -1, -1
 			endif
 		else
 			createNew=0
@@ -279,12 +280,14 @@ Function /T WBSetupPackageDir(PackageName, [instance]) //when error happens, ret
 	if(!DataFolderExists(fullPath))
 		if(createNew!=0)
 			if(WBrowserCreateDF(fullPath)!=0 || WBrowserCreateDF(fullPath+"vars")!=0 || WBrowserCreateDF(fullPath+"strs")!=0 || WBrowserCreateDF(fullPath+"waves")!=0 || WBrowserCreateDF(fulLPath+"privateDF")!=0)
-				Abort "Error when trying to create a new instance for package "+PackageName
+				print "Error when trying to create a new instance for package "+PackageName
+				AbortOnValue -1, -2
 			endif
 		endif
 	else
 		if(createNew!=0)
-			Abort "Trying to create an instance that already exists for package "+PackageName
+			print "Trying to create an instance that already exists for package "+PackageName
+			AbortonValue -1, -3
 		endif
 	endif
 	if(!ParamIsDefault(instance))
