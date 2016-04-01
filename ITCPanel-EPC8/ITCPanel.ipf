@@ -24,8 +24,8 @@
 //	THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#pragma moduleName=ITC18
-//#pragma IndependentModule=ITC18
+#pragma moduleName=ITCPanel
+//#pragma IndependentModule=ITCPanel
 #include "TableMonitorHook"
 #include "WaveBrowser"
 
@@ -43,9 +43,9 @@
 
 
 #if defined(LIHDEBUG)
-StrConstant ITCMenuStr="ITC18(DEMO)"
+StrConstant ITCMenuStr="ITC(DEMO)"
 #else
-StrConstant ITCMenuStr="ITC18"
+StrConstant ITCMenuStr="ITC"
 #endif
 
 
@@ -66,7 +66,7 @@ Menu ITCMenuStr
 	help={"Kill previous notebook logs", "Recording is going on, feature disabled."}
 End
 
-Strconstant ITC_licesence="Igor Pro script for using ITC18/EPC8 in Igor Pro.\r\rAll rights reserved."
+Strconstant ITC_licesence="Igor Pro script for using ITC/EPC8 in Igor Pro.\r\rAll rights reserved."
 Strconstant ITC_contact="The Qing Research Lab at Arizona State University\r\rhttp://qinglab.physics.asu.edu"
 
 static Function killwin(wname)
@@ -88,8 +88,8 @@ Function ITC_About()
 		res=72
 	endif
 	
-	DrawPICT /W=AboutITCPanel /RABS 20,20,180, 180, ITC18#QingLabBadge
-	DrawText /W=AboutITCPanel 25, 200, "QingLab ITC18/EPC8 Control"
+	DrawPICT /W=AboutITCPanel /RABS 20,20,180, 180, ITCPanel#QingLabBadge
+	DrawText /W=AboutITCPanel 25, 200, "QingLab ITC/EPC8 Control"
 	DrawText /W=AboutITCPanel 25, 220, "Programmed by Quan Qing"
 	NewNotebook /F=1/N=AboutITCPanel/OPTS=15 /W=(220,20,450,210) /HOST=AboutITCPanel
 	Notebook # text=ITC_licesence
@@ -107,45 +107,45 @@ Function ITC_KillNoteBookLog()
 End
 
 #if defined(DEBUGONLY)
-Constant ITC18TASK_TICK=20 // 1/3 sec
+Constant ITCTASK_TICK=20 // 1/3 sec
 #else
-Constant ITC18TASK_TICK=1 // 1/60 sec
+Constant ITCTASK_TICK=1 // 1/60 sec
 #endif
-Constant ITC18_DefaultSamplingRate=25000 // 25KHz
-StrConstant ITC18_PackageName="ITC18"
-StrConstant ITC18_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
-StrConstant ITC18_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
+Constant ITC_DefaultSamplingRate=25000 // 25KHz
+StrConstant ITC_PackageName="ITC"
+StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
+StrConstant ITC_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
 
-StrConstant ITC18_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
-StrConstant ITC18_DataWavesInfo="ADCDataWavePath;DACDataWavePath"
+StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
+StrConstant ITC_DataWavesInfo="ADCDataWavePath;DACDataWavePath"
 
-StrConstant ITC18_AcquisitionSettingVars="ITCMODEL;SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
-StrConstant ITC18_AcquisitionControlVars="Status;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag"
-StrConstant ITC18_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"
-Constant ITC18MaxBlockSize=16383
-Constant ITC18MinRecordingLen=0.2 //minimal length of data in sec for continuous acquisitions
-StrConstant ITC18_ADCChnDefault="DATAFOLDER=;WAVENAME=;TITLE=ADC#;TELEGRAPH=1;SCALEFACTOR=1;SCALEUNIT=V;FOLDERLABEL=Destination data folder;WAVELABEL=Destination wave;DEFAULTFOLDER=root:;DEFAULTWAVE=adc#;OPTIONS=0;DISABLE=0"
-StrConstant ITC18_DACChnDefault="DATAFOLDER=;WAVENAME=;TITLE=DAC#;FOLDERLABEL=Source data folder;WAVELABEL=Source wave;DEFAULTFOLDER=;DEFAULTWAVE=;OPTIONS=3;DISABLE=0"
+StrConstant ITC_AcquisitionSettingVars="ITCMODEL;SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
+StrConstant ITC_AcquisitionControlVars="Status;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag"
+StrConstant ITC_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"
+Constant ITCMaxBlockSize=16383
+Constant ITCMinRecordingLen=0.2 //minimal length of data in sec for continuous acquisitions
+StrConstant ITC_ADCChnDefault="DATAFOLDER=;WAVENAME=;TITLE=ADC#;TELEGRAPH=1;SCALEFACTOR=1;SCALEUNIT=V;FOLDERLABEL=Destination data folder;WAVELABEL=Destination wave;DEFAULTFOLDER=root:;DEFAULTWAVE=adc#;OPTIONS=0;DISABLE=0"
+StrConstant ITC_DACChnDefault="DATAFOLDER=;WAVENAME=;TITLE=DAC#;FOLDERLABEL=Source data folder;WAVELABEL=Source wave;DEFAULTFOLDER=;DEFAULTWAVE=;OPTIONS=3;DISABLE=0"
 
-StrConstant ITC18_TelegraphList="_none_;#GAIN;#CSLOW;#FILTER;#MODE;"
+StrConstant ITC_TelegraphList="_none_;#GAIN;#CSLOW;#FILTER;#MODE;"
 
 Function /T ITC_setup_directory()
-	String fPath=WBSetupPackageDir(ITC18_PackageName)
+	String fPath=WBSetupPackageDir(ITC_PackageName)
 	if(strlen(fPath)<=0)
-		abort "Cannot properly prepare ITC18 package data folder!"
+		abort "Cannot properly prepare ITC package data folder!"
 	endif
 	DFREF dfr=$fPath
 		
 	try	
-		AbortOnValue WBPrepPackageStrs(fPath, ITC18_ExperimentInfoStrs)!=0, -100
-		AbortOnValue WBPrepPackageWaves(fPath, ITC18_ChnInfoWaves, text=1)!=0, -110
-		AbortOnValue WBPrepPackageWaves(fPath, ITC18_DataWaves)!=0, -120
-		AbortOnValue WBPrepPackageWaves(fPath, ITC18_DataWavesInfo, text=1)!=0, -125
-		AbortOnValue WBPrepPackageVars(fPath, ITC18_AcquisitionSettingVars)!=0, -130
-		AbortOnValue WBPrepPackageVars(fPath, ITC18_AcquisitionControlVars)!=0, -140
-		AbortOnValue WBPrepPackageVars(fPath, ITC18_BoardInfo)!=0, -150
+		AbortOnValue WBPrepPackageStrs(fPath, ITC_ExperimentInfoStrs)!=0, -100
+		AbortOnValue WBPrepPackageWaves(fPath, ITC_ChnInfoWaves, text=1)!=0, -110
+		AbortOnValue WBPrepPackageWaves(fPath, ITC_DataWaves)!=0, -120
+		AbortOnValue WBPrepPackageWaves(fPath, ITC_DataWavesInfo, text=1)!=0, -125
+		AbortOnValue WBPrepPackageVars(fPath, ITC_AcquisitionSettingVars)!=0, -130
+		AbortOnValue WBPrepPackageVars(fPath, ITC_AcquisitionControlVars)!=0, -140
+		AbortOnValue WBPrepPackageVars(fPath, ITC_BoardInfo)!=0, -150
 	catch
-		abort "error setting up ITC18 data folder."
+		abort "error setting up ITC data folder."
 	endtry
 	
 	return fPath
@@ -193,7 +193,7 @@ Function ITC_init()
 #else
 	error=LIH_InitInterface(errMsg, model)
 	if(error!=0)
-		DoAlert /T="Initialize failed" 0, "Initialization of the ITC18 failed with message: "+errMsg
+		DoAlert /T="Initialize failed" 0, "Initialization of the ITC failed with message: "+errMsg
 		return -1
 	endif
 #endif
@@ -213,9 +213,9 @@ Function ITC_init()
 	exptitle=experimenttitle
 	itcmodel=model
 	taskstatus=0 //idle
-	samplingrate=ITC18_DefaultSamplingRate
+	samplingrate=ITC_DefaultSamplingRate
 	recordnum=0
-	recordinglen=ITC18MinRecordingLen
+	recordinglen=ITCMinRecordingLen
 	continuous=0
 	saverecording=0
 
@@ -245,7 +245,7 @@ Function ITC_init()
 	String adcscalefactor=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
 	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
 	
-	Make /O /D /N=(ItemsInList(ITC18_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
+	Make /O /D /N=(ItemsInList(ITC_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 	Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
 	Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
 
@@ -264,26 +264,26 @@ Function ITC_init()
 	SetVariable itc_sv_recordnum win=ITCPanel,frame=0,valueColor=(65280,0,0)
 	
 	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={600, 10},size={190,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
-	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITC18MinRecordingLen,inf,0},variable=recordinglen
+	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 		
 	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={440,8},size={140,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
 	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={400,16},value=_STR:"",proc=itc_quicknote
 	
 	GroupBox itc_grp_ADC win=ITCPanel,title="ADCs",pos={20,50},size={90,190}
-	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={40,75},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "0")
-	CheckBox itc_cb_adc1  win=ITCPanel,title="ADC1",pos={40,95},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "1")
-	CheckBox itc_cb_adc2  win=ITCPanel,title="ADC2",pos={40,115},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "2")
-	CheckBox itc_cb_adc3  win=ITCPanel,title="ADC3",pos={40,135},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "3")
-	CheckBox itc_cb_adc4  win=ITCPanel,title="ADC4",pos={40,155},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "4")
-	CheckBox itc_cb_adc5  win=ITCPanel,title="ADC5",pos={40,175},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "5")
-	CheckBox itc_cb_adc6  win=ITCPanel,title="ADC6",pos={40,195},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "6")
-	CheckBox itc_cb_adc7  win=ITCPanel,title="ADC7",pos={40,215},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_ADCChnDefault, "7")
+	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={40,75},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "0")
+	CheckBox itc_cb_adc1  win=ITCPanel,title="ADC1",pos={40,95},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "1")
+	CheckBox itc_cb_adc2  win=ITCPanel,title="ADC2",pos={40,115},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "2")
+	CheckBox itc_cb_adc3  win=ITCPanel,title="ADC3",pos={40,135},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "3")
+	CheckBox itc_cb_adc4  win=ITCPanel,title="ADC4",pos={40,155},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "4")
+	CheckBox itc_cb_adc5  win=ITCPanel,title="ADC5",pos={40,175},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "5")
+	CheckBox itc_cb_adc6  win=ITCPanel,title="ADC6",pos={40,195},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "6")
+	CheckBox itc_cb_adc7  win=ITCPanel,title="ADC7",pos={40,215},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "7")
 	
 	GroupBox itc_grp_DAC win=ITCPanel,title="DACs",pos={20,245},size={90,110}
-	CheckBox itc_cb_dac0  win=ITCPanel,title="DAC0",pos={40,270},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "0")
-	CheckBox itc_cb_dac1  win=ITCPanel,title="DAC1",pos={40,290},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "1")
-	CheckBox itc_cb_dac2  win=ITCPanel,title="DAC2",pos={40,310},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "2")
-	CheckBox itc_cb_dac3  win=ITCPanel,title="DAC3",pos={40,330},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC18_DACChnDefault, "3")
+	CheckBox itc_cb_dac0  win=ITCPanel,title="DAC0",pos={40,270},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "0")
+	CheckBox itc_cb_dac1  win=ITCPanel,title="DAC1",pos={40,290},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "1")
+	CheckBox itc_cb_dac2  win=ITCPanel,title="DAC2",pos={40,310},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "2")
+	CheckBox itc_cb_dac3  win=ITCPanel,title="DAC3",pos={40,330},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "3")
 	
 	///TODO
 	Button itc_btn_telegraph win=ITCPanel,title="Scale&Telegraph",pos={5,360},size={110,20},proc=itc_btnproc_telegraph
@@ -322,7 +322,7 @@ Function ITC_init()
 	String initmsg="ITCPanel initialized.\r"
 	initmsg+="Experiment operator:"+opname+"\r"
 	initmsg+="Experiment title:"+exptitle+"\r\r"
-	initmsg+="ITC18 initialized with board information as following:\r\r"
+	initmsg+="ITC initialized with board information as following:\r\r"
 	initmsg+="V_SecPerTick="+num2str(v0)+"\r"
 	initmsg+="MinSamplingTime="+num2str(v1)+" sec\r"
 	initmsg+="MaxSamplingTime="+num2str(v2)+" sec\r"
@@ -337,14 +337,14 @@ Function ITC_init()
 	StartMonitorEditPanel("ITCPanel", "itc_tbl_adclist;itc_tbl_daclist", "itc_update_chninfo")
 	
 	itc_update_chninfo("", 11)
-	StartITC18Task()
+	StartITCTask()
 End
 
 Function itc_btnproc_lastrecord(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	Variable instance=WBPkgDefaultInstance
 		
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
 		
@@ -366,7 +366,7 @@ Function ITC_Plot_TraceRecord()
 	Variable recnum=0
 	Variable instance=WBPkgDefaultInstance
 	try
-		String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)	
+		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)	
 		NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum"); AbortOnRTE
 		
 		PROMPT recnum, "record number"
@@ -390,7 +390,7 @@ Function itc_plot_trace_record(recNum, histogram_mode)
 	Variable recNum, histogram_mode
 	Variable instance=WBPkgDefaultInstance
 	try
-		String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 		WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
 		Variable i, n
 		n=DimSize(adcdatawavepath, 0)
@@ -462,7 +462,7 @@ End
 Function itc_btnproc_telegraph(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
 	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
@@ -494,7 +494,7 @@ Function itc_get_adc_scale_factor(ctrlname, telegraph, factor, unit, [param])
 	String tmpparam=GetUserData("ITCPanel", ctrlname, "param"); AbortOnRTE
 	tmpstr=StringByKey("TELEGRAPH", tmpparam, "=", ";")
 	telegraph=floor(str2num(tmpstr))
-	if(numtype(telegraph)!=0 || telegraph<0 || telegraph>ItemsInList(ITC18_TelegraphList))
+	if(numtype(telegraph)!=0 || telegraph<0 || telegraph>ItemsInList(ITC_TelegraphList))
 		telegraph=1
 		tmpparam=ReplaceStringByKey("TELEGRAPH", tmpparam, num2istr(telegraph), "=", ";")
 		CheckBox $ctrlname, win=ITCPanel, userdata(param)=tmpparam
@@ -523,7 +523,7 @@ Function itc_set_adc_scale_factor(ctrlname, telegraph, factor, unit)
 	String tmpstr
 	try	
 		String tmpparam=GetUserData("ITCPanel", ctrlname, "param"); AbortOnRTE
-		if(numtype(telegraph)!=0 || telegraph<0 || telegraph>ItemsInList(ITC18_TelegraphList))
+		if(numtype(telegraph)!=0 || telegraph<0 || telegraph>ItemsInList(ITC_TelegraphList))
 			telegraph=1			
 		endif
 		tmpparam=ReplaceStringByKey("TELEGRAPH", tmpparam, num2istr(telegraph), "=", ";")
@@ -567,7 +567,7 @@ Function itc_setup_telegraph()
 		itc_get_adc_scale_factor(ctrlName, telegraphsignal, scalefactor, scaleunit)
 		
 		sprintf tmpstr1, "Set ADC%d as:", i
-		tmpstr2="\""+ReplaceString("_none_", ITC18_TelegraphList, "ADC"+num2istr(i))+"\""
+		tmpstr2="\""+ReplaceString("_none_", ITC_TelegraphList, "ADC"+num2istr(i))+"\""
 		TitleBox $("tb_adc"+num2istr(i)),win=ITCTelegraph,title=tmpstr1,pos={20,25*(i+1)+52},frame=0
 		
 		PopupMenu $("pm_adc"+num2istr(i)),win=ITCTelegraph,mode=telegraphsignal,bodywidth=80,value=#tmpstr2,pos={125,25*(i+1)+50},proc=itc_popproc_telegraphchoice
@@ -683,7 +683,7 @@ End
 Function itc_update_telegraphvar([commit])
 	Variable commit
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR ChnOnGainBinFlags=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	WAVE scalefactor=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
@@ -691,7 +691,7 @@ Function itc_update_telegraphvar([commit])
 	WAVE telegraphassignment=$WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
 	Make /FREE /N=(DimSize(scalefactor, 0)) tmpfactor
 	Make /FREE /T /N=(DimSize(scaleunit, 0)) tmpunit
-	Make /FREE /N=(ItemsInList(ITC18_TelegraphList)-1) tmpassignment=-1, tmpcount=0; AbortOnRTE
+	Make /FREE /N=(ItemsInList(ITC_TelegraphList)-1) tmpassignment=-1, tmpcount=0; AbortOnRTE
 	Make /FREE /N=8 tmpadctelegraphflag=1
 	
 	Variable i, factor, tmpchnongainflag
@@ -784,7 +784,7 @@ End
 Function itc_btnproc_generatewave(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
 	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
@@ -804,14 +804,14 @@ End
 Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	Variable pulsev, clear_channels
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
 	NVAR recordinglen=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingLength")
 	NVAR continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
 	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	NVAR chn_gain_flag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	
-	samplingrate=ITC18_DefaultSamplingRate
+	samplingrate=ITC_DefaultSamplingRate
 	recordinglen=0.2*3
 	continuous=inf
 	saverecording=0
@@ -918,7 +918,7 @@ End
 Function itc_set_saverecording([flag])
 	Variable flag
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	String titlestr
 	Variable fontsize, fontstyle
@@ -987,7 +987,7 @@ Function ITC_Quit()
 		return -1
 	endif
 //should call stopping task here
-	StopITC18Task()
+	StopITCTask()
 	
 	String nbname=UniqueName("ITCPanelLog", 10, 0)
 	NewNoteBook /N=$nbname /F=1 /V=1 /K=3
@@ -1010,7 +1010,7 @@ Function itc_update_chninfo(windowname, event)
 		return -1
 	endif
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	String adc_chn_wname=WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel")
 	String dac_chn_wname=WBPkgGetName(fPath, WBPkgDFWave, "DAC_Channel")
 	String adc_chndestfolder_wname=WBPkgGetName(fPath, WBPkgDFWave, "ADC_DestFolder")
@@ -1068,7 +1068,7 @@ Function itc_update_chninfo(windowname, event)
 			itc_get_adc_scale_factor(ctrlname, telegraph, scalefactor, scaleunit, param=param)
 			
 			if(telegraph!=1) // telegraph is enabled
-				s1=StringFromList(telegraph-1, ITC18_TelegraphList); AbortOnRTE
+				s1=StringFromList(telegraph-1, ITC_TelegraphList); AbortOnRTE
 				CheckBox $ctrlname, win=ITCPanel, value=0, disable=2; AbortOnRTE //for telegraph channels, do not include in selected chns, and disable user access
 				wadcdestfolder[i]="#Telegraph"; AbortOnRTE
 				wadcdestwave[i]=s1; AbortOnRTE
@@ -1291,15 +1291,15 @@ Function itc_selectwave_callback(controlname, datafolder, wname)
 	itc_update_chninfo("", 11)
 End
 
-Function StartITC18Task()
-	Variable numTicks=ITC18TASK_TICK
-	CtrlNamedBackground ITC18BackgroundTask, period=numTicks,proc=ITC18_Task
-	CtrlNamedBackground ITC18BackgroundTask,burst=0,dialogsOK=1
-	CtrlNamedBackground ITC18BackgroundTask, start
+Function StartITCTask()
+	Variable numTicks=ITCTASK_TICK
+	CtrlNamedBackground ITCBackgroundTask, period=numTicks,proc=ITC_Task
+	CtrlNamedBackground ITCBackgroundTask,burst=0,dialogsOK=1
+	CtrlNamedBackground ITCBackgroundTask, start
 End
 
-Function StopITC18Task()
-	CtrlNamedBackground ITC18BackgroundTask, stop
+Function StopITCTask()
+	CtrlNamedBackground ITCBackgroundTask, stop
 	
 #if !defined(LIHDEBUG)
 	LIH_Halt()
@@ -1309,7 +1309,7 @@ End
 Function itc_start_task([flag])
 	Variable flag
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR TaskStatus=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
 	NVAR Continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
 
@@ -1387,7 +1387,7 @@ End
 Function itc_rtgraph_init(left, top, right, bottom)
 	Variable left, top, right, bottom
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	String wname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 	WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn")
 	WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel")
@@ -1552,7 +1552,7 @@ End
 Function rtgraph_update_display()
 	Variable instance=WBPkgDefaultInstance
 	try
-		String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 		String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 		WAVE datawave=$dataname; AbortOnRTE
 		dataname=StringFromList(ItemsInList(dataname, ":")-1, dataname, ":")
@@ -1830,7 +1830,7 @@ End
 
 Function itc_update_taskinfo()
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	Variable retVal=-1
 
@@ -1874,8 +1874,8 @@ Function itc_update_taskinfo()
 	try
 		//prepare ADCData and DACData
 		recordingsize=round(samplingrate*recordinglen)
-		if(recordingsize>ITC18MaxBlockSize)
-			blocksize=ITC18MaxBlockSize
+		if(recordingsize>ITCMaxBlockSize)
+			blocksize=ITCMaxBlockSize
 		else
 			blocksize=recordingsize
 		endif
@@ -1898,7 +1898,7 @@ Function itc_update_taskinfo()
 		endif
 
 		//preapare Telegraph assignments and scale factors
-		//Make /O /D /N=(ItemsInList(ITC18_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
+		//Make /O /D /N=(ItemsInList(ITC_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 		WAVE TelegraphAssignment=$WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment"); AbortOnRTE
 		//Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
 		WAVE adcscale=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor"); AbortOnRTE
@@ -1930,9 +1930,9 @@ Function itc_update_taskinfo()
 	return retVal
 End
 
-StrConstant ITC18_TelegraphMODEList="VClamp;CClamp;LFVC 100;LFVC 30;LFVC 10;LFVC 3;LFVC 1"
-StrConstant ITC18_TelegraphFILTERList="100Hz;300Hz;500Hz;700Hz;1KHz;3KHz;5KHz;7KHz;10KHz;30KHz;100KHz"
-StrConstant ITC18_TelegraphGAINList="0.005;0.01;0.02;0.05;0.1;0.2;0.5;1;2;5;10;20;50;100;200;500;1000;2000"
+StrConstant ITC_TelegraphMODEList="VClamp;CClamp;LFVC 100;LFVC 30;LFVC 10;LFVC 3;LFVC 1"
+StrConstant ITC_TelegraphFILTERList="100Hz;300Hz;500Hz;700Hz;1KHz;3KHz;5KHz;7KHz;10KHz;30KHz;100KHz"
+StrConstant ITC_TelegraphGAINList="0.005;0.01;0.02;0.05;0.1;0.2;0.5;1;2;5;10;20;50;100;200;500;1000;2000"
 
 Function itc_translate_telegraphsignal(sigidx, signal, infostr, [return_gain])
 	Variable sigidx, signal
@@ -1946,7 +1946,7 @@ Function itc_translate_telegraphsignal(sigidx, signal, infostr, [return_gain])
 	case 0: //GAIN
 		v=round(signal*2)
 		if(v>=0 && v<=17)
-			String gainstr=StringFromList(v, ITC18_TelegraphGAINList)
+			String gainstr=StringFromList(v, ITC_TelegraphGAINList)
 			//sprintf infostr, "GAIN=%s#%.4f;", gainstr, signal
 			sprintf infostr, "GAIN=%smV/pA;", gainstr
 			if(!ParamIsDefault(return_gain) && return_gain!=0)
@@ -1971,8 +1971,8 @@ Function itc_translate_telegraphsignal(sigidx, signal, infostr, [return_gain])
 	case 2: //FILTER
 		v=round(signal)
 		if(v>=0 && v<=10)
-			//sprintf infostr, "FILTER=%s#%.4f;", StringFromList(v, ITC18_TelegraphFILTERList), signal
-			sprintf infostr, "FILTER=%s;", StringFromList(v, ITC18_TelegraphFILTERList)
+			//sprintf infostr, "FILTER=%s#%.4f;", StringFromList(v, ITC_TelegraphFILTERList), signal
+			sprintf infostr, "FILTER=%s;", StringFromList(v, ITC_TelegraphFILTERList)
 		else
 			sprintf infostr, "FILTER=?;"
 		endif
@@ -1980,8 +1980,8 @@ Function itc_translate_telegraphsignal(sigidx, signal, infostr, [return_gain])
 	case 3: //MODE
 		v=round(signal)
 		if(v>=1 && v<=7)
-			//sprintf infostr, "MODE=%s#%.4f;", StringFromList(v-1, ITC18_TelegraphMODEList), signal
-			sprintf infostr, "MODE=%s;", StringFromList(v-1, ITC18_TelegraphMODEList)
+			//sprintf infostr, "MODE=%s#%.4f;", StringFromList(v-1, ITC_TelegraphMODEList), signal
+			sprintf infostr, "MODE=%s;", StringFromList(v-1, ITC_TelegraphMODEList)
 		else
 			sprintf infostr, "MODE=?;"
 		endif
@@ -2001,7 +2001,7 @@ Function /T itc_read_telegraph(telegraphassignment, [gain])
 	String tmpstr
 	String infostr=""
 	
-	for(i=ItemsInList(ITC18_TelegraphList)-2; i>=0; i-=1)
+	for(i=ItemsInList(ITC_TelegraphList)-2; i>=0; i-=1)
 		chn=telegraphassignment[i]
 		tmpstr=""
 		if(chn>=0 && chn<8)
@@ -2038,7 +2038,7 @@ Function /T itc_read_telegraph(telegraphassignment, [gain])
 	return infostr
 End
 
-Function ITC18ResetDACs()
+Function ITCResetDACs()
 	Variable i
 	Variable dacvalue
 	
@@ -2050,7 +2050,7 @@ Function ITC18ResetDACs()
 	endfor
 End
 
-Structure ITC18ChannelsParam
+Structure ITCChannelsParam
 	int16 channels[17]
 EndStructure
 
@@ -2085,13 +2085,13 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
-Function ITC18_Task(s)
+Function ITC_Task(s)
 	STRUCT WMBackgroundStruct &s
 	Variable tRefNum, tMicroSec
 	
 	tRefNum=StartMSTimer
 	Variable instance=WBPkgDefaultInstance
-	String fPath=WBSetupPackageDir(ITC18_PackageName, instance=instance)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR itcmodel=$WBPkgGetName(fPath, WBPkgDFVar, "ITCMODEL")
 	SVAR Operator=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
@@ -2140,8 +2140,8 @@ Function ITC18_Task(s)
 		Variable i, success, availablelen, p0, p1, upload_len, UploadHalt, saved_len
 		Variable SampleInt, ADBlockSize, DABlockSize
 		Variable tmp_gain
-		STRUCT ITC18ChannelsParam ADCs
-		STRUCT ITC18ChannelsParam DACs
+		STRUCT ITCChannelsParam ADCs
+		STRUCT ITCChannelsParam DACs
 		Variable selectedadc_number=DimSize(selectedadcchn, 0)
 		Variable selecteddac_number=DimSize(selecteddacchn, 0)
 				
@@ -2178,11 +2178,11 @@ Function ITC18_Task(s)
 			success=LIH_InitInterface(errMsg, itcmodel)
 #endif
 			if(success!=0)
-				sprintf tmpstr, "Initialization of the ITC18 failed with message: %s", errMsg
+				sprintf tmpstr, "Initialization of the ITC failed with message: %s", errMsg
 				itc_updatenb(tmpstr, r=32768, g=0, b=0)
 				AbortOnValue 1, 999
 			else
-				itc_updatenb("ITC18 initialized for starting acquisition.")
+				itc_updatenb("ITC initialized for starting acquisition.")
 			endif
 			
 			if(itc_update_taskinfo()==0)
@@ -2191,7 +2191,7 @@ Function ITC18_Task(s)
 					itc_updatenb("Error in RecordingSize ["+num2istr(RecordingSize)+"]", r=32768, g=0, b=0)
 					AbortOnValue 1, 900
 				endif
-				if(BlockSize<0 || BlockSize>ITC18MaxBlockSize || BlockSize>RecordingSize)
+				if(BlockSize<0 || BlockSize>ITCMaxBlockSize || BlockSize>RecordingSize)
 					itc_updatenb("Error in BlockSize ["+num2istr(BlockSize)+"]", r=32768, g=0, b=0)
 					AbortOnValue 1, 910
 				endif
@@ -2429,8 +2429,8 @@ Function ITC18_Task(s)
 #if !defined(LIHDEBUG)
 			LIH_Halt()
 #endif
-			ITC18ResetDACs()
-			itc_updatenb("ITC18 stopped.")
+			ITCResetDACs()
+			itc_updatenb("ITC stopped.")
 			itc_update_controls(0)
 			LastIdleTicks=s.curRunTicks
 			break
@@ -2445,7 +2445,7 @@ Function ITC18_Task(s)
 		endif
 		itc_updatenb(tmpstr, r=32768, g=0, b=0)
 		itc_update_controls(0)
-		ITC18ResetDACs()
+		ITCResetDACs()
 		LastIdleTicks=s.curRunTicks
 		Status=0
 	endtry
