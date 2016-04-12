@@ -216,7 +216,7 @@ Function KeithleyPanelInit()
 	kcontrol_UpdateSMUAssignment()
 End
 
-Function kcontrol_getVectorName(wname, selMsg, owOpt, suggestName, dlgMsg,)
+Function kcontrol_getVectorName(wname, selMsg, owOpt, suggestName, dlgMsg)
 	String & wname
 	String selMsg, owOpt, suggestName, dlgMsg
 

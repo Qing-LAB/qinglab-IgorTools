@@ -25,8 +25,8 @@
 #pragma TextEncoding = "MacRoman"		// For details execute DisplayHelpTopic "The TextEncoding Pragma"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7
-#pragma ModuleName=ITC
 
+#if !defined(ITCDEBUG)
 #if exists("LIH_InitInterface")==3
 #if defined(DEBUGONLY)
 #define ITCDEBUG
@@ -36,6 +36,7 @@
 #else
 #define ITCDEBUG
 #endif
+#endif
 
 #if defined(ITCDEBUG)
 StrConstant ITCMenuStr="ITC(DEMO)"
@@ -44,22 +45,5 @@ Constant ITCDEMO=1
 StrConstant ITCMenuStr="ITC"
 Constant ITCDEMO=0
 #endif
-
-Menu ITCMenuStr
-	"About ITCPanel",/Q, ITCPanel#ITC_About()
-	help={"About ITCPanel"}
-	
-	"Init ITCPanel",/Q, ITCPanel#ITC_Init()
-	help={"Initialize ITCPanel"}
-	
-	"Shutdown ITCPanel",/Q,ITCPanel#ITC_Quit()
-	help={"Shutdown ITCPanel"}
-	
-	"Plot trace record with histogram (slow)...",/Q,ITCPanel#ITC_Plot_TraceRecord()
-	help={"Plot trace with specified record number"}
-	
-	"Kill Notebook Log...",/Q,ITCPanel#ITC_KillNoteBookLog()
-	help={"Kill previous notebook logs"}
-End
 
 #include "itcpanel"

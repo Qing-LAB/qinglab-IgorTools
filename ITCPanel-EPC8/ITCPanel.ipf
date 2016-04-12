@@ -25,10 +25,12 @@
 
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7
-#pragma IndependentModule=ITCPanel
+#pragma ModuleName=ITCPanel
 #include "TableMonitorHook"
 #include "WaveBrowser"
 
+
+#if !defined(ITCDEBUG)
 #if exists("LIH_InitInterface")==3
 #if defined(DEBUGONLY)
 #define ITCDEBUG
@@ -38,6 +40,32 @@
 #else
 #define ITCDEBUG
 #endif
+#endif
+
+#if defined(ITCDEBUG)
+StrConstant ITCMenuStr="ITC(DEMO)"
+Constant ITCDEMO=1
+#else
+StrConstant ITCMenuStr="ITC"
+Constant ITCDEMO=0
+#endif
+
+Menu ITCMenuStr
+	"About ITCPanel",/Q, ITC_About()
+	help={"About ITCPanel"}
+	
+	"Init ITCPanel",/Q, ITC_Init()
+	help={"Initialize ITCPanel"}
+	
+	"Shutdown ITCPanel",/Q,ITC_Quit()
+	help={"Shutdown ITCPanel"}
+	
+	"Plot trace record with histogram (slow)...",/Q,ITC_Plot_TraceRecord()
+	help={"Plot trace with specified record number"}
+	
+	"Kill Notebook Log...",/Q,ITC_KillNoteBookLog()
+	help={"Kill previous notebook logs"}
+End
 
 Strconstant ITC_licesence="Igor Pro script for using ITC/EPC8 in Igor Pro.\r\rAll rights reserved."
 Strconstant ITC_contact="The Qing Research Lab at Arizona State University\r\rhttp://qinglab.physics.asu.edu"
@@ -390,11 +418,9 @@ Function itc_plot_trace_record(recNum, histogram_mode)
 					if(histogram_mode==1)
 						hname="root:tmpHistograms:"+PossiblyQuoteName("hist_"+wname)
 						Make/N=0/O $hname
-#if IgorVersion()<7
-						Histogram/B=4 $wfullname,$hname
-#else
+
 						Histogram/B=5 $wfullname,$hname
-#endif
+
 						xaxisname="hist"+num2istr(i)
 						AppendToGraph /W=$displayname /B=$xaxisname /L=$yaxisname /VERT $hname
 						wname=StringFromList(ItemsInList(hname, ":")-1, hname, ":")
@@ -688,11 +714,9 @@ Function itc_update_telegraphvar([commit])
 				if(cmpstr(UpperStr(unit), "#GAIN")==0) //intend to use gain
 					factor=1
 					unit="#GAIN"
-#if IgorVersion()>=7
+
 					tmpchnongainflag=tmpchnongainflag | (1<<i)
-#else
-					tmpchnongainflag=tmpchnongainflag | (2^i)
-#endif
+
 					SetVariable $("sv_scale_adc"+num2istr(i)),win=ITCTelegraph,value=_NUM:1; AbortOnRTE
 					SetVariable $("sv_scaleunit_adc"+num2istr(i)),win=ITCTelegraph,value=_STR:"#GAIN"; AbortOnRTE
 				endif
@@ -1264,7 +1288,7 @@ End
 
 Function StartITCTask()
 	Variable numTicks=ITCTASK_TICK
-	CtrlNamedBackground ITCBackgroundTask, period=numTicks,proc=ITCTask#ITCBackgroundTask
+	CtrlNamedBackground ITCBackgroundTask, period=numTicks,proc=ITCPanel#ITCBackgroundTask
 	CtrlNamedBackground ITCBackgroundTask,burst=0,dialogsOK=1
 	CtrlNamedBackground ITCBackgroundTask, start
 End
@@ -1838,10 +1862,7 @@ Function itc_update_taskinfo()
 	if(countADC==0)
 		return -1
 	endif
-	//if(countDAC==0)
-	//	countDAC=1
-	//endif
-	
+		
 	try
 		//prepare ADCData and DACData
 		recordingsize=round(samplingrate*recordinglen)
@@ -2033,11 +2054,9 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	
 	Variable i
 	Variable legalgain=(numtype(gain)==0)?1:0
-#if IgorVersion()>=7
+
 	int a=round(flag)
-#else
-	Variable a=round(flag)
-#endif
+
 	for(i=0; i<8; i+=1)
 		if(a&1!=0)
 			if(legalgain)
@@ -2048,11 +2067,9 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 				scaleunit[i]="?GAIN"
 			endif
 		endif
-#if IgorVersion()>=7
+
 		a=a>>1
-#else
-		a=floor(a/2)
-#endif
+
 	endfor
 End
 
@@ -2313,7 +2330,6 @@ Function ITCBackgroundTask(s)
 #endif
 				if(upload_len>0)
 #if defined(ITCDEBUG)
-					success=1
 #else
 					success=LIH_AppendToFIFO(tmpstim, UploadHalt, upload_len)
 #endif
@@ -2426,7 +2442,7 @@ End
 
 
 // PNG: width= 142, height= 142
-Picture QingLabBadge
+static Picture QingLabBadge
 	ASCII85Begin
 	M,6r;%14!\!!!!.8Ou6I!!!"Z!!!"Z#Qau+!,/"&?N:'+&TgHDFAm*iFE_/6AH5;7DfQssEc39jTBQ
 	=U+94u$5u`*!<4hD`D:`bR<l<ek%!V]qDrBYL8u+jLQ8MdMXB+(=,tK"d!!3;EhrQNU%ikl\i&&#^V
