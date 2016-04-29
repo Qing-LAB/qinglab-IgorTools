@@ -114,7 +114,7 @@ Constant ITCTASK_TICK=1 // 1/60 sec
 #endif
 Constant ITC_DefaultSamplingRate=25000 // 25KHz
 StrConstant ITC_PackageName="ITC"
-StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo;UserDataProcessFunction"
+StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo;UserDataProcessFunction;TaskRecordingCount"
 StrConstant ITC_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
 
 StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
@@ -240,10 +240,15 @@ Function ITC_init()
 	NumberOfDacs=v4
 	NumberOfAdcs=v5
 	
+	SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFWave, "TaskRecordingCount")
+	TaskRecordingCount="0,0"
+	SVAR UserDataProcessFunction=$WBPkgGetName(fPath, WBPkgDFWave, "UserDataProcessFunction")
+	UserDataProcessFunction=""
+	
 	String telegraphassignment=WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
 	String adcscalefactor=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
 	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
-	
+		
 	Make /O /D /N=(ItemsInList(ITC_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 	Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
 	Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
@@ -2076,7 +2081,7 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
-Function prototype_userdataprocessfunc(wave adcdata, variable cycle_count, variable recording_flag)
+Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int recording_flag)
 End
 
 Function ITCBackgroundTask(s)
@@ -2092,7 +2097,11 @@ Function ITCBackgroundTask(s)
 	SVAR ExperimentTitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
 	SVAR DebugStr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
 	SVAR UserFunc=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
-	
+	SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFStr, "TaskRecordingCount")
+
+	int64 cycle_count, total_count
+	sscanf TaskRecordingCount, "%x,%x", total_count, cycle_count
+	 
 	NVAR Status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
 	NVAR LastIdleTicks=$WBPkgGetName(fPath, WBPkgDFVar, "LastIdleTicks")
 	NVAR RecordNum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
@@ -2139,7 +2148,9 @@ Function ITCBackgroundTask(s)
 		STRUCT ITCChannelsParam DACs
 		Variable selectedadc_number=DimSize(selectedadcchn, 0)
 		Variable selecteddac_number=DimSize(selecteddacchn, 0)
-				
+		
+		total_count+=1 //task execution count increase for every call of the background task
+		
 		switch(Status)
 		case 0: //idle
 			if(s.curRunTicks-LastIdleTicks>3)
@@ -2246,7 +2257,8 @@ Function ITCBackgroundTask(s)
 				itc_updatenb("Error when preparing background task.", r=32768, g=0, b=0)
 				Status=4 //change back to idle
 			endif
-
+			cycle_count=0 //cycle of recording clear to zero. user function will receive a fresh start
+			
 			break
 		case 2: //acquisition started
 			DebugStr=""
@@ -2348,7 +2360,7 @@ Function ITCBackgroundTask(s)
 				endif
 
 			//now store data and decide if need to write to user spaces
-				saved_len=0				
+				saved_len=0; //the data may have crossed the end point of each cycle, so this var specifies how many points have been stored
 				if(ADCDataPointer+availablelen<RecordingSize) //the last point within RecordingSize-1, not including the last point is at RecordingSize-1
 
 					multithread adcdata[ADCDataPointer, ADCDataPointer+availablelen-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
@@ -2357,19 +2369,19 @@ Function ITCBackgroundTask(s)
 					saved_len+=availablelen
 				else
 					Continuous-=1 //one cycle is done, so reduce the counter
-					if(ADCDataPointer<RecordingSize)
-					
+					if(ADCDataPointer<RecordingSize)					
 						multithread adcdata[ADCDataPointer, RecordingSize-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
-						
 						saved_len+=RecordingSize-ADCDataPointer
-						//try to call user defined function to post-process data or make decisions after each cycle. Not requiring saving of data
-						//TODO
-						//user defined function prototype: user_callback_func(wave adcdata, variable cycle_count, variable recording_flag)
+						cycle_count+=1
+						//try to call user defined function to post-process data or make decisions after each cycle
+						//user defined function prototype: user_callback_func(wave adcdata, int64 total_count, int64 cycle_count, int flag)
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								//need to set the record count correctly TODO
-								refFunc(adcdata, 0, 0)
+								Variable user_flag=refFunc(adcdata, total_count, cycle_count, 0); AbortOnRTE
+								if(user_flag<0)
+									Status=4
+								endif
 							endif
 						endif
 					endif
@@ -2426,7 +2438,6 @@ Function ITCBackgroundTask(s)
 			break
 		case 3: //request to stop
 			Status=4
-
 			break
 		case 4: //stopped
 			Status=0
@@ -2439,7 +2450,9 @@ Function ITCBackgroundTask(s)
 			LastIdleTicks=s.curRunTicks
 			break
 		default:
+			break
 		endswitch
+		sprintf TaskRecordingCount, "%x,%x", total_count,cycle_count
 	catch
 		sprintf tmpstr, "Error in background task. V_AbortCode: %d. ", V_AbortCode
 		if(V_AbortCode==-4)
@@ -2451,8 +2464,9 @@ Function ITCBackgroundTask(s)
 		itc_update_controls(0)
 		ITCResetDACs()
 		LastIdleTicks=s.curRunTicks
+		
 		Status=0
-	endtry
+	endtry	
 	tMicroSec=stopMSTimer(tRefNum)
 	return 0
 End
