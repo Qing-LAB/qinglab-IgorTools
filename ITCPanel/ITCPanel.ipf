@@ -114,7 +114,7 @@ Constant ITCTASK_TICK=1 // 1/60 sec
 #endif
 Constant ITC_DefaultSamplingRate=25000 // 25KHz
 StrConstant ITC_PackageName="ITC"
-StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
+StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo;UserDataProcessFunction"
 StrConstant ITC_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
 
 StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
@@ -796,8 +796,8 @@ Function itc_btnproc_generatewave(ba) : ButtonControl
 	return 0
 End
 
-Function itc_setup_sealtest_default(pulsev, [clear_channels])
-	Variable pulsev, clear_channels
+Function itc_setup_sealtest_default(pulsev, pulsew, [clear_channels])
+	Variable pulsev, pulsew, clear_channels
 	Variable instance=WBPkgDefaultInstance
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
@@ -806,6 +806,7 @@ Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	NVAR chn_gain_flag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	
+	Variable i
 	samplingrate=ITC_DefaultSamplingRate
 	recordinglen=0.2*3
 	continuous=inf
@@ -813,11 +814,10 @@ Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	WBrowserCreateDF("root:seal_tests:")
 	Make /O/N=(samplingrate*recordinglen)/D root:seal_tests:W_sealtestCmdV=0
 	WAVE w=root:seal_tests:W_sealtestCmdV
-	w[samplingrate*0.2/4, samplingrate*0.2/2]=pulsev*10 //generate pulses with the correct height, EPC8 has a scale factor of 10
-	w[samplingrate*(0.2/4+0.2), samplingrate*(0.2/2+0.2)]=pulsev*10
-	w[samplingrate*(0.2/4+0.4), samplingrate*(0.2/2+0.4)]=pulsev*10 //three pulses in a row so that the total time for one trace is longer to avoid underflow
-	
-	Variable i
+	for(i=floor(recordinglen/pulsew/2)-1; i>=0; i-=1)
+		w[samplingrate*pulsew*(i*2+0.5), samplingrate*pulsew*(i*2+1.5)]=pulsev*10 //EPC8 has a scale factor of 10 for DACs
+	endfor
+
 	String chninfo=GetUserData("ITCPanel", "itc_cb_adc0", "param")
 	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:seal_tests:","=", ";")
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtest_I","=", ";")
@@ -862,12 +862,15 @@ Function itc_btnproc_sealtest(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			Variable v=0.01 //10mV pulse
-			PROMPT v, "test pulse (actual amplitude, between 0V-1V)"
-			DoPrompt "Seal Test Pulse", v
-			if(V_Flag==0 && (v>=0 && v<=1))
-				itc_setup_sealtest_default(v, clear_channels=1)
+			Variable v=0.01, w=0.02 //10mV pulse
+			PROMPT v, "test pulse amplitude, between 0V-1V"
+			PROMPT w, "test pulse width, between 0.01-0.2 sec"
+			DoPrompt "Seal Test Pulse", v, w
+			if(V_Flag==0 && (v>=0 && v<=1) && (w>=0.01 && w<=0.2))
+				itc_setup_sealtest_default(v, w, clear_channels=1)
 				itc_start_task(flag=1)
+			else
+				print "Seal pulse generation cancelled."
 			endif	
 			break
 		case -1: // control being killed
@@ -2073,6 +2076,9 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
+Function prototype_userdataprocessfunc(wave adcdata, variable cycle_count, variable recording_flag)
+End
+
 Function ITCBackgroundTask(s)
 	STRUCT WMBackgroundStruct &s
 	Variable tRefNum, tMicroSec
@@ -2085,6 +2091,7 @@ Function ITCBackgroundTask(s)
 	SVAR Operator=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
 	SVAR ExperimentTitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
 	SVAR DebugStr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
+	SVAR UserFunc=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
 	
 	NVAR Status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
 	NVAR LastIdleTicks=$WBPkgGetName(fPath, WBPkgDFVar, "LastIdleTicks")
@@ -2355,6 +2362,16 @@ Function ITCBackgroundTask(s)
 						multithread adcdata[ADCDataPointer, RecordingSize-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
 						
 						saved_len+=RecordingSize-ADCDataPointer
+						//try to call user defined function to post-process data or make decisions after each cycle. Not requiring saving of data
+						//TODO
+						//user defined function prototype: user_callback_func(wave adcdata, variable cycle_count, variable recording_flag)
+						if(strlen(UserFunc)>0)
+							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+								//need to set the record count correctly TODO
+								refFunc(adcdata, 0, 0)
+							endif
+						endif
 					endif
 
 					if(SaveRecording!=0)
