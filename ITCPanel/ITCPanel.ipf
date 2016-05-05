@@ -271,7 +271,8 @@ Function ITC_init()
 	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 		
 	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={440,8},size={140,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
-	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={400,16},value=_STR:"",proc=itc_quicknote
+	CheckBox itc_cb_userfunc win=ITCPanel, title="USER_FUNC", pos={335, 32},proc=itc_cbproc_setuserfunc
+	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={310,16},value=_STR:"",proc=itc_quicknote
 	
 	GroupBox itc_grp_ADC win=ITCPanel,title="ADCs",pos={20,50},size={90,190}
 	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={40,75},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "0")
@@ -2081,7 +2082,12 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
-Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int recording_flag)
+Constant ITCUSERFUNC_IDLE=0
+Constant ITCUSERFUNC_START=1
+Constant ITCUSERFUNC_CYCLESYNC=2
+Constant ITCUSERFUNC_STOP=3
+
+Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
 End
 
 Function ITCBackgroundTask(s)
@@ -2148,7 +2154,7 @@ Function ITCBackgroundTask(s)
 		STRUCT ITCChannelsParam DACs
 		Variable selectedadc_number=DimSize(selectedadcchn, 0)
 		Variable selecteddac_number=DimSize(selecteddacchn, 0)
-		
+				
 		total_count+=1 //task execution count increase for every call of the background task
 		
 		switch(Status)
@@ -2173,11 +2179,19 @@ Function ITCBackgroundTask(s)
 				telegraphgain=tmp_gain
 				itc_update_gain_scale(adcscalefactor, adcscaleunit, ChnOnGainBinFlag, tmp_gain)
 				sprintf DebugStr, "idle; status(%d); [ %s ].", itcstatus, TelegraphInfo
-			endif			
+			endif
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					refFunc(adcdata, total_count, 0, ITCUSERFUNC_IDLE); AbortOnRTE
+				endif
+			endif
 			break
 		case 1: //request to start
 			DebugStr="Starting acquisition...";
 			String errMsg=""
+			cycle_count=0 //cycle of recording clear to zero. user function will receive a fresh start
+			
 #if defined(ITCDEBUG)
 			success=0
 #else
@@ -2229,6 +2243,14 @@ Function ITCBackgroundTask(s)
 				
 				sprintf tmpstr, "startstim(%d,%.1e)-", BlockSize,SampleInt
 				DebugStr+=tmpstr
+				
+				if(strlen(UserFunc)>0)
+					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+						refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START); AbortOnRTE
+					endif
+				endif
+			
 #if defined(ITCDEBUG)
 				success=1
 #else
@@ -2257,8 +2279,7 @@ Function ITCBackgroundTask(s)
 				itc_updatenb("Error when preparing background task.", r=32768, g=0, b=0)
 				Status=4 //change back to idle
 			endif
-			cycle_count=0 //cycle of recording clear to zero. user function will receive a fresh start
-			
+						
 			break
 		case 2: //acquisition started
 			DebugStr=""
@@ -2378,7 +2399,7 @@ Function ITCBackgroundTask(s)
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								Variable user_flag=refFunc(adcdata, total_count, cycle_count, 0); AbortOnRTE
+								Variable user_flag=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
 								if(user_flag<0)
 									Status=4
 								endif
@@ -2437,6 +2458,12 @@ Function ITCBackgroundTask(s)
 
 			break
 		case 3: //request to stop
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_STOP); AbortOnRTE
+				endif
+			endif
 			Status=4
 			break
 		case 4: //stopped
