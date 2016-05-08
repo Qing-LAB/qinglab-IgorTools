@@ -114,7 +114,7 @@ Constant ITCTASK_TICK=1 // 1/60 sec
 #endif
 Constant ITC_DefaultSamplingRate=25000 // 25KHz
 StrConstant ITC_PackageName="ITC"
-StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo"
+StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo;UserDataProcessFunction;TaskRecordingCount"
 StrConstant ITC_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
 
 StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
@@ -240,10 +240,15 @@ Function ITC_init()
 	NumberOfDacs=v4
 	NumberOfAdcs=v5
 	
+	SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFStr, "TaskRecordingCount")
+	TaskRecordingCount="0,0"
+	SVAR UserDataProcessFunction=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
+	UserDataProcessFunction=""
+	
 	String telegraphassignment=WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
 	String adcscalefactor=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor")
 	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
-	
+		
 	Make /O /D /N=(ItemsInList(ITC_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 	Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
 	Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
@@ -266,7 +271,8 @@ Function ITC_init()
 	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 		
 	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={440,8},size={140,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
-	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={400,16},value=_STR:"",proc=itc_quicknote
+	CheckBox itc_cb_userfunc win=ITCPanel, title="USER_FUNC", pos={335, 32},proc=itc_cbproc_setuserfunc
+	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={310,16},value=_STR:"",proc=itc_quicknote
 	
 	GroupBox itc_grp_ADC win=ITCPanel,title="ADCs",pos={20,50},size={90,190}
 	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={40,75},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "0")
@@ -796,8 +802,8 @@ Function itc_btnproc_generatewave(ba) : ButtonControl
 	return 0
 End
 
-Function itc_setup_sealtest_default(pulsev, [clear_channels])
-	Variable pulsev, clear_channels
+Function itc_setup_sealtest_default(pulsev, pulsew, [clear_channels])
+	Variable pulsev, pulsew, clear_channels
 	Variable instance=WBPkgDefaultInstance
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
@@ -806,6 +812,7 @@ Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	NVAR chn_gain_flag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	
+	Variable i
 	samplingrate=ITC_DefaultSamplingRate
 	recordinglen=0.2*3
 	continuous=inf
@@ -813,11 +820,10 @@ Function itc_setup_sealtest_default(pulsev, [clear_channels])
 	WBrowserCreateDF("root:seal_tests:")
 	Make /O/N=(samplingrate*recordinglen)/D root:seal_tests:W_sealtestCmdV=0
 	WAVE w=root:seal_tests:W_sealtestCmdV
-	w[samplingrate*0.2/4, samplingrate*0.2/2]=pulsev*10 //generate pulses with the correct height, EPC8 has a scale factor of 10
-	w[samplingrate*(0.2/4+0.2), samplingrate*(0.2/2+0.2)]=pulsev*10
-	w[samplingrate*(0.2/4+0.4), samplingrate*(0.2/2+0.4)]=pulsev*10 //three pulses in a row so that the total time for one trace is longer to avoid underflow
-	
-	Variable i
+	for(i=floor(recordinglen/pulsew/2)-1; i>=0; i-=1)
+		w[samplingrate*pulsew*(i*2+0.5), samplingrate*pulsew*(i*2+1.5)]=pulsev*10 //EPC8 has a scale factor of 10 for DACs
+	endfor
+
 	String chninfo=GetUserData("ITCPanel", "itc_cb_adc0", "param")
 	chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, "root:seal_tests:","=", ";")
 	chninfo=ReplaceStringByKey("WAVENAME", chninfo, "W_sealtest_I","=", ";")
@@ -862,12 +868,15 @@ Function itc_btnproc_sealtest(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			Variable v=0.01 //10mV pulse
-			PROMPT v, "test pulse (actual amplitude, between 0V-1V)"
-			DoPrompt "Seal Test Pulse", v
-			if(V_Flag==0 && (v>=0 && v<=1))
-				itc_setup_sealtest_default(v, clear_channels=1)
+			Variable v=0.01, w=0.02 //10mV pulse
+			PROMPT v, "test pulse amplitude, between 0V-1V"
+			PROMPT w, "test pulse width, between 0.01-0.2 sec"
+			DoPrompt "Seal Test Pulse", v, w
+			if(V_Flag==0 && (v>=0 && v<=1) && (w>=0.01 && w<=0.2))
+				itc_setup_sealtest_default(v, w, clear_channels=1)
 				itc_start_task(flag=1)
+			else
+				print "Seal pulse generation cancelled."
 			endif	
 			break
 		case -1: // control being killed
@@ -1211,6 +1220,45 @@ Function itc_cbproc_selchn(cba) : CheckBoxControl
 	return 0
 End
 
+
+Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
+	STRUCT WMCheckboxAction &cba
+
+	switch( cba.eventCode )
+		case 2: // mouse up
+			Variable checked = cba.checked
+			try
+				Variable instance=WBPkgDefaultInstance
+				String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
+				SVAR usrfuncname=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
+				if(checked)
+					checked=0
+					String funclist="_none_;"+FunctionList("*", ";", "KIND:2,NPARAMS:4,VALTYPE:1,WIN:Procedure")
+					String selected_func=""
+					PROMPT selected_func, "Select real-time data process function", popup funclist
+					DoPrompt "select function", selected_func
+					if(V_flag==0)
+						if(cmpstr(selected_func, "_none_")!=0)
+							usrfuncname=selected_func
+							checked=1
+						endif
+					endif
+				endif
+				if(!checked)
+					usrfuncname=""
+				endif
+				CheckBox itc_cb_userfunc win=ITCPanel, value=checked
+			catch
+				print "error!"
+			endtry
+			break
+		case -1: // control being killed
+			break
+	endswitch
+	
+	
+	return 0
+End
 
 Function itc_set_selectpanel(chnstr, adc_or_dac, chn, param)
 	String chnstr
@@ -1738,7 +1786,8 @@ Function itc_update_controls(runstatus)
 		ValDisplay itc_vd_rtadc5 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc6 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc7 win=ITCPanel,disable=0
-	
+		CheckBox itc_cb_userfunc win=ITCPanel, disable=0
+		
 		SetWindow ITCPanel#itc_tbl_adclist hide=0,needUpdate=1;DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=0,needUpdate=1;DoUpdate
 		itc_rtgraph_quit()
@@ -1787,6 +1836,8 @@ Function itc_update_controls(runstatus)
 		ValDisplay itc_vd_rtadc5 win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc6 win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc7 win=ITCPanel,disable=1
+		
+		CheckBox itc_cb_userfunc win=ITCPanel, disable=2
 		
 		SetWindow ITCPanel#itc_tbl_adclist hide=1,needUpdate=1; DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=1,needUpdate=1; DoUpdate
@@ -2073,6 +2124,14 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
+Constant ITCUSERFUNC_IDLE=0
+Constant ITCUSERFUNC_START=1
+Constant ITCUSERFUNC_CYCLESYNC=2
+Constant ITCUSERFUNC_STOP=3
+
+Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
+End
+
 Function ITCBackgroundTask(s)
 	STRUCT WMBackgroundStruct &s
 	Variable tRefNum, tMicroSec
@@ -2085,7 +2144,12 @@ Function ITCBackgroundTask(s)
 	SVAR Operator=$WBPkgGetName(fPath, WBPkgDFStr, "OperatorName")
 	SVAR ExperimentTitle=$WBPkgGetName(fPath, WBPkgDFStr, "ExperimentTitle")
 	SVAR DebugStr=$WBPkgGetName(fPath, WBPkgDFStr, "DebugStr")
-	
+	SVAR UserFunc=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
+	SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFStr, "TaskRecordingCount")
+
+	int64 cycle_count, total_count
+	sscanf TaskRecordingCount, "%x,%x", total_count, cycle_count
+	 
 	NVAR Status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
 	NVAR LastIdleTicks=$WBPkgGetName(fPath, WBPkgDFVar, "LastIdleTicks")
 	NVAR RecordNum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
@@ -2133,6 +2197,8 @@ Function ITCBackgroundTask(s)
 		Variable selectedadc_number=DimSize(selectedadcchn, 0)
 		Variable selecteddac_number=DimSize(selecteddacchn, 0)
 				
+		total_count+=1 //task execution count increase for every call of the background task
+		
 		switch(Status)
 		case 0: //idle
 			if(s.curRunTicks-LastIdleTicks>3)
@@ -2155,11 +2221,19 @@ Function ITCBackgroundTask(s)
 				telegraphgain=tmp_gain
 				itc_update_gain_scale(adcscalefactor, adcscaleunit, ChnOnGainBinFlag, tmp_gain)
 				sprintf DebugStr, "idle; status(%d); [ %s ].", itcstatus, TelegraphInfo
-			endif			
+			endif
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					refFunc(adcdata, total_count, 0, ITCUSERFUNC_IDLE); AbortOnRTE
+				endif
+			endif
 			break
 		case 1: //request to start
 			DebugStr="Starting acquisition...";
 			String errMsg=""
+			cycle_count=0 //cycle of recording clear to zero. user function will receive a fresh start
+			
 #if defined(ITCDEBUG)
 			success=0
 #else
@@ -2211,6 +2285,14 @@ Function ITCBackgroundTask(s)
 				
 				sprintf tmpstr, "startstim(%d,%.1e)-", BlockSize,SampleInt
 				DebugStr+=tmpstr
+				
+				if(strlen(UserFunc)>0)
+					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+						refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START); AbortOnRTE
+					endif
+				endif
+			
 #if defined(ITCDEBUG)
 				success=1
 #else
@@ -2239,7 +2321,7 @@ Function ITCBackgroundTask(s)
 				itc_updatenb("Error when preparing background task.", r=32768, g=0, b=0)
 				Status=4 //change back to idle
 			endif
-
+						
 			break
 		case 2: //acquisition started
 			DebugStr=""
@@ -2341,7 +2423,7 @@ Function ITCBackgroundTask(s)
 				endif
 
 			//now store data and decide if need to write to user spaces
-				saved_len=0				
+				saved_len=0; //the data may have crossed the end point of each cycle, so this var specifies how many points have been stored
 				if(ADCDataPointer+availablelen<RecordingSize) //the last point within RecordingSize-1, not including the last point is at RecordingSize-1
 
 					multithread adcdata[ADCDataPointer, ADCDataPointer+availablelen-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
@@ -2350,11 +2432,21 @@ Function ITCBackgroundTask(s)
 					saved_len+=availablelen
 				else
 					Continuous-=1 //one cycle is done, so reduce the counter
-					if(ADCDataPointer<RecordingSize)
-					
+					if(ADCDataPointer<RecordingSize)					
 						multithread adcdata[ADCDataPointer, RecordingSize-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
-						
 						saved_len+=RecordingSize-ADCDataPointer
+						cycle_count+=1
+						//try to call user defined function to post-process data or make decisions after each cycle
+						//user defined function prototype: user_callback_func(wave adcdata, int64 total_count, int64 cycle_count, int flag)
+						if(strlen(UserFunc)>0)
+							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+								Variable user_flag=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
+								if(user_flag<0)
+									Status=4
+								endif
+							endif
+						endif
 					endif
 
 					if(SaveRecording!=0)
@@ -2408,8 +2500,13 @@ Function ITCBackgroundTask(s)
 
 			break
 		case 3: //request to stop
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_STOP); AbortOnRTE
+				endif
+			endif
 			Status=4
-
 			break
 		case 4: //stopped
 			Status=0
@@ -2422,7 +2519,9 @@ Function ITCBackgroundTask(s)
 			LastIdleTicks=s.curRunTicks
 			break
 		default:
+			break
 		endswitch
+		sprintf TaskRecordingCount, "%x,%x", total_count,cycle_count
 	catch
 		sprintf tmpstr, "Error in background task. V_AbortCode: %d. ", V_AbortCode
 		if(V_AbortCode==-4)
@@ -2434,8 +2533,9 @@ Function ITCBackgroundTask(s)
 		itc_update_controls(0)
 		ITCResetDACs()
 		LastIdleTicks=s.curRunTicks
+		
 		Status=0
-	endtry
+	endtry	
 	tMicroSec=stopMSTimer(tRefNum)
 	return 0
 End
