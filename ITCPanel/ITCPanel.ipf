@@ -240,9 +240,9 @@ Function ITC_init()
 	NumberOfDacs=v4
 	NumberOfAdcs=v5
 	
-	SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFWave, "TaskRecordingCount")
+	SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFStr, "TaskRecordingCount")
 	TaskRecordingCount="0,0"
-	SVAR UserDataProcessFunction=$WBPkgGetName(fPath, WBPkgDFWave, "UserDataProcessFunction")
+	SVAR UserDataProcessFunction=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
 	UserDataProcessFunction=""
 	
 	String telegraphassignment=WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment")
@@ -1221,6 +1221,45 @@ Function itc_cbproc_selchn(cba) : CheckBoxControl
 End
 
 
+Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
+	STRUCT WMCheckboxAction &cba
+
+	switch( cba.eventCode )
+		case 2: // mouse up
+			Variable checked = cba.checked
+			try
+				Variable instance=WBPkgDefaultInstance
+				String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
+				SVAR usrfuncname=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
+				if(checked)
+					checked=0
+					String funclist="_none_;"+FunctionList("*", ";", "KIND:2,NPARAMS:4,VALTYPE:1,WIN:Procedure")
+					String selected_func=""
+					PROMPT selected_func, "Select real-time data process function", popup funclist
+					DoPrompt "select function", selected_func
+					if(V_flag==0)
+						if(cmpstr(selected_func, "_none_")!=0)
+							usrfuncname=selected_func
+							checked=1
+						endif
+					endif
+				endif
+				if(!checked)
+					usrfuncname=""
+				endif
+				CheckBox itc_cb_userfunc win=ITCPanel, value=checked
+			catch
+				print "error!"
+			endtry
+			break
+		case -1: // control being killed
+			break
+	endswitch
+	
+	
+	return 0
+End
+
 Function itc_set_selectpanel(chnstr, adc_or_dac, chn, param)
 	String chnstr
 	Variable adc_or_dac, chn
@@ -1747,7 +1786,8 @@ Function itc_update_controls(runstatus)
 		ValDisplay itc_vd_rtadc5 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc6 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc7 win=ITCPanel,disable=0
-	
+		CheckBox itc_cb_userfunc win=ITCPanel, disable=0
+		
 		SetWindow ITCPanel#itc_tbl_adclist hide=0,needUpdate=1;DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=0,needUpdate=1;DoUpdate
 		itc_rtgraph_quit()
@@ -1796,6 +1836,8 @@ Function itc_update_controls(runstatus)
 		ValDisplay itc_vd_rtadc5 win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc6 win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc7 win=ITCPanel,disable=1
+		
+		CheckBox itc_cb_userfunc win=ITCPanel, disable=2
 		
 		SetWindow ITCPanel#itc_tbl_adclist hide=1,needUpdate=1; DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=1,needUpdate=1; DoUpdate
