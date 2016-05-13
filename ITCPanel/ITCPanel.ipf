@@ -323,7 +323,7 @@ Function ITC_init()
 	
 	
 	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(600,250,795,440)
-	Notebook ITCPanel#ITCPanelLog writeProtect=1,fSize=8
+	Notebook ITCPanel#ITCPanelLog writeProtect=1,fSize=8,magnification=125
 	String initmsg="ITCPanel initialized.\r"
 	initmsg+="Experiment operator:"+opname+"\r"
 	initmsg+="Experiment title:"+exptitle+"\r\r"
@@ -1447,7 +1447,7 @@ Function itc_rtgraph_init(left, top, right, bottom)
 
 	NewPanel /EXT=0 /HOST=ITCPanel /N=rtgraphpanel /W=(0, 400, 150, 0) /K=2
 	PopupMenu rtgraph_trace1name win=ITCPanel#rtgraphpanel,title="Trace1 Channel",value=#selchn_list1,mode=1,size={150,20},userdata(tracename)="1",proc=rtgraph_popproc_trace
-	PopupMenu rtgraph_trace1color win=ITCPanel#rtgraphpanel,title="Trace1 Color",popColor=(65280,0,0),value="*COLORPOP*",size={150,20}
+	PopupMenu rtgraph_trace1color win=ITCPanel#rtgraphpanel,title="Trace1 Color",popColor=(65280,0,0),value="*COLORPOP*",size={150,20},proc=rtgraph_popproc_tracecolor
 	SetVariable rtgraph_miny1 win=ITCPanel#rtgraphpanel,title="MinY1",value=_NUM:-10,size={120,20},limits={-inf, inf, 0},userdata(tracename)="1",disable=2,proc=rtgraph_svproc_setyaxis
 	SetVariable rtgraph_maxy1 win=ITCPanel#rtgraphpanel,title="MaxY1",value=_NUM:10,size={120,20},limits={-inf, inf, 0},userdata(tracename)="1",disable=2,proc=rtgraph_svproc_setyaxis
 	CheckBox rtgraph_autoy1 win=ITCPanel#rtgraphpanel,title="AutoY1",size={120,20},value=1,userdata(tracename)="1",proc=rtgraph_cbproc_autoy
@@ -1463,7 +1463,7 @@ Function itc_rtgraph_init(left, top, right, bottom)
 		ch2_split=0
 	endif
 	PopupMenu rtgraph_trace2name win=ITCPanel#rtgraphpanel,title="Trace2 Channel",value=#selchn_list2,mode=ch2_sel,size={150,20},userdata(tracename)="2",proc=rtgraph_popproc_trace
-	PopupMenu rtgraph_trace2color win=ITCPanel#rtgraphpanel,title="Trace2 Color",popColor=(0,0,65280),value="*COLORPOP*",size={150,20},disable=ch2_disable
+	PopupMenu rtgraph_trace2color win=ITCPanel#rtgraphpanel,title="Trace2 Color",popColor=(0,0,65280),value="*COLORPOP*",size={150,20},disable=ch2_disable,proc=rtgraph_popproc_tracecolor
 	SetVariable rtgraph_miny2 win=ITCPanel#rtgraphpanel,title="MinY2",value=_NUM:-10,size={120,20},limits={-inf, inf, 0},userdata(tracename)="2",disable=2,proc=rtgraph_svproc_setyaxis
 	SetVariable rtgraph_maxy2 win=ITCPanel#rtgraphpanel,title="MaxY2",value=_NUM:10,size={120,20},limits={-inf, inf, 0},userdata(tracename)="2",disable=2,proc=rtgraph_svproc_setyaxis
 	CheckBox rtgraph_autoy2 win=ITCPanel#rtgraphpanel,title="AutoY2",size={120,20},value=1, disable=ch2_disable,userdata(tracename)="2",proc=rtgraph_cbproc_autoy
@@ -1472,8 +1472,7 @@ Function itc_rtgraph_init(left, top, right, bottom)
 	SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel,title="MaxX",value=_NUM:(DimSize($wname, 0)*DimDelta($wname,0)),size={120,20},limits={-inf, inf, 0},disable=2,proc=rtgraph_svproc_setxaxis
 	CheckBox rtgraph_autox win=ITCPanel#rtgraphpanel,title="AutoX",size={120,20}	,value=1,proc=rtgraph_cbproc_autox
 
-	CheckBox rtgraph_split win=ITCPanel#rtgraphpanel,title="Split Display",size={120,20},value=ch2_split, disable=ch2_disable
-	Button rtgraph_update win=ITCPanel#rtgraphpanel,title="Update Display",size={120,20},proc=rtgraph_btnproc_update
+	CheckBox rtgraph_split win=ITCPanel#rtgraphpanel,title="Split Display",size={120,20},value=ch2_split, disable=ch2_disable, proc=rtgraph_cbproc_split
 	Button rtgraph_showinfo win=ITCPanel#rtgraphpanel,title="Show info cursors",size={120,20},proc=rtgraph_btnproc_showinfo,userdata(status)="0"
 	Display /HOST=ITCPanel /N=rtgraph /W=(left, top, right, bottom);
 
@@ -1495,7 +1494,7 @@ Function rtgraph_popproc_trace(pa) : PopupMenuControl
 					PopupMenu rtgraph_trace2color win=ITCPanel#rtgraphpanel, disable=2
 					SetVariable rtgraph_miny2 win=ITCPanel#rtgraphpanel, disable=2
 					SetVariable rtgraph_maxy2 win=ITCPanel#rtgraphpanel, disable=2
-					CheckBox rtgraph_autoy2 win=ITCPanel#rtgraphpanel, disable=2
+					CheckBox rtgraph_autoy2 win=ITCPanel#rtgraphpanel, value=1, disable=2
 					CheckBox rtgraph_split win=ITCPanel#rtgraphpanel, value=0, disable=2
 				else
 					PopupMenu rtgraph_trace2color win=ITCPanel#rtgraphpanel, disable=0
@@ -1505,7 +1504,21 @@ Function rtgraph_popproc_trace(pa) : PopupMenuControl
 					CheckBox rtgraph_split win=ITCPanel#rtgraphpanel, value=1, disable=0
 				endif
 			endif
-			
+			rtgraph_update_display()
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function rtgraph_popproc_tracecolor(pa) : PopupMenuControl
+	STRUCT WMPopupAction &pa
+
+	switch( pa.eventCode )
+		case 2: // mouse up			
+			rtgraph_update_display()
 			break
 		case -1: // control being killed
 			break
@@ -1524,18 +1537,40 @@ Function rtgraph_cbproc_autoy(cba) : CheckBoxControl
 			Variable tracenum=str2num(tracenumstr)
 			String controlname_miny="rtgraph_miny"+tracenumstr
 			String controlname_maxy="rtgraph_maxy"+tracenumstr
+			String axisname
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_split
+			if(V_value==0 && tracenum!=1)
+				axisname="right"+tracenumstr
+			else
+				axisname="left"+tracenumstr
+			endif
 			
 			if(checked)
 				SetVariable $controlname_miny win=ITCPanel#rtgraphpanel, disable=2
 				SetVariable $controlname_maxy win=ITCPanel#rtgraphpanel, disable=2
-				SetAxis /W=ITCPanel#rtgraph /A/N=2 $("left"+tracenumstr)
+				SetAxis /W=ITCPanel#rtgraph /A/N=2 $axisname
 			else
-				GetAxis /W=ITCPanel#rtgraph /Q $("left"+tracenumstr)
+				GetAxis /W=ITCPanel#rtgraph /Q $axisname
 				SetVariable $controlname_miny win=ITCPanel#rtgraphpanel, value=_NUM:V_min, disable=0
 				SetVariable $controlname_maxy win=ITCPanel#rtgraphpanel, value=_NUM:V_max, disable=0
-				SetAxis /W=ITCPanel#rtgraph $("left"+tracenumstr), V_min, V_max
+				SetAxis /W=ITCPanel#rtgraph $axisname, V_min, V_max
 			endif
 			
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function rtgraph_cbproc_split(cba) : CheckBoxControl
+	STRUCT WMCheckboxAction &cba
+
+	switch( cba.eventCode )
+		case 2: // mouse up
+			Variable checked = cba.checked
+			rtgraph_update_display()
 			break
 		case -1: // control being killed
 			break
@@ -1550,7 +1585,7 @@ Function rtgraph_cbproc_autox(cba) : CheckBoxControl
 	switch( cba.eventCode )
 		case 2: // mouse up
 			Variable checked = cba.checked
-						
+			
 			if(checked)
 				SetVariable rtgraph_minx win=ITCPanel#rtgraphpanel, disable=2
 				SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel, disable=2
@@ -1585,13 +1620,21 @@ Function rtgraph_svproc_setyaxis(sva) : SetVariableControl
 			String controlname_maxy="rtgraph_maxy"+tracenumstr
 			
 			Variable miny, maxy
+			String axisname
+			
 			ControlInfo  /W=ITCPanel#rtgraphpanel $controlname_miny
 			miny=V_value
 			ControlInfo  /W=ITCPanel#rtgraphpanel $controlname_maxy
 			maxy=V_value
-			SetAxis /W=ITCPanel#rtgraph $("left"+tracenumstr), miny, maxy
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_split
+			if(V_value==0 && tracenum!=1)
+				axisname="right"+tracenumstr
+			else
+				axisname="left"+tracenumstr
+			endif
+				
+			SetAxis /W=ITCPanel#rtgraph $axisname, miny, maxy
 			break
-			
 		case 3: // Live update			
 			break
 		case -1: // control being killed
@@ -1629,29 +1672,13 @@ Function rtgraph_svproc_setxaxis(sva) : SetVariableControl
 	return 0
 End
 
-
-Function rtgraph_btnproc_update(ba) : ButtonControl
-	STRUCT WMButtonAction &ba
-
-	switch( ba.eventCode )
-		case 2: // mouse up
-			// click code here
-			rtgraph_update_display()
-			break
-		case -1: // control being killed
-			break
-	endswitch
-
-	return 0
-End
-
 Function rtgraph_btnproc_showinfo(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			rtgraph_update_display()
+			//rtgraph_update_display()
 			Variable status=str2num(GetUserData("ITCPanel#rtgraphpanel", ba.ctrlName, "status" ))
 			if(status==0)
 				ShowInfo /W=ITCPanel
@@ -1730,8 +1757,12 @@ Function rtgraph_update_display()
 		ModifyGraph /W=ITCPanel#rtgraph freePos($xaxis)=0,lblPos($xaxis)=40,notation($xaxis)=0,fsize=12,ZisZ=1; AbortOnRTE
 		ModifyGraph /W=ITCPanel#rtgraph rgb($dataname)=(r, g, b); AbortOnRTE
 		ModifyGraph /W=ITCPanel#rtgraph margin(left)=80; AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph margin(right)=25; AbortOnRTE
-		
+		if(split)
+			ModifyGraph /W=ITCPanel#rtgraph margin(right)=25; AbortOnRTE
+		else
+			ModifyGraph /W=ITCPanel#rtgraph margin(right)=80; AbortOnRTE
+		endif
+
 		Label /W=ITCPanel#rtgraph $yaxis chnname+" (\\E"+chnunit[selectedchn[chn]]+")"; AbortOnRTE
 		Label /W=ITCPanel#rtgraph $xaxis "time (\\U)"; AbortOnRTE
 		
@@ -1748,13 +1779,15 @@ Function rtgraph_update_display()
 			SetAxis /W=ITCPanel#rtgraph $yaxis, miny, maxy; AbortOnRTE
 		endif
 		ModifyGraph /W=ITCPanel#rtgraph lowTrip($yaxis)=0.01; AbortOnRTE
+		ModifyGraph /W=ITCPanel#rtgraph tlblRGB($yaxis)=(r, g, b); AbortOnRTE
+		ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis)=(r, g, b); AbortOnRTE
 		
 		if(split==1)
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0.52,1}; AbortOnRTE
 			yaxis="left2"
 		else
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0,1}; AbortOnRTE
-			yaxis="right1"
+			yaxis="right2"
 		endif
 		
 		//second trace
@@ -1800,6 +1833,8 @@ Function rtgraph_update_display()
 		else
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0,1}; AbortOnRTE
 		endif
+		ModifyGraph /W=ITCPanel#rtgraph tlblRGB($yaxis)=(r, g, b); AbortOnRTE
+		ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis)=(r, g, b); AbortOnRTE
 	catch
 		String tmpstr
 		sprintf tmpstr, "Error when updating the real time plot. V_AbortCode: %d. ", V_AbortCode
@@ -2017,11 +2052,8 @@ Function itc_update_taskinfo()
 		endif
 
 		//preapare Telegraph assignments and scale factors
-		//Make /O /D /N=(ItemsInList(ITC_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
 		WAVE TelegraphAssignment=$WBPkgGetName(fPath, WBPkgDFWave, "TelegraphAssignment"); AbortOnRTE
-		//Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
 		WAVE adcscale=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleFactor"); AbortOnRTE
-		//Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
 		WAVE /T adcunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit"); AbortOnRTE
 		
 		Variable telegraph, scalefactor
