@@ -2355,7 +2355,7 @@ Function ITCBackgroundTask(s)
 				itc_updatenb("ITC initialized for starting acquisition.")
 			endif
 			
-			if(itc_update_taskinfo()==0)
+			if(itc_update_taskinfo()==0) //will reload dac data too
 				//checking passed, waves and variables have been prepared etc.
 				if(RecordingSize<=0)
 					itc_updatenb("Error in RecordingSize ["+num2istr(RecordingSize)+"]", r=32768, g=0, b=0)
@@ -2458,6 +2458,9 @@ Function ITCBackgroundTask(s)
 			if(success==1 && availablelen>0)
 			//upload first before storing data
 				//decide whether we need to upload DAC data, if so, how many (continous or not)
+				
+				itc_reload_dac_from_src(countDAC, dacdatawavepath, dacdata) //refresh dac data first.
+				
 				if(availablelen>BlockSize)
 					sprintf tmpstr, "Warning: availablelen [%d] exceeds BlockSize [%d]. Forcing availablelen to be BlockSize for this cycle.", availablelen, BlockSize
 					itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -2509,7 +2512,7 @@ Function ITCBackgroundTask(s)
 						itc_updatenb(tmpstr, r=32768, g=0, b=0)
 						AbortOnValue 1, 940
 					endif
-					itc_reload_dac_from_src(countDAC, dacdatawavepath, dacdata) //refresh dac data when the next cycle starts.
+					
 					multithread tmpstim[p0,p1][]=dacdata[p-p0][q]; AbortOnRTE
 				endif
 				
