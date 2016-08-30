@@ -2232,10 +2232,11 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
-Constant ITCUSERFUNC_IDLE=0
-Constant ITCUSERFUNC_START=1
-Constant ITCUSERFUNC_CYCLESYNC=2
-Constant ITCUSERFUNC_STOP=3
+Constant ITCUSERFUNC_IDLE=100
+Constant ITCUSERFUNC_START_BEFOREINIT=200
+Constant ITCUSERFUNC_START_AFTERINIT=300
+Constant ITCUSERFUNC_CYCLESYNC=400
+Constant ITCUSERFUNC_STOP=500
 
 Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
 End
@@ -2304,10 +2305,11 @@ Function ITCBackgroundTask(s)
 		STRUCT ITCChannelsParam DACs
 		Variable selectedadc_number=DimSize(selectedadcchn, 0)
 		Variable selecteddac_number=DimSize(selecteddacchn, 0)
+		Variable userfunc_ret
 				
 		total_count+=1 //task execution count increase for every call of the background task
 		
-		switch(Status)
+		switch(Status&0xff)
 		case 0: //idle
 			if(s.curRunTicks-LastIdleTicks>3)
 #if defined(ITCDEBUG)
@@ -2333,28 +2335,59 @@ Function ITCBackgroundTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, 0, ITCUSERFUNC_IDLE); AbortOnRTE
+					refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_IDLE); AbortOnRTE
 				endif
 			endif
 			break
 		case 1: //request to start
-			DebugStr="Starting acquisition...";
+			DebugStr="Starting acquisition..."+num2istr(Status);
 			String errMsg=""
-			cycle_count=0 //cycle of recording clear to zero. user function will receive a fresh start
+			//cycle of recording clear to zero. user function will receive a fresh start
+			cycle_count=0
+
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(((Status & 0x100)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
+					if(userfunc_ret!=0)
+						break
+					else
+						Status= Status | 0x100
+					endif
+				endif
+			else
+				Status = Status | 0x100
+			endif
 			
 #if defined(ITCDEBUG)
 			success=0
 #else
-			success=LIH_InitInterface(errMsg, itcmodel)
-#endif
-			if(success!=0)
-				sprintf tmpstr, "Initialization of the ITC failed with message: %s", errMsg
-				itc_updatenb(tmpstr, r=32768, g=0, b=0)
-				AbortOnValue 1, 999
-			else
-				itc_updatenb("ITC initialized for starting acquisition.")
+			if((Status & 0x100)!=0 && (Status & 0x200)==0)
+				success=LIH_InitInterface(errMsg, itcmodel)
+				Status = Status | 0x200
+				if(success!=0)
+					sprintf tmpstr, "Initialization of the ITC failed with message: %s", errMsg
+					itc_updatenb(tmpstr, r=32768, g=0, b=0)
+					AbortOnValue 1, 999
+				else
+					itc_updatenb("ITC initialized for starting acquisition.")
+				endif
+			endif
+#endif			
+			userfunc_ret=0
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
+				endif
 			endif
 			
+			if(userfunc_ret!=0)
+				break
+			endif
+			
+			Status = Status & 0xff
+						
 			if(itc_update_taskinfo()==0) //will reload dac data too
 				//checking passed, waves and variables have been prepared etc.
 				if(RecordingSize<=0)
@@ -2393,13 +2426,6 @@ Function ITCBackgroundTask(s)
 				
 				sprintf tmpstr, "startstim(%d,%.1e)-", BlockSize,SampleInt
 				DebugStr+=tmpstr
-				
-				if(strlen(UserFunc)>0)
-					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
-					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-						refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START); AbortOnRTE
-					endif
-				endif
 			
 #if defined(ITCDEBUG)
 				success=1
@@ -2409,6 +2435,7 @@ Function ITCBackgroundTask(s)
 				SamplingRate=1/SampleInt
 				SetScale /P x, 0, SampleInt, "s", adcdata; AbortOnRTE
 				SetScale d -10.24,10.24, "V", adcdata; AbortOnRTE
+				
 				Status=2
 			
 				if(success!=1)
@@ -2429,7 +2456,7 @@ Function ITCBackgroundTask(s)
 				itc_updatenb("Error when preparing background task.", r=32768, g=0, b=0)
 				Status=4 //change back to idle
 			endif
-						
+			
 			break
 		case 2: //acquisition started
 			DebugStr=""
@@ -2546,18 +2573,22 @@ Function ITCBackgroundTask(s)
 					if(ADCDataPointer<RecordingSize)					
 						multithread adcdata[ADCDataPointer, RecordingSize-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
 						saved_len+=RecordingSize-ADCDataPointer
-						cycle_count+=1
+						
 						//try to call user defined function to post-process data or make decisions after each cycle
 						//user defined function prototype: user_callback_func(wave adcdata, int64 total_count, int64 cycle_count, int flag)
+						userfunc_ret=0
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								Variable user_flag=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
-								if(user_flag<0)
+								userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
+								if(userfunc_ret<0)
 									Status=4
 								endif
 							endif
 						endif
+						
+						cycle_count+=1
+						
 					endif
 
 					if(SaveRecording!=0)
