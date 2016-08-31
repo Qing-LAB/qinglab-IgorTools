@@ -2238,7 +2238,39 @@ Constant ITCUSERFUNC_START_AFTERINIT=300
 Constant ITCUSERFUNC_CYCLESYNC=400
 Constant ITCUSERFUNC_STOP=500
 
+Constant ITCSTATUS_MASK=0xff
+Constant ITCSTATUS_ALLOWINIT=0x100
+Constant ITCSTATUS_INITDONE=0x200
+Constant ITCSTATUS_FUNCALLED_BEFOREINIT=0x400
+Constant ITCSTATUS_FUNCALLED_AFTERINIT=0x800
+
 Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
+//template for user function
+	Variable ret_val=0
+	
+	switch(flag)
+	case ITCUSERFUNC_IDLE:
+		break // ret_val is not checked in idle call
+	case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
+		ret_val=0 //set ret_val to non-zero to hold initialization of the card, otherwise, set to zero
+		break
+	case ITCUSERFUNC_START_AFTERINIT: //called after user clicked "start recording", and after initializing the card
+		ret_val=0
+		break
+	case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
+		/////////////////////////////
+		//User code here
+		/////////////////////////////
+		ret_val=0 //if need to stop recording by the user function, return a non-zero value
+		break
+	case ITCUSERFUNC_STOP: //called when the user requested to stop the recording
+		break //ret_val is not checked for this call
+	default:
+		ret_val=-1 //this should not happen
+		break
+	endswitch
+	
+	return ret_val
 End
 
 Function ITCBackgroundTask(s)
@@ -2309,7 +2341,7 @@ Function ITCBackgroundTask(s)
 				
 		total_count+=1 //task execution count increase for every call of the background task
 		
-		switch(Status&0xff)
+		switch(Status & ITCSTATUS_MASK)// higher bits are for internal status use only
 		case 0: //idle
 			if(s.curRunTicks-LastIdleTicks>3)
 #if defined(ITCDEBUG)
@@ -2335,36 +2367,42 @@ Function ITCBackgroundTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_IDLE); AbortOnRTE
+					refFunc(adcdata, total_count, 0, ITCUSERFUNC_IDLE); AbortOnRTE
 				endif
 			endif
 			break
 		case 1: //request to start
-			DebugStr="Starting acquisition..."+num2istr(Status);
+			DebugStr="Starting acquisition... status:"+num2istr(Status);
 			String errMsg=""
 			//cycle of recording clear to zero. user function will receive a fresh start
 			cycle_count=0
 
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
-				if(((Status & 0x100)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 					userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
-					if(userfunc_ret!=0)
-						break
+
+					if(userfunc_ret!=0) //user function can decide when to allow init
+						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
+							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
+							itc_updatenb(tmpstr)
+							Status = Status | ITCSTATUS_FUNCALLED_BEFOREINIT //only log this message once			
+						endif					
+						break //break off the switch case
 					else
-						Status= Status | 0x100
+						Status= Status | ITCSTATUS_ALLOWINIT
 					endif
 				endif
 			else
-				Status = Status | 0x100
+				Status = Status | ITCSTATUS_ALLOWINIT
 			endif
 			
 #if defined(ITCDEBUG)
 			success=0
 #else
-			if((Status & 0x100)!=0 && (Status & 0x200)==0)
+			if((Status & ITCSTATUS_ALLOWINIT)!=0 && (Status & ITCSTATUS_INITDONE)==0) //allow init, and not inited before
 				success=LIH_InitInterface(errMsg, itcmodel)
-				Status = Status | 0x200
+				Status = Status | ITCSTATUS_INITDONE //mask this so that init is only called once
 				if(success!=0)
 					sprintf tmpstr, "Initialization of the ITC failed with message: %s", errMsg
 					itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -2382,11 +2420,16 @@ Function ITCBackgroundTask(s)
 				endif
 			endif
 			
-			if(userfunc_ret!=0)
-				break
+			if(userfunc_ret!=0) //user function can decide when to continue after the init process
+				if((Status & ITCSTATUS_FUNCALLED_AFTERINIT)==0)
+					sprintf tmpstr, "User function pauses the recording with code %d...", userfunc_ret
+					itc_updatenb(tmpstr)
+					Status = Status | ITCSTATUS_FUNCALLED_AFTERINIT //message will only be logged once
+				endif
+				break //break off the switch case
 			endif
 			
-			Status = Status & 0xff
+			Status = Status & ITCSTATUS_MASK //user function agrees to proceed, clear all internal flags
 						
 			if(itc_update_taskinfo()==0) //will reload dac data too
 				//checking passed, waves and variables have been prepared etc.
@@ -2444,7 +2487,7 @@ Function ITCBackgroundTask(s)
 				endif
 				DebugStr+="OK;"
 				
-				sprintf tmpstr, "Acquisition parameters: BlockSize[%d], SamplingRate [%d], SampleInterval[%.2e]", BlockSize, SamplingRate, SampleInt
+				sprintf tmpstr, "Recording starts now. Acquisition parameters: BlockSize[%d], SamplingRate [%d], SampleInterval[%.2e]", BlockSize, SamplingRate, SampleInt
 				itc_updatenb(tmpstr)
 				tmpstr=""
 				for(i=0; i<selectedadc_number; i+=1)
@@ -2581,13 +2624,15 @@ Function ITCBackgroundTask(s)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 								userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
-								if(userfunc_ret<0)
-									Status=4
+								if(userfunc_ret!=0) //user function returned non-zero code, will stop the recording
+									sprintf tmpstr, "Error: User function returned code %d. Recording is terminated.", userfunc_ret
+									itc_updatenb(tmpstr, r=32768, g=0, b=0)
+									Status=4									
 								endif
 							endif
 						endif
 						
-						cycle_count+=1
+						cycle_count+=1 //cycle_count is increased after the user function is called with the previously recorded section
 						
 					endif
 
