@@ -1233,15 +1233,36 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 				SVAR usrfuncname=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
 				if(checked)
 					checked=0
-					String funclist="_none_;"+FunctionList("*", ";", "KIND:2,NPARAMS:4,VALTYPE:1,WIN:Procedure")
+					String funclist="_none_;_create_new_;"+FunctionList("*", ";", "KIND:2,NPARAMS:4,VALTYPE:1,WIN:Procedure")
 					String selected_func=""
 					PROMPT selected_func, "Select real-time data process function", popup funclist
 					DoPrompt "select function", selected_func
 					if(V_flag==0)
-						if(cmpstr(selected_func, "_none_")!=0)
+						strswitch(selected_func)
+						case "_none_":
+							checked=0
+							break
+						case "_create_new_":
+							String newfunc_name="MyDataProcFunc"
+							PROMPT newfunc_name, "Enter a name for the new user data processing function:"
+							DoPrompt "Set new function name", newfunc_name
+							
+							if(V_flag==0)
+								String templatestr=ProcedureText("prototype_userdataprocessfunc", 0, "")
+								templatestr=ReplaceString("prototype_userdataprocessfunc", templatestr, newfunc_name, 1)
+								templatestr="\r\r"+templatestr+"\r\r"
+								PutScrapText templatestr
+								DoAlert 0, "Please make sure to open Procedure window and paste the new function into the window. Then edit the function as necessary."
+								usrfuncname=newfunc_name
+								checked=1
+							else
+								checked=0
+							endif
+							break
+						default:
 							usrfuncname=selected_func
 							checked=1
-						endif
+						endswitch
 					endif
 				endif
 				if(!checked)
@@ -2249,12 +2270,21 @@ Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cy
 	Variable ret_val=0
 	
 	switch(flag)
-	case ITCUSERFUNC_IDLE:
+	case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
+		/////////////////////////////
+		//User code here
+		/////////////////////////////
 		break // ret_val is not checked in idle call
 	case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
+		/////////////////////////////
+		//User code here
+		/////////////////////////////
 		ret_val=0 //set ret_val to non-zero to hold initialization of the card, otherwise, set to zero
 		break
 	case ITCUSERFUNC_START_AFTERINIT: //called after user clicked "start recording", and after initializing the card
+		/////////////////////////////
+		//User code here
+		/////////////////////////////
 		ret_val=0
 		break
 	case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
@@ -2264,6 +2294,9 @@ Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cy
 		ret_val=0 //if need to stop recording by the user function, return a non-zero value
 		break
 	case ITCUSERFUNC_STOP: //called when the user requested to stop the recording
+		/////////////////////////////
+		//User code here
+		/////////////////////////////
 		break //ret_val is not checked for this call
 	default:
 		ret_val=-1 //this should not happen
