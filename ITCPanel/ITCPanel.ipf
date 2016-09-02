@@ -1220,6 +1220,19 @@ Function itc_cbproc_selchn(cba) : CheckBoxControl
 	return 0
 End
 
+Function itc_paste_procedure_code(newfunc_name)
+	String newfunc_name
+	
+	String templatestr=ProcedureText("prototype_userdataprocessfunc", 0, "")
+	templatestr=ReplaceString("prototype_userdataprocessfunc", templatestr, newfunc_name, 1)
+	templatestr="\r"+templatestr+"\r"
+	DisplayProcedure /W=$"Procedure" /L=(2^30) //large enough line number, should scroll to the last line
+	GetSelection procedure, $"Procedure", 2
+	PutScrapText S_selection+templatestr
+	DoIgorMenu "Edit", "Paste"
+	Execute/P/Q "COMPILEPROCEDURES "
+	Execute/P/Q "DisplayProcedure /W=$\"Procedure\" \""+newfunc_name+"\""
+End
 
 Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 	STRUCT WMCheckboxAction &cba
@@ -1248,16 +1261,10 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 							DoPrompt "Set new function name", newfunc_name
 							
 							if(V_flag==0)
-								String templatestr=ProcedureText("prototype_userdataprocessfunc", 0, "")
-								templatestr=ReplaceString("prototype_userdataprocessfunc", templatestr, newfunc_name, 1)
-								templatestr="\r\r"+templatestr+"\r\r"
-								PutScrapText templatestr
-								DoAlert 0, "Please make sure to open Procedure window and paste the new function into the window. Then edit the function as necessary."
-								usrfuncname=newfunc_name
-								checked=1
-							else
-								checked=0
+								itc_paste_procedure_code(newfunc_name)
 							endif
+							usrfuncname=""
+							checked=0
 							break
 						default:
 							usrfuncname=selected_func
@@ -2266,8 +2273,15 @@ Constant ITCSTATUS_FUNCALLED_BEFOREINIT=0x400
 Constant ITCSTATUS_FUNCALLED_AFTERINIT=0x800
 
 Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
-//template for user function
+//Please modify the code as needed 
+//and set as user data process function from the ITCPanel
 	Variable ret_val=0
+	Variable intervaltime, freq, length, channelnum
+	
+	intervaltime=deltax(adcdata) //this value is only valid when flag==ITCUSERFUNC_CYCLESYNC
+	freq=1/intervaltime //this value is only valid when flag==ITCUSERFUNC_CYCLESYNC
+	length=DimSize(adcdata, 0)
+	channelnum=DimSize(adcdata, 1)
 	
 	switch(flag)
 	case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
