@@ -1220,18 +1220,26 @@ Function itc_cbproc_selchn(cba) : CheckBoxControl
 	return 0
 End
 
-Function itc_paste_procedure_code(newfunc_name)
-	String newfunc_name
+Function itc_paste_procedure_code(prototypename, newfunc_name)
+	String prototypename, newfunc_name
+	Variable retVal=0
 	
-	String templatestr=ProcedureText("prototype_userdataprocessfunc", 0, "")
-	templatestr=ReplaceString("prototype_userdataprocessfunc", templatestr, newfunc_name, 1)
-	templatestr="\r"+templatestr+"\r"
-	DisplayProcedure /W=$"Procedure" /L=(2^30) //large enough line number, should scroll to the last line
-	GetSelection procedure, $"Procedure", 2
-	PutScrapText S_selection+templatestr
-	DoIgorMenu "Edit", "Paste"
-	Execute/P/Q "COMPILEPROCEDURES "
-	Execute/P/Q "DisplayProcedure /W=$\"Procedure\" \""+newfunc_name+"\""
+	String funclist=FunctionList("*", ";", "")
+	if(WhichListItem(prototypename, funclist)<0 || WhichListItem(newfunc_name, funclist)>=0)
+		retVal=-1
+	else	
+		String templatestr=ProcedureText(prototypename, 0, "")
+		templatestr=ReplaceString(prototypename, templatestr, newfunc_name, 1)
+		templatestr="\r"+templatestr+"\r"
+		DisplayProcedure /W=$"Procedure" /L=(2^30) //large enough line number, should scroll to the last line
+		GetSelection procedure, $"Procedure", 2
+		PutScrapText S_selection+templatestr
+		DoIgorMenu "Edit", "Paste"
+		Execute/P/Q "COMPILEPROCEDURES "
+		Execute/P/Q "DisplayProcedure /W=$\"Procedure\" \""+newfunc_name+"\""
+	endif
+	
+	return retVal
 End
 
 Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
@@ -1258,11 +1266,21 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 						case "_create_new_":
 							String newfunc_name="MyDataProcFunc"
 							PROMPT newfunc_name, "Enter a name for the new user data processing function:"
-							DoPrompt "Set new function name", newfunc_name
 							
-							if(V_flag==0)
-								itc_paste_procedure_code(newfunc_name)
-							endif
+							do
+								checked=-1
+								DoPrompt "Set new function name", newfunc_name
+							
+								if(V_flag==0)
+									checked=itc_paste_procedure_code("prototype_userdataprocessfunc", newfunc_name)
+									if(checked!=0)
+										DoAlert 0, "Either the prototype function does not exist or the name of your function has already been used."								
+									endif
+								else
+									checked=0
+								endif
+							while(checked==-1)
+							
 							usrfuncname=""
 							checked=0
 							break
