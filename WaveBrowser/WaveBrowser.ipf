@@ -224,11 +224,6 @@ Function WBrowserCreateDF(dfstr)
 	return retVal
 End
 
-StrConstant WB_PackageRoot="root:Packages:"
-Constant WBPkgNewInstance=-1
-Constant WBPkgDefaultInstance=0
-Constant WBPkgMaxInstances=100
-
 //
 //WBSetupPackageDir setup the directory for a package
 //	If instance is not set, by default, the function will try to create a new instance with zero as index. In this case,
@@ -245,54 +240,89 @@ static Function /T wbgenerateDFName(root, packagename, instance)
 	return root+PossiblyQuoteName(PackageName)+":instance"+num2str(instance)+":"
 End
 
-Function /T WBSetupPackageDir(PackageName, [instance]) //when error happens, return ""
+
+StrConstant WB_PackageRoot="root:Packages:"
+Constant WBPkgNewInstance=-1
+Constant WBPkgDefaultInstance=0
+Constant WBPkgMaxInstances=100
+
+Constant WBPkgExclusive=-1
+Constant WBPkgOverride=0
+Constant WBPkgShouldExist=1
+
+Function /T WBSetupPackageDir(PackageName, [instance, existence]) //when error happens, return ""
 	String PackageName
 	Variable & instance
-	
+	Variable existence //when existence is -1, the user do not expect to see an exist folder
+							  //when existence is 0, the user do not care, but want to make sure folder is created
+							  //when existence is 1, the user expect the folder to exist, otherwise an error should be produced
+							  //by default, existence is set to -1
 	Variable createNew=0 // flag for creating new data folder
-	Variable idx=WBPkgDefaultInstance
+	Variable idx
 	String fullPath=""
-	if(ParamIsDefault(instance)) // no instance is provided, will create a new folder with index 0
-		//instance 0 should not exist and will be created
-		createNew=1
-	else
-		if(instance==WBPkgNewInstance)
-			//request to create a new folder
-			createNew=1
-			for(idx=0; idx<WBPkgMaxInstances; idx+=1)
-				fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
-				if(!DataFolderExists(fullPath))
-					break
-				endif
-			endfor
-			if(idx>=WBPkgMaxInstances)
-				print "Trying to create too many instances for package "+PackageName
-				AbortOnValue -1, -1
-			endif
-		else
-			createNew=0
-			idx=instance
-		endif			
+	
+	if(ParamIsDefault(existence))
+		existence=1
+	endif	
+
+	if(ParamIsDefault(instance)) //by default, instance is zero.
+		print "you have to specify a instance option for all calls to WBSetupPackageDir"
+		AbortOnValue -1, 0
 	endif
 	
-	fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
-	
-	if(!DataFolderExists(fullPath))
-		if(createNew!=0)
-			if(WBrowserCreateDF(fullPath)!=0 || WBrowserCreateDF(fullPath+"vars")!=0 || WBrowserCreateDF(fullPath+"strs")!=0 || WBrowserCreateDF(fullPath+"waves")!=0 || WBrowserCreateDF(fulLPath+"privateDF")!=0)
-				print "Error when trying to create a new instance for package "+PackageName
-				AbortOnValue -1, -2
+	if(instance<0) //if instance is set to negative, means user want to find a new instance slot
+		if(existence!=-1)
+			print "existence should be set to -1 when requesting a new instance for package "+PackageName
+			AbortOnValue -1,-1
+		endif
+
+		for(idx=0; idx<WBPkgMaxInstances; idx+=1)
+			fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
+			if(!DataFolderExists(fullPath))
+				break
 			endif
+		endfor
+		
+		if(idx>=WBPkgMaxInstances)
+			print "Trying to create too many instances for package "+fullPath
+			AbortOnValue -1, -2
 		endif
-	else
-		if(createNew!=0)
-			print "Trying to create an instance that already exists for package "+PackageName
-			AbortonValue -1, -3
-		endif
-	endif
-	if(!ParamIsDefault(instance))
 		instance=idx
 	endif
+	
+	fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, instance)
+	switch(existence)
+	case -1:
+		if(DataFolderExists(fullPath))
+			print "package ["+fullPath+"] already exists - this is not expected."
+			AbortOnValue -1, -3
+		endif
+		createNew=1
+		break
+	case 0:
+		if(!DataFolderExists(fullPath))
+			createNew=1
+		endif
+		break
+	case 1:
+		if(!DataFolderExists(fullPath))
+			print "package ["+fullPath+"] should already exist but not found."
+			AbortOnValue -1, -4
+		endif
+		break
+	default:
+		print "unknown value of existence request for package "+PackageName
+		AbortOnValue -1, -5
+		break
+	endswitch
+	
+	if(createNew==1)
+		if(WBrowserCreateDF(fullPath)!=0 || WBrowserCreateDF(fullPath+"vars")!=0 || WBrowserCreateDF(fullPath+"strs")!=0 || WBrowserCreateDF(fullPath+"waves")!=0 || WBrowserCreateDF(fulLPath+"privateDF")!=0)
+			print "Error when trying to create a new instance for package "+PackageName
+			AbortOnValue -1, -6
+		endif
+	endif
+
 	return fullPath
 End
 
@@ -401,10 +431,11 @@ Function WBPrepPackagePrivateDF(fullPath, dflist)
 	return retVal
 End
 
-Function /T WBPkgGetName(fullPath, type, name)
+Function /T WBPkgGetName(fullPath, type, name, [quiet])
 	String fullPath
 	Variable type
 	String name
+	Variable quiet
 	
 	String subfd=""
 	
@@ -427,7 +458,9 @@ Function /T WBPkgGetName(fullPath, type, name)
 	try
 		AbortOnValue exists(s)==0, -1
 	catch
-		print "Request to access a content in package ["+s+"] that does not exist."
+		if(ParamIsDefault(quiet) || quiet==0)
+			print "Request to access a content in package ["+s+"] that does not exist."
+		endif
 		s=""
 	endtry
 	return s

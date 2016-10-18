@@ -131,7 +131,8 @@ StrConstant ITC_DACChnDefault="DATAFOLDER=;WAVENAME=;TITLE=DAC#;FOLDERLABEL=Sour
 StrConstant ITC_TelegraphList="_none_;#GAIN;#CSLOW;#FILTER;#MODE;"
 
 Function /T ITC_setup_directory()
-	String fPath=WBSetupPackageDir(ITC_PackageName)
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance, existence=-1)
 	if(strlen(fPath)<=0)
 		abort "Cannot properly prepare ITC package data folder!"
 	endif
@@ -1292,6 +1293,21 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 				endif
 				if(!checked)
 					usrfuncname=""
+				else
+					Variable userfunc_ret=0
+					String tmpstr=""
+					FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
+					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+						Make /FREE /N=0 tmpwave
+						userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
+
+						if(userfunc_ret!=0) //user function cannot init properly
+							sprintf tmpstr, "User function %s cannot initialize properly with return code %d... user function is removed.", usrfuncname, userfunc_ret
+							itc_updatenb(tmpstr)
+							checked=0
+							usrfuncname=""
+						endif
+					endif
 				endif
 				CheckBox itc_cb_userfunc win=ITCPanel, value=checked
 			catch
@@ -1491,7 +1507,7 @@ Function itc_rtgraph_init(left, top, right, bottom)
 	selchn_list1+="\""
 	selchn_list2+="\""
 
-	NewPanel /EXT=0 /HOST=ITCPanel /N=rtgraphpanel /W=(0, 400, 150, 0) /K=2
+	NewPanel /EXT=0 /HOST=ITCPanel /N=rtgraphpanel /W=(0, 0, 160, 0) /K=2
 	PopupMenu rtgraph_trace1name win=ITCPanel#rtgraphpanel,title="Trace1 Channel",value=#selchn_list1,mode=1,size={150,20},userdata(tracename)="1",proc=rtgraph_popproc_trace
 	PopupMenu rtgraph_trace1color win=ITCPanel#rtgraphpanel,title="Trace1 Color",popColor=(65280,0,0),value="*COLORPOP*",size={150,20},proc=rtgraph_popproc_tracecolor
 	SetVariable rtgraph_miny1 win=ITCPanel#rtgraphpanel,title="MinY1",value=_NUM:-10,size={120,20},limits={-inf, inf, 0},userdata(tracename)="1",disable=2,proc=rtgraph_svproc_setyaxis
@@ -2278,6 +2294,7 @@ Function itc_update_gain_scale(scalefactor, scaleunit, flag, gain)
 	endfor
 End
 
+Constant ITCUSERFUNC_FIRSTCALL=999
 Constant ITCUSERFUNC_IDLE=100
 Constant ITCUSERFUNC_START_BEFOREINIT=200
 Constant ITCUSERFUNC_START_AFTERINIT=300
@@ -2302,6 +2319,12 @@ Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cy
 	channelnum=DimSize(adcdata, 1)
 	
 	switch(flag)
+	case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
+		/////////////////////////////
+		//User code here
+		/////////////////////////////
+		ret_val=0 //if ret_val is set to non-zero, user function will not be set and an error will be generated
+		break
 	case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
 		/////////////////////////////
 		//User code here
