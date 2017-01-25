@@ -1031,6 +1031,7 @@ Function itc_update_chninfo(windowname, event)
 	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
 	
 	Variable i, j
+	
 	try
 		Make /N=8/O/T $adc_chn_wname;AbortOnRTE
 		WAVE /T textw=$adc_chn_wname
@@ -1066,10 +1067,13 @@ Function itc_update_chninfo(windowname, event)
 
 		Variable telegraph, scalefactor
 		String scaleunit
-		
+
+		String ChnListStr=""; //this is to keep track of selected channels
+			
 		for(i=0; i<8; i+=1)
 		
 			ctrlname="itc_cb_adc"+num2istr(i)
+			
 			itc_get_adc_scale_factor(ctrlname, telegraph, scalefactor, scaleunit, param=param)
 			
 			if(telegraph!=1) // telegraph is enabled
@@ -1092,11 +1096,13 @@ Function itc_update_chninfo(windowname, event)
 				else
 					wadcdestwave[i]=s1;AbortOnRTE
 					CountADC+=1
+					ChnListStr+=ctrlname+";"
 				endif
 			endif
-			CheckBox $ctrlname, win=ITCPanel, userdata(param)=param; AbortOnRTE
+			CheckBox $ctrlname, win=ITCPanel, userdata(param)=param; AbortOnRTE			
 		endfor
-		GroupBox itc_grp_ADC win=ITCPanel, userdata(selected)=num2istr(CountADC);AbortOnRTE
+		
+		GroupBox itc_grp_ADC win=ITCPanel, userdata(selected)=num2istr(CountADC), userdata(selected_list)=ChnListStr;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_adclist $adc_chndestfolder_wname;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_adclist $adc_chndestwave_wname;AbortOnRTE
 		
@@ -1105,6 +1111,8 @@ Function itc_update_chninfo(windowname, event)
 		Make /N=4/O/T $dac_chnsrcwave_wname;AbortOnRTE
 		WAVE /T wdacsrcwave=$dac_chnsrcwave_wname
 
+		ChnListStr=""; //this is to keep track of selected channels
+		
 		for(i=0; i<4; i+=1)
 			ctrlname="itc_cb_dac"+num2istr(i)
 			param=GetUserData("ITCPanel", ctrlname, "param"); AbortOnRTE
@@ -1120,9 +1128,10 @@ Function itc_update_chninfo(windowname, event)
 			else
 				wdacsrcwave[i]=s1;AbortOnRTE
 				CountDAC+=1
+				ChnListStr+=ctrlname+";"
 			endif
 		endfor
-		GroupBox itc_grp_DAC win=ITCPanel,userdata(selected)=num2istr(CountDAC);AbortOnRTE
+		GroupBox itc_grp_DAC win=ITCPanel,userdata(selected)=num2istr(CountDAC), userdata(selected_list)=ChnListStr;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_daclist $dac_chnsrcfolder_wname;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_daclist $dac_chnsrcwave_wname	;AbortOnRTE
 		
