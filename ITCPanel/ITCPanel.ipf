@@ -2340,6 +2340,7 @@ Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cy
 		/////////////////////////////
 		break // ret_val is not checked in idle call
 	case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
+		//ATTENTION: At this point, no adcdata has been initalized so the length information is not valid
 		/////////////////////////////
 		//User code here
 		/////////////////////////////
@@ -2477,8 +2478,8 @@ Function ITCBackgroundTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					//Attention: at this point, no adcdata wave have been initialized
 					userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
-
 					if(userfunc_ret!=0) //user function can decide when to allow init
 						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
 							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
@@ -2508,26 +2509,8 @@ Function ITCBackgroundTask(s)
 					itc_updatenb("ITC initialized for starting acquisition.")
 				endif
 			endif
-#endif			
-			userfunc_ret=0
-			if(strlen(UserFunc)>0)
-				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
-				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
-				endif
-			endif
-			
-			if(userfunc_ret!=0) //user function can decide when to continue after the init process
-				if((Status & ITCSTATUS_FUNCALLED_AFTERINIT)==0)
-					sprintf tmpstr, "User function pauses the recording with code %d...", userfunc_ret
-					itc_updatenb(tmpstr)
-					Status = Status | ITCSTATUS_FUNCALLED_AFTERINIT //message will only be logged once
-				endif
-				break //break off the switch case
-			endif
-			
-			Status = Status & ITCSTATUS_MASK //user function agrees to proceed, clear all internal flags
-						
+#endif
+
 			if(itc_update_taskinfo()==0) //will reload dac data too
 				//checking passed, waves and variables have been prepared etc.
 				if(RecordingSize<=0)
@@ -2538,6 +2521,27 @@ Function ITCBackgroundTask(s)
 					itc_updatenb("Error in BlockSize ["+num2istr(BlockSize)+"]", r=32768, g=0, b=0)
 					AbortOnValue 1, 910
 				endif
+				
+				userfunc_ret=0
+				if(strlen(UserFunc)>0)
+					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+						userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
+					endif
+				endif
+				
+				if(userfunc_ret!=0) //user function can decide when to continue after the init process
+					if((Status & ITCSTATUS_FUNCALLED_AFTERINIT)==0)
+						sprintf tmpstr, "User function pauses the recording with code %d...", userfunc_ret
+						itc_updatenb(tmpstr)
+						Status = Status | ITCSTATUS_FUNCALLED_AFTERINIT //message will only be logged once
+					endif
+					break //break off the switch case
+				endif
+				
+				Status = Status & ITCSTATUS_MASK //user function agrees to proceed, clear all internal flags
+
+
 				
 				for(i=0; i<selectedadc_number; i+=1)
 					ADCs.channels[i]=selectedadcchn[i]

@@ -1,8 +1,6 @@
-#pragma TextEncoding = "Windows-1252"
-#pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#include "itcpanel"
+//This is just an example of User Functions that you can construct for use with ITCPanel.
+//Please copy and paste to the procedure window, and make sure you have #include "itcpanel" before that
 
-//constant len=0.2  //sample length in s
 constant Threshpct = 0.5  //impedance threshold as a fraction of baseline
 constant DACscale = 1  //scales DAC source wave
 constant hist_time_len=500 // sec
@@ -19,7 +17,8 @@ Function WirePanel()
 	SetVariable sv_sethighV win=ITCPanel#WirePanel, title="Set V_high (V)", value=_NUM:0, size={155,20}
 	SetVariable sv_setlowV win=ITCPanel#WirePanel, title="Set V_low (V)", value=_NUM:0, size={155,20}
 	SetVariable sv_setpulsewidth win=ITCPanel#WirePanel, title="Set pulse width (ms)", value=_NUM:0, size={155,20}
-	Button btn_manual_set_trace win=ITCPanel#WirePanel, title="Update output trace", size={155,20}
+	Button btn_manual_set_trace win=ITCPanel#WirePanel, title="Update output trace", size={155,20}, proc=wirepanel_btnproc
+	Checkbox cb_disable_AI win=ITCPanel#WirePanel, title="Disable AI Control", size={155, 20}
 End
 
 Function wirepanel_btnproc(ba) : ButtonControl
@@ -40,7 +39,7 @@ Function wirepanel_btnproc(ba) : ButtonControl
 				rflag=2; AbortOnRTE
 				break
 			case "btn_manual_set_trace":
-			
+				//Add your code here to update dac trace
 				break
 			default:
 				break
@@ -53,6 +52,8 @@ Function wirepanel_btnproc(ba) : ButtonControl
 	return 0
 End
 
+Function MyPulseGenerator(variable V_high, variable V_low, variable pulse_width)
+End
 
 Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
 //this function assumes that: 
@@ -65,6 +66,10 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 	freq=1/intervaltime //this value is only valid when flag==ITCUSERFUNC_CYCLESYNC
 	section_length=DimSize(adcdata, 0)
 	channelnum=DimSize(adcdata, 1)
+
+	Variable history_len=round(hist_time_len/(section_length*intervaltime))	//this value may not be correct if the recording has not started yet
+	String testfolder=""
+	Variable enable_AI=0
 	
 	switch(flag)
 	case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
@@ -75,7 +80,7 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 		Variable dac_chn_num=str2num(GetUserData("ITCPanel", "itc_grp_DAC", "selected"))
 		if(adc_chn_num>=3 && dac_chn_num>=1)
 			NVAR /Z relay_flag=root:relayflag
-			if(NVAR_Exists(relay_flag))
+			if(!NVAR_Exists(relay_flag))
 				Variable /G root:relayflag=0
 			endif
 			WirePanel()
@@ -90,7 +95,19 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 		/////////////////////////////
 		break // ret_val is not checked in idle call
 	case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
-		/////////////////////////////
+		/////////////////////////////		
+		SetVariable sv_datafolder win=ITCPanel#WirePanel,disable=2 //do not allow changing data folder after starting
+		ControlInfo /W=ITCPanel#WirePanel sv_datafolder			
+		testfolder=S_value
+		
+		WBrowserCreateDF("root:"+testfolder); AbortOnRTE
+		if(!exists("root:"+testfolder+":BaselineV"))
+			Variable /G $("root:"+testfolder+":BaselineV")=0
+			Variable /G $("root:"+testfolder+":ThresholdV")=0
+			Variable /G $("root:"+testfolder+":index")=0
+			Variable /G $("root:"+testfolder+":hist_idx")=0
+		endif
+		
 		NVAR relay_flag=root:relayflag //waiting for the user to manually change the connections before switching digital controls, and then set relay flag to 1 for continuing
 		if(relay_flag==1)
 			ret_val=0
@@ -102,6 +119,7 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 		break
 	case ITCUSERFUNC_START_AFTERINIT: //called after user clicked "start recording", and after initializing the card
 		/////////////////////////////
+		
 		NVAR relay_flag=root:relayflag //LIH board is initialized, manually reconnect, and set digital output properly, and then manually set relay flag to 2
 		if(relay_flag==2)
 			ret_val=0
@@ -112,27 +130,18 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 		break
 	case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
 		/////////////////////////////
-		try
-			Variable history_len=round(hist_time_len/(section_length*intervaltime))
-			String testfolder=""
-			ControlInfo /W=ITCPanel#WirePanel sv_datafolder
+		try		
+			ControlInfo /W=ITCPanel#WirePanel sv_datafolder			
 			testfolder=S_value
-		
-			if(!exists("root:"+testfolder+":BaselineV"))
-				Variable /G $("root:"+testfolder+":BaselineV")=0
-				Variable /G $("root:"+testfolder+":ThresholdV")=0
-				Variable /G $("root:"+testfolder+":index")=0
-				Variable /G $("root:"+testfolder+":hist_idx")=0
-			endif
+			ControlInfo /W=ITCPanel#WirePanel cb_disable_AI
+			enable_AI=(V_value==0)?1:0
+			
 			NVAR BaselineV=$("root:"+testfolder+":BaselineV")
 			NVAR ThresholdV=$("root:"+testfolder+":ThresholdV")
 			NVAR idx=$("root:"+testfolder+":index")
-			NVAR hist_idx=$("root:"+testfolder+":hist_idx")		
+			NVAR hist_idx=$("root:"+testfolder+":hist_idx")
 			
-			WAVE dacref=root:testdac  //defines shape of voltage pulse for DAC output
-			WAVE dacw=root:scaleddac  //actual DAC output
-		
-			if(cycle_count==0)
+			if(cycle_count==0) //only at this stage, the section_length is accurate
 				make /O/N=(history_len*section_length) $("root:"+testfolder+":ADC0track"); AbortOnRTE
 				make /O/N=(history_len*section_length) $("root:"+testfolder+":ADC1track"); AbortOnRTE
 				make /O/N=(history_len*section_length) $("root:"+testfolder+":DACtrack"); AbortOnRTE
@@ -144,7 +153,7 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 				ThresholdV=0
 				idx=0
 			endif
-		
+				
 			WAVE ADC0track=$("root:"+testfolder+":ADC0track")
 			WAVE ADC1track=$("root:"+testfolder+":ADC1track")
 			WAVE DACtrack=$("root:"+testfolder+":DACtrack")
@@ -171,7 +180,7 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 			/////////////////////////////////////////////////////////
 			hist_idx+=1
 			idx+=1
-			if(idx>history_len)
+			if(idx>=history_len)
 				idx=0 //will overwrite previous data
 			endif
 			
@@ -198,6 +207,7 @@ Function MyDataProcFunc(wave adcdata, int64 total_count, int64 cycle_count, int 
 		/////////////////////////////
 		Button btn_safe_disconnect win=ITCPanel#WirePanel, disable=0
 		Button btn_continue_recording win=ITCPanel#WirePanel, disable=2
+		SetVariable sv_datafolder win=ITCPanel#WirePanel,disable=0
 		break //ret_val is not checked for this call
 	default:
 		ret_val=-1 //this should not happen
