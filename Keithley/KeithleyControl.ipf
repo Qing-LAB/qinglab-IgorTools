@@ -115,58 +115,59 @@ Function KeithleyPanelInit()
 	
 	NewPanel /N=KeithleyControl/W=(0,0,320,500)/K=2
 	PopupMenu keithley_id win=KeithleyControl,title="DEV_ID",fSize=12,bodywidth=120,pos={125,15},value=#klist,proc=kcontrol_listproc,mode=1
-	Button kcontrol_btn_init win=KeithleyControl,title="Init",fSize=12,pos={185,14},size={50,20},proc=kcontrol_init,userdata(state)="0"
+	Button kcontrol_btn_init win=KeithleyControl,title="Init",fSize=12,pos={185,15},size={50,20},proc=kcontrol_init,userdata(state)="0"
 	TitleBox instr_info win=KeithleyControl, title="No instrument initialized",fixedSize=1,size={250,30},pos={10, 45},fsize=12
+	CheckBox kcontrol_userfunc  win=KeithleyControl,title="USER_FUNC",pos={10,460},proc=kcontrol_setuserfunc
 	
 	TabControl tab_smu_setup win=KeithleyControl,tabLabel(0)="SMUA",tabLabel(1)="SMUB",tabLabel(2)="Sweep Control",tabLabel(3)="ITC I/O",fsize=12,fstyle=1
 	TabControl tab_smu_setup win=KeithleyControl,labelBack=(60928,60928,60928),pos={10,80},size={300,370},proc=kcontrol_tab_smu_setup
 	TabControl tab_smu_setup win=KeithleyControl,value=1,UserData(state)="0"
 	
-	PopupMenu smu_source_type win=KeithleyControl, title="Source Type",fSize=12,pos={180,105}, bodywidth=130
+	PopupMenu smu_source_type win=KeithleyControl, title="Source Type",fSize=12,pos={190,105}, bodywidth=130
 	PopupMenu smu_source_type win=KeithleyControl, proc=kcontrol_smu_popup
 	PopupMenu smu_source_type win=KeithleyControl, value=#("\""+kcontrol_SOURCE_TYPE+"\""), mode=3
 	
-	SetVariable smu_limitv win=KeithleyControl,title="Voltage Limit (V)",pos={180,130}, bodywidth=130
+	SetVariable smu_limitv win=KeithleyControl,title="Voltage Limit (V)",pos={190,130}, bodywidth=130
 	SetVariable smu_limitv win=KeithleyControl,format="%.3g",limits={kcontrol_MIN_LIMITV,kcontrol_MAX_LIMITV,0},value=_NUM:20
 	SetVariable smu_limitv win=KeithleyControl,proc=kcontrol_smu_setvar
 	
-	SetVariable smu_limiti win=KeithleyControl,title="Current Limit (A)",pos={180,150}, bodywidth=130
+	SetVariable smu_limiti win=KeithleyControl,title="Current Limit (A)",pos={190,150}, bodywidth=130
 	SetVariable smu_limiti win=KeithleyControl,format="%.3g",limits={kcontrol_MIN_LIMITI,kcontrol_MAX_LIMITI,0},value=_NUM:1.5
 	SetVariable smu_limiti win=KeithleyControl,proc=kcontrol_smu_setvar
 	
-	PopupMenu smu_rangev win=KeithleyControl,pos={180, 170},bodyWidth=130,title="Voltage Range"
+	PopupMenu smu_rangev win=KeithleyControl,pos={190, 170},bodyWidth=130,title="Voltage Range"
 	PopupMenu smu_rangev win=KeithleyControl,value=#("\""+kcontrol_VOLTAGE_RANGE+"\""),mode=2
 	PopupMenu smu_rangev win=KeithleyControl, proc=kcontrol_smu_popup
 	
-	PopupMenu smu_rangei win=KeithleyControl,pos={180, 195},bodyWidth=130,title="Current Range"
+	PopupMenu smu_rangei win=KeithleyControl,pos={190, 195},bodyWidth=130,title="Current Range"
 	PopupMenu smu_rangei win=KeithleyControl,value=#("\""+kcontrol_CURRENT_RANGE+"\""),mode=2
 	PopupMenu smu_rangei win=KeithleyControl, proc=kcontrol_smu_popup
 	
-	PopupMenu smu_sensetype win=KeithleyControl,pos={180, 220},bodyWidth=130,title="Sense type"
+	PopupMenu smu_sensetype win=KeithleyControl,pos={190, 220},bodyWidth=130,title="Sense type"
 	PopupMenu smu_sensetype win=KeithleyControl,value=#("\""+kcontrol_SENSE_TYPE+"\"")
 	PopupMenu smu_sensetype win=KeithleyControl, proc=kcontrol_smu_popup
 	
-	PopupMenu smu_autozero win=KeithleyControl,pos={180, 245},bodyWidth=130,title="Auto Zero"
+	PopupMenu smu_autozero win=KeithleyControl,pos={190, 245},bodyWidth=130,title="Auto Zero"
 	PopupMenu smu_autozero win=KeithleyControl,value=#("\""+kcontrol_AUTOZERO_TYPE+"\"")
 	PopupMenu smu_autozero win=KeithleyControl, proc=kcontrol_smu_popup
 	
-	PopupMenu smu_sinkmode win=KeithleyControl,pos={180, 270},bodyWidth=130,title="Sink Mode"
+	PopupMenu smu_sinkmode win=KeithleyControl,pos={190, 270},bodyWidth=130,title="Sink Mode"
 	PopupMenu smu_sinkmode win=KeithleyControl,value=#("\""+kcontrol_SINK_MODE+"\"")
 	PopupMenu smu_sinkmode win=KeithleyControl, proc=kcontrol_smu_popup
 	
-	SetVariable smu_speed win=KeithleyControl,pos={180, 295},bodyWidth=130,title="Speed (NPLC)"
+	SetVariable smu_speed win=KeithleyControl,pos={190, 295},bodyWidth=130,title="Speed (NPLC)"
 	SetVariable smu_speed win=KeithleyControl,limits={0.001,25,0.5},value=_NUM:1
 	SetVariable smu_speed win=KeithleyControl, proc=kcontrol_smu_setvar
 	
-	SetVariable smu_delay win=KeithleyControl,title="Delay (s)",pos={180,320}, bodywidth=130
+	SetVariable smu_delay win=KeithleyControl,title="Delay (s)",pos={190,320}, bodywidth=130
 	SetVariable smu_delay win=KeithleyControl,format="%.3g",limits={0,100,0},value=_NUM:0
 	SetVariable smu_delay win=KeithleyControl,proc=kcontrol_smu_setvar
 	
-	PopupMenu smu_filter win=KeithleyControl,pos={180, 345},bodyWidth=130,title="Filter Type"
+	PopupMenu smu_filter win=KeithleyControl,pos={190, 345},bodyWidth=130,title="Filter Type"
 	PopupMenu smu_filter win=KeithleyControl,value=#("\""+kcontrol_FILTER_TYPE+"\"")
 	PopupMenu smu_filter win=KeithleyControl, proc=kcontrol_smu_popup
 	
-	SetVariable smu_filtercount win=KeithleyControl,title="Average count",pos={180,370}, bodywidth=130
+	SetVariable smu_filtercount win=KeithleyControl,title="Average count",pos={190,370}, bodywidth=130
 	SetVariable smu_filtercount win=KeithleyControl,format="%d",limits={1,100,1},value=_NUM:1
 	SetVariable smu_filtercount win=KeithleyControl,proc=kcontrol_smu_setvar
 	
@@ -1760,6 +1761,7 @@ Function kcontrol_callbackFunc(session, strData, strParam, count, strCmd)
 				Duplicate /O tmp, result;AbortOnRTE
 			endif			
 			Duplicate /O result, $("root:RTKeithleyData"+num2istr(i)); AbortOnRTE
+			
 			level[i]=vector[mod(count, dim_vector)] ; AbortOnRTE
 		endfor
 		
@@ -1816,6 +1818,104 @@ Function itc_setadc(cba) : CheckBoxControl
 	return 0
 End
 
+Function kcontrol_setuserfunc(cba) : CheckBoxControl
+	STRUCT WMCheckboxAction &cba
+	String usrfuncname=""
+	
+	switch( cba.eventCode )
+		case 2: // mouse up
+			Variable checked = cba.checked
+			try
+				usrfuncname=GetUserData("KeithleyControl","kcontrol_userfunc", "USER_FUNC")
+				if(checked)
+					checked=0
+					String funclist="_none_;_create_new_;"+FunctionList("*", ";", "KIND:2,NPARAMS:4,VALTYPE:1,WIN:Procedure")
+					String selected_func=""
+					PROMPT selected_func, "Select real-time data process function", popup funclist
+					DoPrompt "select function", selected_func
+					if(V_flag==0)
+						strswitch(selected_func)
+						case "_none_":
+							checked=0
+							break
+						case "_create_new_":
+							String newfunc_name="MyKControlUserFunc"
+							PROMPT newfunc_name, "Enter a name for the new user data processing function:"
+							
+							do
+								checked=-1
+								DoPrompt "Set new function name", newfunc_name
+							
+								if(V_flag==0)
+									checked=kcontrol_paste_procedure_code("prototype_kcontroluserfunc", newfunc_name)
+									if(checked!=0)
+										DoAlert 0, "Either the prototype function does not exist or the name of your function has already been used."								
+									endif
+								else
+									checked=0
+								endif
+							while(checked==-1)
+							
+							usrfuncname=""
+							checked=0
+							break
+						default:
+							usrfuncname=selected_func
+							checked=1
+						endswitch
+					endif
+				endif
+				if(!checked)
+					usrfuncname=""
+				else
+					Variable userfunc_ret=0
+					String tmpstr=""
+					FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
+					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+						Make /FREE /N=0 tmpwave
+						userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
+
+						if(userfunc_ret!=0) //user function cannot init properly
+							sprintf tmpstr, "User function %s cannot initialize properly with return code %d... user function is removed.", usrfuncname, userfunc_ret
+							itc_updatenb(tmpstr)
+							checked=0
+							usrfuncname=""
+						endif
+					endif
+				endif
+				CheckBox itc_cb_userfunc win=ITCPanel, value=checked
+			catch
+				print "error!"
+			endtry
+			break
+		case -1: // control being killed
+			break
+	endswitch
+	CheckBox kcontrol_userfunc, win=KeithleyControl, userdata(USER_FUNC)=usrfuncname
+	return 0
+End
+
+Function kcontrol_paste_procedure_code(prototypename, newfunc_name)
+	String prototypename, newfunc_name
+	Variable retVal=0
+	
+	String funclist=FunctionList("*", ";", "")
+	if(WhichListItem(prototypename, funclist)<0 || WhichListItem(newfunc_name, funclist)>=0)
+		retVal=-1
+	else	
+		String templatestr=ProcedureText(prototypename, 0, "")
+		templatestr=ReplaceString(prototypename, templatestr, newfunc_name, 1)
+		templatestr="\r"+templatestr+"\r"
+		DisplayProcedure /W=$"Procedure" /L=(2^30) //large enough line number, should scroll to the last line
+		GetSelection procedure, $"Procedure", 2
+		PutScrapText S_selection+templatestr
+		DoIgorMenu "Edit", "Paste"
+		Execute/P/Q "COMPILEPROCEDURES "
+		Execute/P/Q "DisplayProcedure /W=$\"Procedure\" \""+newfunc_name+"\""
+	endif
+	
+	return retVal
+End
 
 
 // PNG: width= 142, height= 142
