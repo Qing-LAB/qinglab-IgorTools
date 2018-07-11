@@ -112,7 +112,7 @@ Constant ITCTASK_TICK=20 // 1/3 sec
 #else
 Constant ITCTASK_TICK=1 // 1/60 sec
 #endif
-Constant ITC_DefaultSamplingRate=25000 // 25KHz
+Constant ITC_DefaultSamplingRate=20000 // 20KHz
 StrConstant ITC_PackageName="ITC"
 StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo;UserDataProcessFunction;TaskRecordingCount"
 StrConstant ITC_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
@@ -121,7 +121,7 @@ StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;Telegra
 StrConstant ITC_DataWavesInfo="ADCDataWavePath;DACDataWavePath"
 
 StrConstant ITC_AcquisitionSettingVars="ITCMODEL;SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
-StrConstant ITC_AcquisitionControlVars="Status;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag"
+StrConstant ITC_AcquisitionControlVars="Status;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag;DigitalChannels"
 StrConstant ITC_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"
 Constant ITCMaxBlockSize=16383
 Constant ITCMinRecordingLen=0.2 //minimal length of data in sec for continuous acquisitions
@@ -305,7 +305,6 @@ Function ITC_init()
 	debugstr=" "
 	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,419},fixedSize=1,frame=2,size={470,22},fColor=(32768,0,0)
 	
-	
 	GroupBox itc_grp_rtdac win=ITCPanel,title="RealTime DACs (V)",pos={600, 60}, size={195,75}
 	SetVariable itc_sv_rtdac0 win=ITCPanel, title="DAC0", pos={610, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="0"
 	SetVariable itc_sv_rtdac1 win=ITCPanel,title="DAC1", pos={700, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="1"
@@ -322,8 +321,17 @@ Function ITC_init()
 	ValDisplay itc_vd_rtadc6 win=ITCPanel,title="ADC6",pos={700,200},size={90,16},format="%8.6f",value=_NUM:0
 	ValDisplay itc_vd_rtadc7 win=ITCPanel,title="ADC7",pos={700,220},size={90,16},format="%8.6f",value=_NUM:0
 	
+	GroupBox itc_grp_rtdigital win=ITCPanel,title="RealTime Digital", pos={600,250},size={195, 40}
+	CheckBox itc_cb_dig0  win=ITCPanel,title="",pos={620,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig1  win=ITCPanel,title="",pos={640,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig2  win=ITCPanel,title="",pos={660,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig3  win=ITCPanel,title="",pos={680,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig4  win=ITCPanel,title="",pos={700,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig5  win=ITCPanel,title="",pos={720,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig6  win=ITCPanel,title="",pos={740,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_dig7  win=ITCPanel,title="",pos={760,270},proc=itc_cbproc_digitals
 	
-	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(600,250,795,440)
+	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(600,300,795,440)
 	Notebook ITCPanel#ITCPanelLog writeProtect=1,fSize=8,magnification=125
 	String initmsg="ITCPanel initialized.\r"
 	initmsg+="Experiment operator:"+opname+"\r"
@@ -1221,6 +1229,54 @@ Function itc_cbproc_selchn(cba) : CheckBoxControl
 			else
 				itc_update_chninfo("", 11)
 			endif
+			break
+		case -1: // control being killed
+			break
+	endswitch
+	
+	
+	return 0
+End
+
+Function itc_cbproc_digitals(cba) : CheckBoxControl
+	STRUCT WMCheckboxAction &cba
+	Variable i
+	Variable instance=WBPkgDefaultInstance
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
+	NVAR digtals=$WBPkgGetName(fPath, WBPkgDFVar, "DigitalChannels"); AbortOnRTE
+
+	switch( cba.eventCode )
+	
+		case 2: // mouse up
+			Variable checked = cba.checked
+			
+//			String ctrlName=cba.ctrlName
+//			String param=GetUserData("ITCPanel", ctrlName, "param")
+//			param=ReplaceStringByKey("DATAFOLDER", param, "", "=", ";")
+//			param=ReplaceStringByKey("WAVENAME", param, "", "=", ";")
+//			
+//			Variable adc_or_dac=0, chn=-1
+//			strswitch(ctrlName[0,9])
+//				case "itc_cb_adc":
+//					adc_or_dac=1
+//					chn=str2num(ctrlName[10,inf])			
+//					break
+//				case "itc_cb_dac":
+//					adc_or_dac=2
+//					chn=str2num(ctrlName[10,inf])			
+//					break
+//				default:
+//					adc_or_dac=-1
+//					param=""
+//					break
+//			endswitch
+//			
+//			CheckBox $cba.ctrlName win=ITCPanel,userdata(param)=param
+//			if(checked==1)
+//				itc_set_selectpanel(ctrlName, adc_or_dac, chn, param)
+//			else
+//				itc_update_chninfo("", 11)
+//			endif
 			break
 		case -1: // control being killed
 			break

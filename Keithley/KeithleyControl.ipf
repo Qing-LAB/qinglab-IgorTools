@@ -1873,11 +1873,11 @@ Function kcontrol_setuserfunc(cba) : CheckBoxControl
 					FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 						Make /FREE /N=0 tmpwave
-						userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
+						//userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
 
 						if(userfunc_ret!=0) //user function cannot init properly
 							sprintf tmpstr, "User function %s cannot initialize properly with return code %d... user function is removed.", usrfuncname, userfunc_ret
-							itc_updatenb(tmpstr)
+							//itc_updatenb(tmpstr)
 							checked=0
 							usrfuncname=""
 						endif
@@ -1893,6 +1893,9 @@ Function kcontrol_setuserfunc(cba) : CheckBoxControl
 	endswitch
 	CheckBox kcontrol_userfunc, win=KeithleyControl, userdata(USER_FUNC)=usrfuncname
 	return 0
+End
+
+Function prototype_userdataprocessfunc()
 End
 
 Function kcontrol_paste_procedure_code(prototypename, newfunc_name)

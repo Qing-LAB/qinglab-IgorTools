@@ -1,4 +1,4 @@
-General information
+﻿General information
 
 The LIH_XOP is an Igor external operation (XOP) that adds functions
 for controlling the HEKA LIH 8+8 and LIH 1600 or Instrutech's ITC-16 
@@ -6,7 +6,7 @@ and ITC-18 AD/DA converters from an Igor procedure or from Igor's
 command line.
 
 It uses the Windows dynamic link library "EPCdll.dll" and therefore 
-only works on Windows computers. This version of LIH_6XOP requires 
+only works on Windows computers. This version of LIH_XOP requires 
 Igor Pro 6.2 or later.
 
 
