@@ -251,8 +251,12 @@ Function ITC_init()
 	String adcscaleunit=WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit")
 		
 	Make /O /D /N=(ItemsInList(ITC_TelegraphList)-1) $telegraphassignment=-1; AbortOnRTE
-	Make /O /D /N=8 $adcscalefactor=1; AbortOnRTE
-	Make /O /T /N=8 $adcscaleunit="V"; AbortOnRTE
+
+	Make /O /D /N=9 $adcscalefactor=1; AbortOnRTE
+
+	Make /O /T /N=9 $adcscaleunit="V"; AbortOnRTE
+	WAVE /T wscaleunit=$adcscaleunit
+	wscaleunit[8]="N/A"
 
 	NVAR chnongainbinflag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag"); AbortOnRTE
 	chnongainbinflag=0
@@ -275,23 +279,24 @@ Function ITC_init()
 	CheckBox itc_cb_userfunc win=ITCPanel, title="USER_FUNC", pos={335, 32},proc=itc_cbproc_setuserfunc
 	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={310,16},value=_STR:"",proc=itc_quicknote
 	
-	GroupBox itc_grp_ADC win=ITCPanel,title="ADCs",pos={20,50},size={90,190}
-	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={40,75},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "0")
-	CheckBox itc_cb_adc1  win=ITCPanel,title="ADC1",pos={40,95},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "1")
-	CheckBox itc_cb_adc2  win=ITCPanel,title="ADC2",pos={40,115},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "2")
-	CheckBox itc_cb_adc3  win=ITCPanel,title="ADC3",pos={40,135},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "3")
-	CheckBox itc_cb_adc4  win=ITCPanel,title="ADC4",pos={40,155},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "4")
-	CheckBox itc_cb_adc5  win=ITCPanel,title="ADC5",pos={40,175},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "5")
-	CheckBox itc_cb_adc6  win=ITCPanel,title="ADC6",pos={40,195},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "6")
-	CheckBox itc_cb_adc7  win=ITCPanel,title="ADC7",pos={40,215},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "7")
+	GroupBox itc_grp_ADC win=ITCPanel,title="ADCs",pos={20,50},size={90,195}
+	CheckBox itc_cb_adc0  win=ITCPanel,title="ADC0",pos={35,65},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "0")
+	CheckBox itc_cb_adc1  win=ITCPanel,title="ADC1",pos={35,85},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "1")
+	CheckBox itc_cb_adc2  win=ITCPanel,title="ADC2",pos={35,105},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "2")
+	CheckBox itc_cb_adc3  win=ITCPanel,title="ADC3",pos={35,125},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "3")
+	CheckBox itc_cb_adc4  win=ITCPanel,title="ADC4",pos={35,145},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "4")
+	CheckBox itc_cb_adc5  win=ITCPanel,title="ADC5",pos={35,165},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "5")
+	CheckBox itc_cb_adc6  win=ITCPanel,title="ADC6",pos={35,185},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "6")
+	CheckBox itc_cb_adc7  win=ITCPanel,title="ADC7",pos={35,205},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "7")
+	CheckBox itc_cb_adc16  win=ITCPanel,title="DIGI_IN",pos={35,225},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("adc#", ReplaceString("ADC#", ITC_ADCChnDefault, "DIGI_IN", 1), "digi_in", 1)
 	
-	GroupBox itc_grp_DAC win=ITCPanel,title="DACs",pos={20,245},size={90,110}
-	CheckBox itc_cb_dac0  win=ITCPanel,title="DAC0",pos={40,270},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "0")
-	CheckBox itc_cb_dac1  win=ITCPanel,title="DAC1",pos={40,290},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "1")
-	CheckBox itc_cb_dac2  win=ITCPanel,title="DAC2",pos={40,310},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "2")
-	CheckBox itc_cb_dac3  win=ITCPanel,title="DAC3",pos={40,330},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "3")
+	GroupBox itc_grp_DAC win=ITCPanel,title="DACs",pos={20,245},size={90,115}
+	CheckBox itc_cb_dac0  win=ITCPanel,title="DAC0",pos={35,260},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "0")
+	CheckBox itc_cb_dac1  win=ITCPanel,title="DAC1",pos={35,280},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "1")
+	CheckBox itc_cb_dac2  win=ITCPanel,title="DAC2",pos={35,300},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "2")
+	CheckBox itc_cb_dac3  win=ITCPanel,title="DAC3",pos={35,320},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "3")
+	CheckBox itc_cb_dac8  win=ITCPanel,title="DIGI_OUT",pos={35,340},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("DAC#", ITC_DACChnDefault, "DIGI_OUT", 1)
 	
-	///TODO
 	Button itc_btn_telegraph win=ITCPanel,title="Scale&Telegraph",pos={5,360},size={110,20},proc=itc_btnproc_telegraph
 	Button itc_btn_setsealtest win=ITCPanel,title="Setup seal test",pos={5,380},size={110,20}, proc=itc_btnproc_sealtest
 	Button itc_btn_displastrecord win=ITCPanel,title="Last recording",pos={5,400},size={110,20},proc=itc_btnproc_lastrecord
@@ -299,9 +304,7 @@ Function ITC_init()
 	
 	Edit /HOST=ITCPanel /N=itc_tbl_adclist /W=(120, 60, 590, 265) as "ADC list" 
 	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 590, 410) as "DAC list"
-
-	///TODO
-	
+		
 	debugstr=" "
 	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,419},fixedSize=1,frame=2,size={470,22},fColor=(32768,0,0)
 	
@@ -321,15 +324,15 @@ Function ITC_init()
 	ValDisplay itc_vd_rtadc6 win=ITCPanel,title="ADC6",pos={700,200},size={90,16},format="%8.6f",value=_NUM:0
 	ValDisplay itc_vd_rtadc7 win=ITCPanel,title="ADC7",pos={700,220},size={90,16},format="%8.6f",value=_NUM:0
 	
-	GroupBox itc_grp_rtdigital win=ITCPanel,title="RealTime Digital", pos={600,250},size={195, 40}
-	CheckBox itc_cb_dig0  win=ITCPanel,title="",pos={620,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig1  win=ITCPanel,title="",pos={640,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig2  win=ITCPanel,title="",pos={660,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig3  win=ITCPanel,title="",pos={680,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig4  win=ITCPanel,title="",pos={700,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig5  win=ITCPanel,title="",pos={720,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig6  win=ITCPanel,title="",pos={740,270},proc=itc_cbproc_digitals
-	CheckBox itc_cb_dig7  win=ITCPanel,title="",pos={760,270},proc=itc_cbproc_digitals
+	GroupBox itc_grp_rtdigital win=ITCPanel,title="RealTime Digital", pos={593,250},size={205, 45}
+	CheckBox itc_cb_digital0  win=ITCPanel,title="0",pos={598,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital1  win=ITCPanel,title="1",pos={623,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital2  win=ITCPanel,title="2",pos={648,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital3  win=ITCPanel,title="3",pos={673,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital4  win=ITCPanel,title="4",pos={698,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital5  win=ITCPanel,title="5",pos={723,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital6  win=ITCPanel,title="6",pos={748,270},proc=itc_cbproc_digitals
+	CheckBox itc_cb_digital7  win=ITCPanel,title="7",pos={773,270},proc=itc_cbproc_digitals
 	
 	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(600,300,795,440)
 	Notebook ITCPanel#ITCPanelLog writeProtect=1,fSize=8,magnification=125
@@ -1041,16 +1044,20 @@ Function itc_update_chninfo(windowname, event)
 	Variable i, j
 	
 	try
-		Make /N=8/O/T $adc_chn_wname;AbortOnRTE
+		Make /N=9/O/T $adc_chn_wname;AbortOnRTE
 		WAVE /T textw=$adc_chn_wname
 		for(i=0; i<8; i+=1)
 			textw[i]="ADC"+num2istr(i);AbortOnRTE
 		endfor
-		Make /N=4/O/T $dac_chn_wname;AbortOnRTE
+		textw[8]="DIGITAL_IN"; AbortOnRTE
+		
+		Make /N=5/O/T $dac_chn_wname;AbortOnRTE
 		WAVE /T textw=$dac_chn_wname
 		for(i=0; i<4; i+=1)
 			textw[i]="DAC"+num2istr(i);AbortOnRTE
 		endfor
+		textw[4]="DIGITAL_OUT"; AbortOnRTE
+		
 		Variable c=NumberByKey("COLUMNS", TableInfo("ITCPanel#itc_tbl_adclist", -2), ":", ";")
 		for(i=1; i<c; i+=1)
 			RemoveFromTable /W=ITCPanel#itc_tbl_adclist WaveRefIndexed("ITCPanel#itc_tbl_adclist", 0, 1);AbortOnRTE
@@ -1063,9 +1070,9 @@ Function itc_update_chninfo(windowname, event)
 		AppendToTable /W=ITCPanel#itc_tbl_adclist $adc_chn_wname;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_daclist $dac_chn_wname;AbortOnRTE
 		
-		Make /N=8/O/T $adc_chndestfolder_wname;AbortOnRTE
+		Make /N=9/O/T $adc_chndestfolder_wname;AbortOnRTE
 		WAVE /T wadcdestfolder=$adc_chndestfolder_wname
-		Make /N=8/O/T $adc_chndestwave_wname;AbortOnRTE
+		Make /N=9/O/T $adc_chndestwave_wname;AbortOnRTE
 		WAVE /T wadcdestwave=$adc_chndestwave_wname
 		String ctrlname=""
 		String param=""
@@ -1078,10 +1085,12 @@ Function itc_update_chninfo(windowname, event)
 
 		String ChnListStr=""; //this is to keep track of selected channels
 			
-		for(i=0; i<8; i+=1)
-		
-			ctrlname="itc_cb_adc"+num2istr(i)
-			
+		for(i=0; i<9; i+=1)
+			if(i<8)
+				ctrlname="itc_cb_adc"+num2istr(i)
+			else
+				ctrlname="itc_cb_adc16" //DIGITAL INPUT CHANNE
+			endif
 			itc_get_adc_scale_factor(ctrlname, telegraph, scalefactor, scaleunit, param=param)
 			
 			if(telegraph!=1) // telegraph is enabled
@@ -1107,22 +1116,28 @@ Function itc_update_chninfo(windowname, event)
 					ChnListStr+=ctrlname+";"
 				endif
 			endif
-			CheckBox $ctrlname, win=ITCPanel, userdata(param)=param; AbortOnRTE			
+			
+			CheckBox $ctrlname, win=ITCPanel, userdata(param)=param; AbortOnRTE
+			
 		endfor
 		
 		GroupBox itc_grp_ADC win=ITCPanel, userdata(selected)=num2istr(CountADC), userdata(selected_list)=ChnListStr;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_adclist $adc_chndestfolder_wname;AbortOnRTE
 		AppendToTable /W=ITCPanel#itc_tbl_adclist $adc_chndestwave_wname;AbortOnRTE
 		
-		Make /N=4/O/T $dac_chnsrcfolder_wname;AbortOnRTE
+		Make /N=5/O/T $dac_chnsrcfolder_wname;AbortOnRTE
 		WAVE /T wdacsrcfolder=$dac_chnsrcfolder_wname
-		Make /N=4/O/T $dac_chnsrcwave_wname;AbortOnRTE
+		Make /N=5/O/T $dac_chnsrcwave_wname;AbortOnRTE
 		WAVE /T wdacsrcwave=$dac_chnsrcwave_wname
 
 		ChnListStr=""; //this is to keep track of selected channels
 		
-		for(i=0; i<4; i+=1)
-			ctrlname="itc_cb_dac"+num2istr(i)
+		for(i=0; i<5; i+=1)
+			if(i<4)
+				ctrlname="itc_cb_dac"+num2istr(i)
+			else
+				ctrlname="itc_cb_dac8" //DIGITAL OUTPUT
+			endif
 			param=GetUserData("ITCPanel", ctrlname, "param"); AbortOnRTE
 			s1=StringByKey("DATAFOLDER", param, "=", ";"); AbortOnRTE
 			if(strlen(s1)<=0)
@@ -1156,10 +1171,17 @@ Function itc_update_chninfo(windowname, event)
 		WAVE /T wavepaths=$adcdatawavepath; AbortOnRTE
 		// to do get read length, set up the wave to the proper length
 		j=0
-		for(i=0; i<8; i+=1)
-			ControlInfo /W=ITCPanel $("itc_cb_adc"+num2istr(i))
+		Variable chn_num
+		for(i=0; i<9; i+=1)
+			if(i<8)
+				ControlInfo /W=ITCPanel $("itc_cb_adc"+num2istr(i))
+				chn_num=i
+			else
+				ControlInfo /W=ITCPanel $("itc_cb_adc16")
+				chn_num=16
+			endif
 			if(V_value==1)
-				chnlist[j]=i; AbortOnRTE
+				chnlist[j]=chn_num; AbortOnRTE
 				wavepaths[j]=wadcdestfolder[i]+wadcdestwave[i]; AbortOnRTE
 				j+=1
 			endif
@@ -1175,10 +1197,16 @@ Function itc_update_chninfo(windowname, event)
 		Make /O /T /N=(countDAC) $dacdatawavepath=""; AbortOnRTE //"" means the user has not specified a wave for this DAC channel, this is the default
 		WAVE /T wavepaths=$dacdatawavepath
 		j=0
-		for(i=0; i<4; i+=1)
-			ControlInfo /W=ITCPanel $("itc_cb_dac"+num2istr(i))
+		for(i=0; i<5; i+=1)
+			if(i<4)
+				ControlInfo /W=ITCPanel $("itc_cb_dac"+num2istr(i))
+				chn_num=i
+			else
+				ControlInfo /W=ITCPanel $("itc_cb_dac8")
+				chn_num=8
+			endif
 			if(V_value==1)
-				chnlist[j]=i; AbortOnRTE
+				chnlist[j]=Chn_num; AbortOnRTE
 				wavepaths[j]=wdacsrcfolder[i]+wdacsrcwave[i]; AbortOnRTE
 				j+=1
 			endif
@@ -1243,45 +1271,25 @@ Function itc_cbproc_digitals(cba) : CheckBoxControl
 	Variable i
 	Variable instance=WBPkgDefaultInstance
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
-	NVAR digtals=$WBPkgGetName(fPath, WBPkgDFVar, "DigitalChannels"); AbortOnRTE
-
+	NVAR digitals=$WBPkgGetName(fPath, WBPkgDFVar, "DigitalChannels"); AbortOnRTE
+	int bitset=0
 	switch( cba.eventCode )
-	
-		case 2: // mouse up
-			Variable checked = cba.checked
-			
-//			String ctrlName=cba.ctrlName
-//			String param=GetUserData("ITCPanel", ctrlName, "param")
-//			param=ReplaceStringByKey("DATAFOLDER", param, "", "=", ";")
-//			param=ReplaceStringByKey("WAVENAME", param, "", "=", ";")
-//			
-//			Variable adc_or_dac=0, chn=-1
-//			strswitch(ctrlName[0,9])
-//				case "itc_cb_adc":
-//					adc_or_dac=1
-//					chn=str2num(ctrlName[10,inf])			
-//					break
-//				case "itc_cb_dac":
-//					adc_or_dac=2
-//					chn=str2num(ctrlName[10,inf])			
-//					break
-//				default:
-//					adc_or_dac=-1
-//					param=""
-//					break
-//			endswitch
-//			
-//			CheckBox $cba.ctrlName win=ITCPanel,userdata(param)=param
-//			if(checked==1)
-//				itc_set_selectpanel(ctrlName, adc_or_dac, chn, param)
-//			else
-//				itc_update_chninfo("", 11)
-//			endif
+		case 2: // mouse up			
+			for(i=0; i<=7; i+=1)
+				String ctrlname="itc_cb_digital"+num2istr(i)
+				ControlInfo /W=ITCPanel $ctrlname
+				if(V_value==1)
+					bitset+=1<<i
+				endif
+			endfor
+			digitals=bitset
+#ifndef ITCDEBUG
+			LIH_SetDigital(digitals)
+#endif
 			break
 		case -1: // control being killed
 			break
-	endswitch
-	
+	endswitch	
 	
 	return 0
 End
@@ -1463,13 +1471,13 @@ End
 
 Function StartITCTask()
 	Variable numTicks=ITCTASK_TICK
-	CtrlNamedBackground ITCBackgroundTask, period=numTicks,proc=ITCPanel#ITCBackgroundTask
-	CtrlNamedBackground ITCBackgroundTask,burst=0,dialogsOK=1
-	CtrlNamedBackground ITCBackgroundTask, start
+	CtrlNamedBackground itc_bgTask, period=numTicks,proc=ITCPanel#itc_bgTask
+	CtrlNamedBackground itc_bgTask,burst=0,dialogsOK=1
+	CtrlNamedBackground itc_bgTask, start
 End
 
 Function StopITCTask()
-	CtrlNamedBackground ITCBackgroundTask, stop
+	CtrlNamedBackground itc_bgTask, stop
 	
 #if !defined(ITCDEBUG)
 	LIH_Halt()
@@ -2186,8 +2194,12 @@ Function itc_update_taskinfo()
 		Variable telegraph, scalefactor
 		String scaleunit
 		String ctrlname
-		for(i=0; i<8; i+=1)
-			ctrlname="itc_cb_adc"+num2istr(i)
+		for(i=0; i<9; i+=1)
+			if(i<8)
+				ctrlname="itc_cb_adc"+num2istr(i)
+			else
+				ctrlname="itc_cb_adc16"
+			endif
 			itc_get_adc_scale_factor(ctrlname, telegraph, scalefactor, scaleunit); AbortOnRTE
 			if(telegraph!=1)
 				TelegraphAssignment[telegraph-2]=i; AbortOnRTE
@@ -2427,7 +2439,7 @@ Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cy
 	return ret_val
 End
 
-Function ITCBackgroundTask(s)
+Function itc_bgTask(s)
 	STRUCT WMBackgroundStruct &s
 	Variable tRefNum, tMicroSec
 	
@@ -2596,8 +2608,6 @@ Function ITCBackgroundTask(s)
 				endif
 				
 				Status = Status & ITCSTATUS_MASK //user function agrees to proceed, clear all internal flags
-
-
 				
 				for(i=0; i<selectedadc_number; i+=1)
 					ADCs.channels[i]=selectedadcchn[i]
@@ -2648,9 +2658,24 @@ Function ITCBackgroundTask(s)
 				itc_updatenb(tmpstr)
 				tmpstr=""
 				for(i=0; i<selectedadc_number; i+=1)
-					 tmpstr+="ADC Channel["+num2istr(selectedadcchn[i])+"] assigned to wave ["+adcdatawavepath[i]+"]; "
+					tmpstr+="ADC Channel["+num2istr(selectedadcchn[i])+"] assigned to wave ["+adcdatawavepath[i]+"]; "
+					
+					if(selectedadcchn[i]>7)
+						selectedadcchn[i]=8 //this is to keep the index for scale factor within range, and also the rtgraph update will use this to find the name of channel
+					endif
+				
 				endfor
 				itc_updatenb(tmpstr)
+				
+				tmpstr=""
+				for(i=0; i<selecteddac_number; i+=1)
+					tmpstr+="wave ["+dacdatawavepath[i]+"] assigned to DAC Channel ["+num2istr(selecteddacchn[i])+"]; "
+					if(selecteddacchn[i]>3)
+						selecteddacchn[i]=4
+					endif
+				endfor
+				itc_updatenb(tmpstr)
+				
 			else
 				//checking not passed
 				itc_updatenb("Error when preparing background task.", r=32768, g=0, b=0)
@@ -2763,7 +2788,7 @@ Function ITCBackgroundTask(s)
 			//now store data and decide if need to write to user spaces
 				saved_len=0; //the data may have crossed the end point of each cycle, so this var specifies how many points have been stored
 				if(ADCDataPointer+availablelen<RecordingSize) //the last point within RecordingSize-1, not including the last point is at RecordingSize-1
-
+					
 					multithread adcdata[ADCDataPointer, ADCDataPointer+availablelen-1][]=tmpread[p-ADCDataPointer][q]*adcscalefactor[selectedadcchn[q]]; AbortOnRTE //read is scaled immediately
 					
 					ADCDataPointer+=availablelen
