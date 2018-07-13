@@ -252,11 +252,14 @@ Constant WBPkgShouldExist=1
 
 Function /T WBSetupPackageDir(PackageName, [instance, existence]) //when error happens, return ""
 	String PackageName
-	Variable & instance
+	Variable & instance//when instance is not negative, the user asks for a specific instance
+							 //when instance is negative,
+							 //     if existance is -1, this means the user asks to create a new instance
+							 //     if existance is 1, this means the user asks to find the most recently created instance
 	Variable existence //when existence is -1, the user do not expect to see an exist folder
-							  //when existence is 0, the user do not care, but want to make sure folder is created
-							  //when existence is 1, the user expect the folder to exist, otherwise an error should be produced
-							  //by default, existence is set to -1
+							 //when existence is 0, the user do not care, but want to make sure folder is created
+							 //when existence is 1, the user expect the folder to exist, otherwise an error should be produced
+							 //by default, existence is set to 1 
 	Variable createNew=0 // flag for creating new data folder
 	Variable idx
 	String fullPath=""
@@ -271,17 +274,22 @@ Function /T WBSetupPackageDir(PackageName, [instance, existence]) //when error h
 	endif
 	
 	if(instance<0) //if instance is set to negative, means user want to find a new instance slot
-		if(existence!=-1)
-			print "existence should be set to -1 when requesting a new instance for package "+PackageName
-			AbortOnValue -1,-1
-		endif
-
 		for(idx=0; idx<WBPkgMaxInstances; idx+=1)
 			fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
 			if(!DataFolderExists(fullPath))
 				break
 			endif
 		endfor
+		if(existence==1) //user asks to find the newest instance that should exist.
+			if(idx>0)
+				idx-=1
+			endif
+		elseif(existence==-1)//the user asks to create a new instance
+			//keep idx value because this is an available name for the new instance
+		else
+			print "existance has to be set to either 1 or -1 when instance is set to negative."
+			AbortOnValue -1, -1
+		endif
 		
 		if(idx>=WBPkgMaxInstances)
 			print "Trying to create too many instances for package "+fullPath
@@ -360,9 +368,9 @@ Function WBPrepPackageWaves(fullPath, wlist, [text, datatype])
 	return retVal
 End
 
-Function WBPrepPackageVars(fullPath, vlist, [complex])
+Function WBPrepPackageVars(fullPath, vlist, [complx])
 	String fullPath, vlist
-	Variable complex
+	Variable complx
 
 	Variable c
 	String s
@@ -372,7 +380,7 @@ Function WBPrepPackageVars(fullPath, vlist, [complex])
 		for(c=ItemsInList(vlist)-1;c>=0; c-=1)
 			s=fullPath+"vars:"+PossiblyQuoteName(StringFromList(c, vlist))
 			//AbortOnValue exists(s)!=0, -1
-			if(ParamIsDefault(complex))
+			if(ParamIsDefault(complx))
 				Variable /G $s; AbortOnRTE
 			else
 				Variable /G /C $s; AbortOnRTE
