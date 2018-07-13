@@ -275,8 +275,8 @@ Function ITC_init()
 	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={600, 10},size={190,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
 	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 		
-	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={420,8},size={120,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
-	CheckBox itc_cb_forceInit win=ITCPanel, title="force init", pos={540, 8}, size={50, 40}
+	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={420,8},size={140,25},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
+	CheckBox itc_cb_forcereset win=ITCPanel, title="force reset", pos={440, 35}, size={50, 20}
 	
 	CheckBox itc_cb_userfunc win=ITCPanel, title="USER_FUNC", pos={335, 32},proc=itc_cbproc_setuserfunc
 	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={310,16},value=_STR:"",proc=itc_quicknote
@@ -2009,11 +2009,13 @@ Function itc_update_controls(runstatus)
 			cb_disable=str2num(StringByKey("DISABLE", GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param"), "=", ";"))
 			CheckBox $("itc_cb_adc"+num2istr(i)) win=ITCPanel,disable=cb_disable
 		endfor
+		CheckBox itc_cb_adc16 win=ITCPanel,disable=0
 	
 		CheckBox itc_cb_dac0  win=ITCPanel,disable=0
 		CheckBox itc_cb_dac1  win=ITCPanel,disable=0
 		CheckBox itc_cb_dac2  win=ITCPanel,disable=0
-		CheckBox itc_cb_dac3  win=ITCPanel,disable=0	
+		CheckBox itc_cb_dac3  win=ITCPanel,disable=0
+		CheckBox itc_cb_dac8  win=ITCPanel,disable=0	
 		
 		Button itc_btn_telegraph win=ITCPanel,disable=0
 		Button itc_btn_setsealtest win=ITCPanel,disable=0
@@ -2059,11 +2061,13 @@ Function itc_update_controls(runstatus)
 		CheckBox itc_cb_adc5  win=ITCPanel,disable=2
 		CheckBox itc_cb_adc6  win=ITCPanel,disable=2
 		CheckBox itc_cb_adc7  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc16 win=ITCPanel,disable=2
 	
 		CheckBox itc_cb_dac0  win=ITCPanel,disable=2
 		CheckBox itc_cb_dac1  win=ITCPanel,disable=2
 		CheckBox itc_cb_dac2  win=ITCPanel,disable=2
 		CheckBox itc_cb_dac3  win=ITCPanel,disable=2
+		CheckBox itc_cb_dac8  win=ITCPanel,disable=2
 
 		Button itc_btn_telegraph win=ITCPanel,disable=2
 		Button itc_btn_setsealtest win=ITCPanel,disable=2
@@ -2566,21 +2570,30 @@ Function itc_bgTask(s)
 				Status = Status | ITCSTATUS_ALLOWINIT
 			endif
 			
+			ControlInfo /W=ITCPanel itc_cb_forcereset
+			if(V_Value==1)
 #if defined(ITCDEBUG)
-			success=0
+				success=0
 #else
-			if((Status & ITCSTATUS_ALLOWINIT)!=0 && (Status & ITCSTATUS_INITDONE)==0) //allow init, and not inited before
-				success=LIH_InitInterface(errMsg, itcmodel)
-				Status = Status | ITCSTATUS_INITDONE //mask this so that init is only called once
-				if(success!=0)
-					sprintf tmpstr, "Initialization of the ITC failed with message: %s", errMsg
-					itc_updatenb(tmpstr, r=32768, g=0, b=0)
-					AbortOnValue 1, 999
-				else
-					itc_updatenb("ITC initialized for starting acquisition.")
+				if((Status & ITCSTATUS_ALLOWINIT)!=0 && (Status & ITCSTATUS_INITDONE)==0) //allow init, and not inited before
+					success=LIH_InitInterface(errMsg, itcmodel)
+					Status = Status | ITCSTATUS_INITDONE //mask this so that init is only called once
+					if(success!=0)
+						sprintf tmpstr, "Initialization of the ITC failed with message: %s", errMsg
+						itc_updatenb(tmpstr, r=32768, g=0, b=0)
+						AbortOnValue 1, 999
+					else
+						itc_updatenb("ITC initialized (reset) for starting acquisition.")
+					endif
 				endif
-			endif
 #endif
+			else
+				Status = Status | ITCSTATUS_INITDONE
+				Checkbox itc_cb_forcereset win=ITCPanel, value=0 //stop resetting next time.
+				itc_updatenb("ITC skipped initialization/resetting.")
+				success=0
+			endif
+
 
 			if(itc_update_taskinfo()==0) //will reload dac data too
 				//checking passed, waves and variables have been prepared etc.
