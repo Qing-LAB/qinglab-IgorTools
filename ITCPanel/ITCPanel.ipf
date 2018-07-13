@@ -275,7 +275,9 @@ Function ITC_init()
 	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={600, 10},size={190,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
 	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 		
-	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={440,8},size={140,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
+	Button itc_btn_start win=ITCPanel,title="Start Acquisition",pos={420,8},size={120,40},fcolor=(0,65535,0),proc=itc_btnproc_startacq,userdata(status)="0"
+	CheckBox itc_cb_forceInit win=ITCPanel, title="force init", pos={540, 8}, size={50, 40}
+	
 	CheckBox itc_cb_userfunc win=ITCPanel, title="USER_FUNC", pos={335, 32},proc=itc_cbproc_setuserfunc
 	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,30},size={310,16},value=_STR:"",proc=itc_quicknote
 	
@@ -2170,8 +2172,9 @@ Function itc_update_taskinfo()
 		endif
 		Make /O /D /N=(recordingsize, countADC) $adcdata=0; AbortOnRTE
 		
-		if(countDAC==0) //if no DAC is selected, dac0 will be used for the task, and it will hold a constant vlaue as set by the 
-							//realtime dac setvariable control
+		if(countDAC==0) //if no DAC is selected, dac0 will be used for the task, and it will hold a constant value as set by the 
+							 //realtime dac setvariable control
+							 //THE DIGITAL CHANNEL BY DEFAULT WILL RESET TO ALL ZEROES IF NOT SELECTED
 			ControlInfo /W=ITCPanel itc_sv_rtdac0	
 			Make /O /D /N=(recordingsize, 1) $dacdata=V_Value; AbortOnRTE
 		else
