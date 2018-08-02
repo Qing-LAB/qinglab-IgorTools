@@ -2030,6 +2030,7 @@ Function itc_update_controls(runstatus)
 		SetVariable itc_sv_rtdac1 win=ITCPanel,disable=0
 		SetVariable itc_sv_rtdac2 win=ITCPanel,disable=0
 		SetVariable itc_sv_rtdac3 win=ITCPanel,disable=0
+		
 		GroupBox itc_grp_rtadc win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc0 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc1 win=ITCPanel,disable=0
@@ -2039,13 +2040,25 @@ Function itc_update_controls(runstatus)
 		ValDisplay itc_vd_rtadc5 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc6 win=ITCPanel,disable=0
 		ValDisplay itc_vd_rtadc7 win=ITCPanel,disable=0
+		
 		CheckBox itc_cb_userfunc win=ITCPanel, disable=0
+		CheckBox itc_cb_forcereset win=ITCPanel, disable=0
+		
+		GroupBox itc_grp_rtdigital win=ITCPanel, disable=0
+		CheckBox itc_cb_digital0  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital1  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital2  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital3  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital4  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital5  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital6  win=ITCPanel,disable=0
+		CheckBox itc_cb_digital7  win=ITCPanel,disable=0
 		
 		SetWindow ITCPanel#itc_tbl_adclist hide=0,needUpdate=1;DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=0,needUpdate=1;DoUpdate
 		itc_rtgraph_quit()
 		
-		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(600,250,795,440); DoUpdate
+		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(600,300,795,440); DoUpdate
 		DoUpdate /W=ITCPanel
 	else
 	//running
@@ -2082,6 +2095,7 @@ Function itc_update_controls(runstatus)
 		SetVariable itc_sv_rtdac1 win=ITCPanel,disable=1
 		SetVariable itc_sv_rtdac2 win=ITCPanel,disable=1
 		SetVariable itc_sv_rtdac3 win=ITCPanel,disable=1
+		
 		GroupBox itc_grp_rtadc win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc0 win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc1 win=ITCPanel,disable=1
@@ -2092,7 +2106,18 @@ Function itc_update_controls(runstatus)
 		ValDisplay itc_vd_rtadc6 win=ITCPanel,disable=1
 		ValDisplay itc_vd_rtadc7 win=ITCPanel,disable=1
 		
+		GroupBox itc_grp_rtdigital win=ITCPanel, disable=1
+		CheckBox itc_cb_digital0  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital1  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital2  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital3  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital4  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital5  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital6  win=ITCPanel,disable=1
+		CheckBox itc_cb_digital7  win=ITCPanel,disable=1
+		
 		CheckBox itc_cb_userfunc win=ITCPanel, disable=2
+		CheckBox itc_cb_forcereset win=ITCPanel, disable=2
 		
 		SetWindow ITCPanel#itc_tbl_adclist hide=1,needUpdate=1; DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=1,needUpdate=1; DoUpdate
