@@ -1,0 +1,16 @@
+https://www.wavemetrics.com/project/SOCKIT
+
+
+SOCKIT - a TCP/IP client for speaking and listening to network sockets using IGOR Pro
+andyfaff
+
+Mon, 03/17/2008 - 02:24 pm
+SOCKIT provides TCP/IP (IPv4/IPv6) network socket communication between a server and IGOR Pro (the client).
+
+One can connect to a server then send and receive string messages with it. A string is just a collection of bytes, so you can send any collection of data you want.
+The received messages are buffered to a text wave (optionally printed in the history window). One can also provide a 'processor function', which acts as an event handler for the message. One example of the processor function could be to act as a parser for Igor commands.
+
+Both synchronous and asynchronous communications are possible, as well as threadsafe communication.
+
+Project CVS: 	http://svn.igorexchange.com/viewvc/packages/SOCKIT/
+
