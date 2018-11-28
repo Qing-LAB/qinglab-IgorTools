@@ -193,24 +193,32 @@ Function KeithleyPanelInit()
 	TitleBox smu_result1 win=KeithleyControl,title="test",variable=$(fullPackagePath+":"+kcontrol_SMURTUpdateStrPrefix+"1")
 	TitleBox smu_result1 win=KeithleyControl,fixedsize=1,fsize=12,pos={20, 350},size={220, 75}
 	
+	Variable itcflag=0
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning))
+		if(itcrunning!=0)
+			itcflag=1
+		endif
+	endif
 	
-	CheckBox itc_adc0  win=KeithleyControl,title="ADC0",pos={50,150},proc=itc_setadc
-	CheckBox itc_adc1  win=KeithleyControl,title="ADC1",pos={50,170},proc=itc_setadc
-	CheckBox itc_adc2  win=KeithleyControl,title="ADC2",pos={50,190},proc=itc_setadc
-	CheckBox itc_adc3  win=KeithleyControl,title="ADC3",pos={50,210},proc=itc_setadc
-	CheckBox itc_adc4  win=KeithleyControl,title="ADC4",pos={50,230},proc=itc_setadc
-	CheckBox itc_adc5  win=KeithleyControl,title="ADC5",pos={50,250},proc=itc_setadc
-	CheckBox itc_adc6  win=KeithleyControl,title="ADC6",pos={50,270},proc=itc_setadc
-	CheckBox itc_adc7  win=KeithleyControl,title="ADC7",pos={50,290},proc=itc_setadc
-	
-	SetVariable itc_TTL_pre win=KeithleyControl,format="%04b",limits={0,15,1},value=_NUM:15,title="TTL OUT before experiment",size={200,20},pos={50, 310}
-	SetVariable itc_TTL_out win=KeithleyControl,format="%04b",limits={0,15,1},value=_NUM:0,title="TTL OUT during experiment",size={200,20},pos={50, 330}
-	SetVariable itc_TTL_post win=KeithleyControl,format="%04b",limits={0,15,1},value=_NUM:15,title="TTL OUT after experiment  ",size={200,20},pos={50, 350}
-	
-	CheckBox itc_enabled  win=KeithleyControl,title="ITC I/O enabled",pos={20,120},proc=itc_setadc
-	
-	SetVariable itc_wname title="Save ITC Data to",value=_STR:"",size={200,20}, pos={50, 380}
-	
+	if(itcflag==0)
+		CheckBox itc_adc0  win=KeithleyControl,title="ADC0",pos={50,150},proc=itc_setadc
+		CheckBox itc_adc1  win=KeithleyControl,title="ADC1",pos={50,170},proc=itc_setadc
+		CheckBox itc_adc2  win=KeithleyControl,title="ADC2",pos={50,190},proc=itc_setadc
+		CheckBox itc_adc3  win=KeithleyControl,title="ADC3",pos={50,210},proc=itc_setadc
+		CheckBox itc_adc4  win=KeithleyControl,title="ADC4",pos={50,230},proc=itc_setadc
+		CheckBox itc_adc5  win=KeithleyControl,title="ADC5",pos={50,250},proc=itc_setadc
+		CheckBox itc_adc6  win=KeithleyControl,title="ADC6",pos={50,270},proc=itc_setadc
+		CheckBox itc_adc7  win=KeithleyControl,title="ADC7",pos={50,290},proc=itc_setadc
+		
+		SetVariable itc_TTL_pre win=KeithleyControl,format="%04b",limits={0,15,1},value=_NUM:15,title="TTL OUT before experiment",size={200,20},pos={50, 310}
+		SetVariable itc_TTL_out win=KeithleyControl,format="%04b",limits={0,15,1},value=_NUM:0,title="TTL OUT during experiment",size={200,20},pos={50, 330}
+		SetVariable itc_TTL_post win=KeithleyControl,format="%04b",limits={0,15,1},value=_NUM:15,title="TTL OUT after experiment  ",size={200,20},pos={50, 350}
+		
+		CheckBox itc_enabled  win=KeithleyControl,title="ITC I/O enabled",pos={20,120},proc=itc_setadc
+		
+		SetVariable itc_wname title="Save ITC Data to",value=_STR:"",size={200,20}, pos={50, 380}
+	endif
 	kcontrol_smu_tab_state(tab=0)
 	kcontrol_UpdateSMU(0)	
 	kcontrol_UpdateSMU(1)
@@ -482,20 +490,30 @@ Function kcontrol_smu_tab_state([tab])
 	TitleBox smu_result0 win=KeithleyControl,disable=l4
 	TitleBox smu_result1 win=KeithleyControl,disable=l4
 	
-	CheckBox itc_adc0  win=KeithleyControl,disable=l5
-	CheckBox itc_adc1  win=KeithleyControl,disable=l5
-	CheckBox itc_adc2  win=KeithleyControl,disable=l5
-	CheckBox itc_adc3  win=KeithleyControl,disable=l5
-	CheckBox itc_adc4  win=KeithleyControl,disable=l5
-	CheckBox itc_adc5  win=KeithleyControl,disable=l5
-	CheckBox itc_adc6  win=KeithleyControl,disable=l5
-	CheckBox itc_adc7  win=KeithleyControl,disable=l5
-
-	SetVariable itc_TTL_pre win=KeithleyControl,disable=l5
-	SetVariable itc_TTL_out win=KeithleyControl,disable=l5
-	SetVariable itc_TTL_post win=KeithleyControl,disable=l5
-	CheckBox itc_enabled win=KeithleyControl,disable=l5
-	SetVariable itc_wname win=KeithleyControl,disable=l5
+	Variable itcflag=0
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning))
+		if(itcrunning!=0)
+			itcflag=1
+		endif
+	endif
+	
+	if(itcflag==0)
+		CheckBox itc_adc0  win=KeithleyControl,disable=l5
+		CheckBox itc_adc1  win=KeithleyControl,disable=l5
+		CheckBox itc_adc2  win=KeithleyControl,disable=l5
+		CheckBox itc_adc3  win=KeithleyControl,disable=l5
+		CheckBox itc_adc4  win=KeithleyControl,disable=l5
+		CheckBox itc_adc5  win=KeithleyControl,disable=l5
+		CheckBox itc_adc6  win=KeithleyControl,disable=l5
+		CheckBox itc_adc7  win=KeithleyControl,disable=l5
+	
+		SetVariable itc_TTL_pre win=KeithleyControl,disable=l5
+		SetVariable itc_TTL_out win=KeithleyControl,disable=l5
+		SetVariable itc_TTL_post win=KeithleyControl,disable=l5
+		CheckBox itc_enabled win=KeithleyControl,disable=l5
+		SetVariable itc_wname win=KeithleyControl,disable=l5
+	endif
 End
 
 Function KeithleyPanelShutdown()
@@ -1340,6 +1358,13 @@ End
 Function itc_check(stage)
 	Variable stage
 	
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning))
+		if(itcrunning!=0)
+			return -1
+		endif
+	endif
+	
 	String ErrMsg=""
 	
 	if(stage==0)
@@ -1597,6 +1622,14 @@ End
 
 Function itc_preparedata(r)
 	Variable r
+	
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning))
+		if(itcrunning!=0)
+			return -1
+		endif
+	endif
+	
 	WAVE itc_chn=$"root:RTITCchn"
 	
 	if(WaveExists(itc_chn))
@@ -1609,6 +1642,13 @@ End
 
 Function itc_getdata(count, d)
 	variable count, d
+	
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning))
+		if(itcrunning!=0)
+			return -1
+		endif
+	endif
 	
 	WAVE itc_chn=$"root:RTITCchn"
 	
@@ -1795,6 +1835,13 @@ End
 Function itc_setadc(cba) : CheckBoxControl
 	STRUCT WMCheckboxAction &cba
 
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning))
+		if(itcrunning!=0)
+			return -1
+		endif
+	endif
+	
 	ControlInfo /W=KeithleyControl itc_enabled
 	if(V_Value)
 		variable i
@@ -1870,7 +1917,7 @@ Function kcontrol_setuserfunc(cba) : CheckBoxControl
 				else
 					Variable userfunc_ret=0
 					String tmpstr=""
-					FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
+					FUNCREF prototype_keithleydataprocessfunc refFunc=$usrfuncname
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 						Make /FREE /N=0 tmpwave
 						//userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
@@ -1895,7 +1942,7 @@ Function kcontrol_setuserfunc(cba) : CheckBoxControl
 	return 0
 End
 
-Function prototype_userdataprocessfunc()
+Function prototype_keithleydataprocessfunc()
 End
 
 Function kcontrol_paste_procedure_code(prototypename, newfunc_name)
