@@ -161,6 +161,13 @@ Function ITC_init()
 		return -1
 	endif
 	
+	if(exists("root:ITCPanelRunning")!=2)
+		Variable /G root:ITCPanelRunning=1
+	else
+		NVAR itcrunning=root:ITCPanelRunning
+		itcrunning=1
+	endif 
+	
 	String fPath=ITC_setup_directory()
 	
 	String operatorname="unknown", experimenttitle="unknown"
@@ -1020,6 +1027,13 @@ Function ITC_Quit()
 	killwin("ITCPanel")
 	killwin("ITCTelegraph")
 
+	if(exists("root:ITCPanelRunning")!=2)
+		Variable /G root:ITCPanelRunning=0
+	else
+		NVAR itcrunning=root:ITCPanelRunning
+		itcrunning=0
+	endif
+	
 	print "ITCPanel closed."
 End
 
