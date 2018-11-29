@@ -1917,7 +1917,7 @@ Function kcontrol_setuserfunc(cba) : CheckBoxControl
 				else
 					Variable userfunc_ret=0
 					String tmpstr=""
-					FUNCREF prototype_keithleydataprocessfunc refFunc=$usrfuncname
+					FUNCREF prototype_kdataprocessfunc refFunc=$usrfuncname
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 						Make /FREE /N=0 tmpwave
 						//userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
@@ -1942,7 +1942,7 @@ Function kcontrol_setuserfunc(cba) : CheckBoxControl
 	return 0
 End
 
-Function prototype_keithleydataprocessfunc()
+Function prototype_kdataprocessfunc()
 End
 
 Function kcontrol_paste_procedure_code(prototypename, newfunc_name)
