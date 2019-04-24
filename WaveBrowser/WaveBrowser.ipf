@@ -27,8 +27,8 @@
 #include <WaveSelectorWidget>
 #include <PopupWaveSelector>
 
-Constant WBFOLDERMUSTEXIST=0x01
-Constant WBWAVEMUSTEXIST=0x02
+Constant WB_FOLDER_MUST_EXIST=0x01
+Constant WB_WAVE_MUST_EXIST=0x02
 
 Function WaveBrowser(panel_name, panel_title, positionx, positiony, title_folder, title_wave, options, initialfolder, initialname, callback_spec, [showWhat, nameFilter])
 	String panel_name, panel_title

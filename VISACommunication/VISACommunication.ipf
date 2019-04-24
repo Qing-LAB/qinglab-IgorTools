@@ -146,6 +146,7 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 	else
 		sessionINSTR=INSTR
 	endif
+	
 
 	return status
 End
