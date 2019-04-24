@@ -3,3 +3,6 @@ https://www.heka.com/products/products_main.html#soft_xops
 
 Download from:
 https://www.heka.com/downloads/downloads_main.html#down_xops
+
+Current version:
+0.9.2.3

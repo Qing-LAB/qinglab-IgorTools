@@ -60,8 +60,10 @@ StrConstant kcontrol_PackageFolderName="KeithleyControl"
 
 Constant kcontrol_MAX_LIMITI=1.5
 Constant kcontrol_MIN_LIMITI=1e-11
-Constant kcontrol_MAX_LIMITV=20
+Constant kcontrol_DEFAULT_LIMITI=1.5
+Constant kcontrol_MAX_LIMITV=200
 Constant kcontrol_MIN_LIMITV=0.001
+Constant kcontrol_DEFAULT_LIMITV=20
 StrConstant kcontrol_SOURCE_TYPE="Not Used;V-Source;I-Source;"
 StrConstant kcontrol_VOLTAGE_RANGE="Auto;200V;20V;2V;200mV;"
 StrConstant kcontrol_VOLTAGE_RANGE_VALUE="0.2;200;20;2;0.2;"
@@ -898,6 +900,7 @@ Function kcontrol_smu_setvar(sva) : SetVariableControl
 			case 2: // Enter key
 				strswitch(sva.ctrlName)
 				case "smu_limitv":
+					
 				case "smu_limiti":
 					kcontrol_UpdateSMULimit(smu, newcondition, 1)
 					break
@@ -999,8 +1002,8 @@ Function kcontrol_UpdateSMULimit(smu, condition, update_direction)
 	String & condition
 	Variable update_direction
 	
-	kcontrol_updatesetvar("smu_limitv", condition, "LIMITV", kcontrol_MAX_LIMITV, update_direction)
-	kcontrol_updatesetvar("smu_limiti", condition, "LIMITI", kcontrol_MAX_LIMITI, update_direction)
+	kcontrol_updatesetvar("smu_limitv", condition, "LIMITV", kcontrol_DEFAULT_LIMITV, update_direction)
+	kcontrol_updatesetvar("smu_limiti", condition, "LIMITI", kcontrol_DEFAULT_LIMITI, update_direction)
 End
 
 Function kcontrol_setAutoLowRange(pmenu, message, list, default_value)

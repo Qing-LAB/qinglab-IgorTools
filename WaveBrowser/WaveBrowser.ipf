@@ -233,11 +233,16 @@ End
 // will be used to check if the instance with that index exists. If so, the path will be returned. If not, an error will
 // be generated.
 //
-static Function /T wbgenerateDFName(root, packagename, instance)
+static Function /T wbgenerateDFName(root, packagename, instance, [package_name_only])
 	String root, packagename
 	Variable instance
+	Variable package_name_only
 	
-	return root+PossiblyQuoteName(PackageName)+":instance"+num2str(instance)+":"
+	if(package_name_only!=1)
+		return root+PossiblyQuoteName(PackageName)+":instance"+num2str(instance)+":"
+	else
+		return root+PossiblyQuoteName(PackageName)+":"
+	endif
 End
 
 
@@ -245,12 +250,14 @@ StrConstant WB_PackageRoot="root:Packages:"
 Constant WBPkgNewInstance=-1
 Constant WBPkgDefaultInstance=0
 Constant WBPkgMaxInstances=100
+StrConstant WB_InstanceCountName="maxInstanceRecord"
+StrConstant WB_InfoStringName="infoStr"
 
 Constant WBPkgExclusive=-1
 Constant WBPkgOverride=0
 Constant WBPkgShouldExist=1
 
-Function /T WBSetupPackageDir(PackageName, [instance, existence]) //when error happens, return ""
+Function /T WBSetupPackageDir(PackageName, [instance, existence, name]) //when error happens, return ""
 	String PackageName
 	Variable & instance//when instance is not negative, the user asks for a specific instance
 							 //when instance is negative,
@@ -259,14 +266,19 @@ Function /T WBSetupPackageDir(PackageName, [instance, existence]) //when error h
 	Variable existence //when existence is -1, the user do not expect to see an exist folder
 							 //when existence is 0, the user do not care, but want to make sure folder is created
 							 //when existence is 1, the user expect the folder to exist, otherwise an error should be produced
-							 //by default, existence is set to 1 
+							 //by default, existence is set to 1
+	String name
+	
 	Variable createNew=0 // flag for creating new data folder
 	Variable idx
 	String fullPath=""
 	
 	if(ParamIsDefault(existence))
 		existence=1
-	endif	
+	endif
+	if(ParamIsDefault(name))
+		name="Untitled"
+	endif
 
 	if(ParamIsDefault(instance)) //by default, instance is zero.
 		print "you have to specify a instance option for all calls to WBSetupPackageDir"
@@ -329,9 +341,54 @@ Function /T WBSetupPackageDir(PackageName, [instance, existence]) //when error h
 			print "Error when trying to create a new instance for package "+PackageName
 			AbortOnValue -1, -6
 		endif
+		
+		try
+			String tmpName=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InstanceCountName
+			NVAR maxInsRecord=$(tmpName)
+			if(!NVAR_Exists(maxInsRecord))
+				Variable /G $(tmpName)
+				NVAR maInsRecord=$(tmpName)
+			endif
+			maxInsRecord=instance; AbortOnRTE
+		
+			tmpName=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName		
+			SVAR infoStr=$(tmpName)
+			if(!SVAR_Exists(infoStr))
+				String /G $(tmpName)
+				SVAR infoStr=$(tmpName)
+			endif
+			infoStr=ReplaceStringByKey("instance"+num2istr(instance), infoStr, name, ":", ";", 1)
+		catch
+			print "Error when trying to set the common instance variables for package "+PackageName
+		endtry
+		
 	endif
 
 	return fullPath
+End
+
+Function WBPkgGetNumberOfInstances(PackageName)
+	String PackageName
+	variable n=-1
+	try
+		NVAR ins=$(wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InstanceCountName)
+		n=ins ; AbortOnRTE
+	catch
+		print "Error getting instance count for "+PackageName
+	endtry
+	return n
+End
+
+Function /T WBPkgGetInfoString(PackageName)
+	String PackageName
+	String s=""
+	try
+		SVAR infostr=$(wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName)
+		s=infostr ; AbortOnRTE
+	catch
+		print "Error getting info string for "+PackageName
+	endtry
+	return s
 End
 
 Constant WBPkgDFWave=0
