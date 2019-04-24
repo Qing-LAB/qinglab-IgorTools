@@ -26,18 +26,29 @@
 //ChangeLog
 //Last updated 2015/10/20
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+
+#include "WaveBrowser"
+
 Constant visaComm_ReadWaitTime=50 // in milliseconds
 Constant visaComm_ReadPacketSize=4096
 Constant visaComm_NoWait=0
 Constant visaComm_WaitForEver=-1
-StrConstant visaComm_PackageRoot="root:Packages"
-StrConstant visaComm_PackageFolderName="VISACommunication"
+//StrConstant visaComm_PackageRoot="root:Packages"
+//StrConstant visaComm_PackageFolderName="VISACommunication"
+StrConstant visaComm_PackageName="VISAComm"
+
+
 StrConstant visaComm_PanelName="VISACommBkgrdTsk"
 Constant visaComm_bkgd_task_ticks=3
+
+//TODO:need to fix the default init strings. currently keithley control package uses this and this should be really moved to that package.
 StrConstant visaComm_DefaultInitString="*CLS\rstatus.reset() status.request_enable=status.MAV\rformat.data=format.REAL64 format.byteorder=1"
 StrConstant visaComm_DefaultClearQueueCmd="*CLS\rstatus.reset() status.request_enable=status.MAV"
 StrConstant visaComm_DefaultShutdownCmd="*CLS\rreset()"
+//TODO:should just use a constant instead of a string for this option
 StrConstant visaComm_NoClearQueue="NO_CLEAR"
+
+
 
 Function visaComm_CheckError(session, viObject, status, [quiet, AbortOnError])
 	Variable session
@@ -134,7 +145,7 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 	visaComm_CheckError(RM, INSTR, status, quiet=quiet)
 	if(ParamIsDefault(sessionRM))
 		KillVariables /Z V_VISAsessionRM
-		KilLStrings /Z V_VISAsessionRM
+		KillStrings /Z V_VISAsessionRM
 		Variable /G V_VISAsessionRM=RM
 	else
 		sessionRM=RM
@@ -355,15 +366,17 @@ Function visaComm_PanelButtonFunc(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	
 	switch( ba.eventCode )
-	case 2: // mouse up
-		String savedDF=GetDataFolder(1)
-		String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
-		SetDataFolder(fullPackagePath); AbortOnRTE
-		NVAR request=ExtRequest
-		if(NVAR_Exists(request))
+	case 2: // mouse up		
+		Variable instance=str2num(GetUserData(ba.win, ba.ctrlName, "instance"))
+		//String savedDF=GetDataFolder(1)
+		//String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
+		String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
+		//SetDataFolder(fullPackagePath); AbortOnRTE
+		NVAR request=$WBPkgGetName(visaComm_PackageName, WBPkgDFVar, "ExtRequest")
+		//if(NVAR_Exists(request))
 			request=-99
-		endif
-		SetDataFolder(savedDF)	
+		//endif
+		//SetDataFolder(savedDF)	
 		break
 	case -1: // control being killed
 		break
@@ -373,37 +386,41 @@ End
 Function visaComm_WriteAndReadTask(s)
 	STRUCT WMBackgroundStruct &s
 	Variable timer1=StartMSTimer
-	String savedDF=GetDataFolder(1)
-	String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
+	
+	//String savedDF=GetDataFolder(1)
+	Variable instance=str2num(StringFromList(1, s.name, "_"))
+	
+	//String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
+	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
 	Variable retVal=0
 	try
 		AbortOnValue !DataFolderExists(fullPackagePath), -100
 		
-		SetDataFolder(fullPackagePath); AbortOnRTE
+		//SetDataFolder(fullPackagePath); AbortOnRTE
 		
-		NVAR request=ExtRequest //set by user
-		NVAR requestType=ExtRequestType //set by user
+		NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest") //set by user
+		NVAR requestType=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequestType") //set by user
 		
-		SVAR setcmd=ExtCmdOut //set by user
-		SVAR setclearcmd=ExtClearQueueCmd //set by user
-		NVAR setsession=ExtSessionID //set by user
-		NVAR setlen=ExtReadLen //set by user
+		SVAR setcmd=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtCmdOut") //set by user
+		SVAR setclearcmd=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtClearQueueCmd") //set by user
+		NVAR setsession=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtSessionID") //set by user
+		NVAR setlen=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtReadLen") //set by user
 		
-		SVAR setParam=ExtCallbackParam //set by user
-		SVAR setFuncName=ExtCallbackFuncName //set by user
+		SVAR setParam=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtCallbackParam") //set by user
+		SVAR setFuncName=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtCallbackFuncName") //set by user
 		
-		NVAR state=funcState //state of the background task
-		NVAR exec_time=execTime //how much time for each cycle execution
-		SVAR cmd=sendCmd
-		NVAR count=countNumber // how many cycles the call back function has been called
-		SVAR clearQCmd=clearQueueCmd
-		NVAR session=sessionID
-		NVAR fixedlen=readLen
+		NVAR state=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "funcState") //state of the background task
+		NVAR exec_time=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "execTime") //how much time for each cycle execution
+		SVAR cmd=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "sendCmd")
+		NVAR count=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "countNumber") // how many cycles the call back function has been called
+		SVAR clearQCmd=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "clearQueueCmd")
+		NVAR session=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "sessionID")
+		NVAR fixedlen=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "readLen")
 		
-		SVAR callParam=callbackParam
-		SVAR callFuncName=callbackFuncName
+		SVAR callParam=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "callbackParam")
+		SVAR callFuncName=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "callbackFuncName")
 		
-		SVAR response=responseStr		
+		SVAR response=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "responseStr")	
 		
 		AbortOnValue (!NVAR_Exists(request) || !NVAR_Exists(requestType) || !NVAR_Exists(state)), -101
 					
@@ -584,7 +601,7 @@ Function visaComm_WriteAndReadTask(s)
 		endif
 		retVal=2
 	endtry
-	SetDataFolder(savedDF)	
+	//SetDataFolder(savedDF)	
 	if(retVal!=0)
 		if(WinType(visaComm_PanelName)==7)
 			KillWindow $visaComm_PanelName
@@ -592,7 +609,7 @@ Function visaComm_WriteAndReadTask(s)
 	else
 		if(WinType(visaComm_PanelName)==0)
 			NewPanel /FLT=1 /K=2 /N=$visaComm_PanelName /W=(0,0,120,40)
-			Button /Z visaComm_PanelButton font="Arial", fsize=10, fstyle=1, title="VISA Running..", valueColor=(65535,0,0), win=$visaComm_PanelName, size={80, 20}, pos={20, 10}, proc=visaComm_PanelButtonFunc
+			Button /Z visaComm_PanelButton font="Arial", fsize=10, fstyle=1, title="VISA Running..", valueColor=(65535,0,0), win=$visaComm_PanelName, size={80, 20}, pos={20, 10}, proc=visaComm_PanelButtonFunc, userdata(instance)=num2istr(instance)
 			SetActiveSubwindow _endfloat_
 		endif
 	endif
@@ -602,138 +619,96 @@ Function visaComm_WriteAndReadTask(s)
 	return retVal
 End
 
-Function visaComm_SetupBackgroundTask()
-	if(!DataFolderExists(visaComm_PackageRoot))
-		NewDataFolder /O $visaComm_PackageRoot
-	endif
-	String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
+
+StrConstant visaComm_VARLIST="ExtRequest;ExtRequestType;ExtSessionID;ExtReadLen;funcState;execTime;readLen;sessionID;countNumber"
+StrConstant visaComm_STRLIST="ExtCallbackFuncName;ExtCallbackParam;ExtCmdOut;ExtClearQueueCmd;callbackFuncName;callbackParam;responseStr;sendCmd;clearQueueCmd"
+
+Function visaComm_SetupBackgroundTask(name)
+	String name
 	
-	if(!DataFolderExists(fullPackagePath))
-		NewDataFolder /O $fullPackagePath
-	endif
-	DFREF dfr=$fullPackagePath
-	if(DataFolderRefStatus(dfr)!=1)
-		abort "cannot create VISA package data folder!"
-	endif
+	Variable instance=WBPkgNewInstance
+	String PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgExclusive, name=name)
+	WBPrepPackageVars(PackageDir, visaComm_VARLIST)
+	WBPrepPackageStrs(PackageDir, visaComm_STRLIST)
+	
 	try
-		if(exists(fullPackagePath+":ExtRequest")==0)
-			Variable /G dfr:ExtRequest
-		endif
-		NVAR a=dfr:ExtRequest
-		AbortOnValue !NVAR_Exists(a), -1
-		a=0
-			
-		if(exists(fullPackagePath+":ExtRequestType")==0)
-			Variable /G dfr:ExtRequestType
-		endif
-		NVAR a=dfr:ExtRequestType
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "ExtRequest")
 		AbortOnValue !NVAR_Exists(a), -1
 		a=0
 		
-		if(exists(fullPackagePath+":ExtSessionID")==0)
-			Variable /G dfr:ExtSessionID
-		endif
-		NVAR a=dfr:ExtSessionID
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar,"ExtRequestType")
+		AbortOnValue !NVAR_Exists(a), -1
+		a=0
+		
+		
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "ExtSessionID")
 		AbortOnValue !NVAR_Exists(a), -1
 		a=-1
 		
-		if(exists(fullPackagePath+":ExtReadLen")==0)
-			Variable /G dfr:ExtReadLen
-		endif
-		NVAR a=dfr:ExtReadLen
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "ExtReadLen")
 		AbortOnValue !NVAR_Exists(a), -1
 		a=0
 		
-		if(exists(fullPackagePath+":ExtCallbackFuncName")==0)
-			String /G dfr:ExtCallbackFuncName
-		endif
-		SVAR b=dfr:ExtCallbackFuncName
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "ExtCallbackFuncName")
 		AbortOnValue !SVAR_Exists(b), -1
 		b=""
 		
-		if(exists(fullPackagePath+":ExtCallbackParam")==0)
-			String /G dfr:ExtCallbackParam
-		endif
-		SVAR b=dfr:ExtCallbackParam
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "ExtCallbackParam")
 		AbortOnValue !SVAR_Exists(b), -1
 		b=""
 		
-		if(exists(fullPackagePath+":ExtCmdOut")==0)
-			String /G dfr:ExtCmdOut
-		endif
-		SVAR b=dfr:ExtCmdOut
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "ExtCmdOut")
 		AbortOnValue !SVAR_Exists(b), -1
 		b=""
 		
-		if(exists(fullPackagePath+":ExtClearQueueCmd")==0)
-			String /G dfr:ExtClearQueueCmd
-		endif
-		SVAR b=dfr:ExtClearQueueCmd
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "ExtClearQueueCmd")
 		AbortOnValue !SVAR_Exists(b), -1
 		b=""
 		
-		if(exists(fullPackagePath+":funcState")==0)
-			Variable /G dfr:funcState=0
-		endif
-		NVAR a=dfr:funcState
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "funcState")
 		AbortOnValue !NVAR_Exists(a), -1
+		a=0
 		
-		if(exists(fullPackagePath+":execTime")==0)
-			Variable /G dfr:execTime=0
-		endif
-		NVAR a=dfr:execTime
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "execTime")
 		AbortOnValue !NVAR_Exists(a), -1
+		a=0
 		
-		if(exists(fullPackagePath+":readLen")==0)
-			Variable /G dfr:readLen=0
-		endif
-		NVAR a=dfr:readLen
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "readLen")
 		AbortOnValue !NVAR_Exists(a), -1
+		a=0
 		
-		if(exists(fullPackagePath+":sessionID")==0)
-			Variable /G dfr:sessionID=-1
-		endif
-		NVAR a=dfr:sessionID
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "sessionID")
 		AbortOnValue !NVAR_Exists(a), -1
+		a=-1
 		
-		if(exists(fullPackagePath+":callbackFuncName")==0)
-			String /G dfr:callbackFuncName=""
-		endif
-		SVAR b=dfr:callbackFuncName
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "callbackFuncName")
 		AbortOnValue !SVAR_Exists(b), -1
+		b=""
 		
-		if(exists(fullPackagePath+":callbackParam")==0)
-			String /G dfr:callbackParam=""
-		endif
-		SVAR b=dfr:callbackParam
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "callbackParam")
 		AbortOnValue !SVAR_Exists(b), -1
+		b=""
 		
-		if(exists(fullPackagePath+":countNumber")==0)
-			Variable /G dfr:countNumber=0
-		endif
-		NVAR a=dfr:countNumber
+		NVAR a=$WBPkgGetName(PackageDir, WBPkgDFVar, "countNumber")
 		AbortOnValue !NVAR_Exists(a), -1
+		a=0
 		
-		if(exists(fullPackagePath+":responseStr")==0)
-			String /G dfr:responseStr=""
-		endif
-		SVAR b=dfr:responseStr
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "responseStr")
 		AbortOnValue !SVAR_Exists(b), -1
+		b=""
 		
-		if(exists(fullPackagePath+":sendCmd")==0)
-			String /G dfr:sendCmd=""
-		endif
-		SVAR b=dfr:sendCmd
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "sendCmd")
 		AbortOnValue !SVAR_Exists(b), -1
+		b=""
 		
-		if(exists(fullPackagePath+":clearQueueCmd")==0)
-			String /G dfr:clearQueueCmd=visaComm_DefaultClearQueueCmd
-		endif
-		SVAR b=dfr:clearQueueCmd
+		SVAR b=$WBPkgGetName(PackageDir, WBPkgDFStr, "clearQueueCmd")
 		AbortOnValue !SVAR_Exists(b), -1		
+		b=""
 	catch
 		abort "error setting up the variables used in VISA background task"
 	endtry	
+	
+	return instance
 End
 
 Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen, clearoutputqueue, callbackFunc, callbackParam, [cycle_ticks])
@@ -746,20 +721,28 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 	String callbackParam
 	Variable cycle_ticks
 	
-	visaComm_SetupBackgroundTask()
+	String name=""
+	Variable status
 	
-	String savedDF=GetDataFolder(1)
-	String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
-	SetDataFolder(fullPackagePath)
+	status = viGetAttributeString(instr, VI_ATTR_INTF_INST_NAME, name)
+	if(status!=VI_SUCCESS)
+		name="N/A"
+	endif
 	
-	NVAR request=ExtRequest
-	NVAR requesttype=ExtRequestType
-	NVAR session=ExtSessionID
-	NVAR setlen=ExtReadLen
-	SVAR callName=ExtCallbackFuncName
-	SVAR callParam=ExtCallbackParam
-	SVAR cmdOut=ExtCmdOut
-	SVAR clearQueue=ExtClearQueueCmd
+	Variable instance=visaComm_SetupBackgroundTask(name)
+	
+	//String savedDF=GetDataFolder(1)
+	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist) 
+	//SetDataFolder(fullPackagePath)
+	
+	NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest")
+	NVAR requesttype=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequestType")
+	NVAR session=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtSessionID")
+	NVAR setlen=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtReadLen")
+	SVAR callName=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtCallbackFuncName")
+	SVAR callParam=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtCallbackParam")
+	SVAR cmdOut=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtCmdOut")
+	SVAR clearQueue=$WBPkgGetName(fullPackagePath, WBPkgDFStr, "ExtClearQueueCmd")
 	
 	if(request==0)
 		Variable ropt_clearqueue=0, ropt_repeatwrite=0, ropt_useprefix=0, ropt_setreadlen=0
@@ -790,7 +773,7 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 		cmdOut=cmdstr
 		request=1
 		
-		CtrlNamedBackground visaComm_BackgroundTask, status
+		CtrlNamedBackground $("visaCommTsk_"+num2istr(instance)), status
 		if(str2num(StringByKey("RUN", S_info))==0)
 			CtrlNamedBackground visaComm_BackgroundTask, burst=0, dialogsOK=1, proc=visaComm_WriteAndReadTask
 			if(ParamIsDefault(cycle_ticks) || cycle_ticks<2)
@@ -806,5 +789,5 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 	else
 		print "Last request has not been processed yet. Background Task is busy"
 	endif
-	SetDataFolder(savedDF)
+	//SetDataFolder(savedDF)
 End
