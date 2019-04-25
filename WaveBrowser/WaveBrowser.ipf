@@ -391,6 +391,17 @@ Function /T WBPkgGetInfoString(PackageName)
 	return s
 End
 
+Function WBPkgSetInfoString(PackageName, str)
+	String PackageName
+	String str
+	try
+		SVAR infostr=$(wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName)
+		infostr=str ; AbortOnRTE
+	catch
+		print "Error setting info string for "+PackageName
+	endtry
+End
+
 Constant WBPkgDFWave=0
 Constant WBPkgDFVar=1
 Constant WBPkgDFStr=2
