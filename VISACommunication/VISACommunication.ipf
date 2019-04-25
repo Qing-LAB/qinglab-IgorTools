@@ -429,7 +429,7 @@ Function visaComm_WriteAndReadTask(s)
 	Variable timer1=StartMSTimer
 	
 	//String savedDF=GetDataFolder(1)
-	Variable instance=str2num(StringFromList(1, s.name, "_"))
+	Variable instance=str2num(StringFromList(1, s.name, "_")) // task name contains the instance number: visaCommTask_XXX
 	
 	//String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
 	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
