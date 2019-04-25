@@ -668,11 +668,21 @@ End
 StrConstant visaComm_VARLIST="ExtRequest;ExtRequestType;ExtSessionID;ExtReadLen;funcState;execTime;readLen;sessionID;countNumber"
 StrConstant visaComm_STRLIST="ExtCallbackFuncName;ExtCallbackParam;ExtCmdOut;ExtClearQueueCmd;callbackFuncName;callbackParam;responseStr;sendCmd;clearQueueCmd"
 
-Function visaComm_SetupBackgroundTask(name)
+Function visaComm_SetupBackgroundTask(name, [instance])
 	String name
+	Variable instance
 	
-	Variable instance=WBPkgNewInstance
-	String PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgExclusive, name=name)
+	if(ParamIsDefault(instance))
+		instance=WBPkgNewInstance
+	endif
+	
+	String PackageDir
+	if(instance==WBPkgNewInstance)
+		PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgExclusive, name=name)
+	else
+		PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgOverride, name=name)
+	endif
+	
 	WBPrepPackageVars(PackageDir, visaComm_VARLIST)
 	WBPrepPackageStrs(PackageDir, visaComm_STRLIST)
 	
@@ -756,7 +766,7 @@ Function visaComm_SetupBackgroundTask(name)
 	return instance
 End
 
-Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen, clearoutputqueue, callbackFunc, callbackParam, [cycle_ticks])
+Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen, clearoutputqueue, callbackFunc, callbackParam, [cycle_ticks, instance])
 	Variable instr
 	String cmdstr
 	Variable repeatwrite
@@ -765,6 +775,11 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 	String callbackFunc
 	String callbackParam
 	Variable cycle_ticks
+	Variable instance
+	
+	if(ParamIsDefault(instance))
+		instance=WBPkgNewInstance
+	endif
 	
 	String name=""
 	Variable status
@@ -774,10 +789,10 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 		name="N/A"
 	endif
 	
-	Variable instance=visaComm_SetupBackgroundTask(name)
-	
+	instance=visaComm_SetupBackgroundTask(name, instance=instance)
+		
 	//String savedDF=GetDataFolder(1)
-	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist) 
+	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance)
 	//SetDataFolder(fullPackagePath)
 	
 	NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest")
@@ -837,4 +852,5 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 		print "Last request has not been processed yet. Background Task instance ["+num2istr(instance)+"is busy"
 	endif
 	//SetDataFolder(savedDF)
+	return instance
 End

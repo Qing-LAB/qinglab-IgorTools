@@ -622,12 +622,14 @@ Function kcontrol_switch(state)
 	try
 		if(cmpstr(UpperStr(state), "OFF")==0)
 			kcontrol_stopTask()
+#ifndef DEBUGONLY
 			if(session!=-1)
 				viClose(session)
 			endif
 			if(dRM!=-1)
 				viClose(dRM)
 			endif
+#endif
 			session=-1
 			dRM=-1
 			kcontrol_stopTask()
@@ -640,8 +642,10 @@ Function kcontrol_switch(state)
 			AbortOnValue status!=VI_SUCCESS, status
 			dRM=defaultRM
 			session=instr
+#ifndef DEBUGONLY
 			viClear(session)
-			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?\r", response=statusDesc, clearOutputQueue=0)
+#endif
+			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?", response=statusDesc, clearOutputQueue=1)
 			if(GrepString(UpperStr(statusDesc), "KEITHLEY INSTRUMENTS.*MODEL 26[0-9]{2}[AB]?.*")==1)
 				if(strlen(statusDesc)>38)
 					statusDesc=statusDesc[0,37]+"..."
@@ -1601,7 +1605,14 @@ Function kcontrol_startTask()
 	itc_check(1)
 	Sleep /S 1
 	
-	visaComm_SendAsyncRequest(instr, cmdstr, 1, 2, 0, "", "kcontrol_callbackFunc", param, cycle_ticks=2)
+	variable instance=str2num(GetUserData("KeithleyControl", "smu_startmeasurement", "visaCommInstance"))
+	if(NumType(instance)!=0 || instance<0)
+		instance=WBPkgNewInstance
+	endif
+	instance=visaComm_SendAsyncRequest(instr, cmdstr, 1, 2, 0, "", "kcontrol_callbackFunc", param, cycle_ticks=2, instance=instance)
+	if(instance>=0)
+		Button smu_startmeasurement win=KeithleyControl, userdata(visaCommInstance)=num2istr(instance)
+	endif
 	TabControl tab_smu_setup win=KeithleyControl,UserData(state)="2"
 	Button smu_startmeasurement win=KeithleyControl,UserData(measurement)="1",title="Stop Measurement",fColor=(65535,0,0)
 	kcontrol_smu_tab_state()
@@ -1687,7 +1698,7 @@ Function kcontrol_callbackFunc(session, strData, strParam, count, strCmd)
 #ifndef DEBUGONLY
 	SOCKITstringToWave /DEST=dbldata /FREE 4, strData
 #else
-	Make /D/N=(dataDimSize)/FREE dbldata=0
+	Make /D/N=(dataDimSize)/FREE dbldata=enoise(10)
 #endif
 	Variable exec_status=str2num(GetUserData("KeithleyControl", "smu_startmeasurement", "measurement"))
 	if(exec_status==0)
