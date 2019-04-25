@@ -1684,8 +1684,11 @@ Function kcontrol_callbackFunc(session, strData, strParam, count, strCmd)
 	String & strCmd
 
 	Variable dataDimSize=str2num(StringByKey("DataDimSize", strParam, "=", "\r"))
+#ifndef DEBUGONLY
 	SOCKITstringToWave /DEST=dbldata /FREE 4, strData
-	
+#else
+	Make /D/N=(dataDimSize)/FREE dbldata=0
+#endif
 	Variable exec_status=str2num(GetUserData("KeithleyControl", "smu_startmeasurement", "measurement"))
 	if(exec_status==0)
 		itc_check(2)

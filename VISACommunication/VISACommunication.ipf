@@ -48,7 +48,7 @@ StrConstant visaComm_DefaultShutdownCmd="*CLS\rreset()"
 //TODO:should just use a constant instead of a string for this option
 StrConstant visaComm_NoClearQueue="NO_CLEAR"
 
-
+StrConstant visaComm_DEBUGSTR="KEITHLEY INSTRUMENTS.*MODEL 2636B [DEBUG MODE STRING]"
 
 Function visaComm_CheckError(session, viObject, status, [quiet, AbortOnError])
 	Variable session
@@ -56,7 +56,7 @@ Function visaComm_CheckError(session, viObject, status, [quiet, AbortOnError])
 	Variable status
 	Variable quiet
 	Variable AbortOnError
-	
+#ifndef DEBUGONLY
 	String errorDesc=""
 	if(status<0)
 		if(viObject==0)
@@ -70,6 +70,7 @@ Function visaComm_CheckError(session, viObject, status, [quiet, AbortOnError])
 			abort("VISA error: "+errorDesc)
 		endif
 	endif
+#endif
 	return status
 End
 
@@ -77,11 +78,12 @@ Function /S visaComm_GetList([filter, quiet])
 	String filter
 	Variable quiet
 	
+#ifndef DEBUGONLY
 	Variable defaultRM, status
 	Variable findList, retCnt
 	String instrDesc
 	String list
-	
+		
 	if(ParamIsDefault(filter))
 		filter="?*INSTR"
 	endif
@@ -113,7 +115,9 @@ Function /S visaComm_GetList([filter, quiet])
 		viClose(defaultRM)
 	endif
 	visaComm_CheckError(defaultRM, findList, status, quiet=quiet)
-
+#else
+	String list="SIMULATED_COM;"
+#endif
 	return list
 End
 
@@ -125,9 +129,9 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 	Variable quiet
 	
 	Variable len, retCnt	
-	Variable status
+	Variable status=0
 	Variable RM, INSTR
-	
+#ifndef DEBUGONLY
 	RM=0
 	INSTR=0
 	status=viOpenDefaultRM(RM)
@@ -143,6 +147,7 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 		endif
 	endif
 	visaComm_CheckError(RM, INSTR, status, quiet=quiet)
+
 	if(ParamIsDefault(sessionRM))
 		KillVariables /Z V_VISAsessionRM
 		KillStrings /Z V_VISAsessionRM
@@ -157,8 +162,22 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 	else
 		sessionINSTR=INSTR
 	endif
-	
-
+#else
+	if(ParamIsDefault(sessionRM))
+		KillVariables /Z V_VISAsessionRM
+		KillStrings /Z V_VISAsessionRM
+		Variable /G V_VISAsessionRM=0
+	else
+		sessionRM=0
+	endif
+	if(ParamIsDefault(sessionINSTR))
+		KillVariables /Z V_VISAsessionINSTR
+		KillStrings /Z V_VISAsessionINSTR
+		Variable /G V_VISAsessionINSTR=0
+	else
+		sessionINSTR=0
+	endif
+#endif
 	return status
 End
 
@@ -169,6 +188,7 @@ Function visaComm_Shutdown(instr, [openRM, shutdownCmdStr])
 	
 	Variable len, retCnt
 	Variable status=0
+#ifndef DEBUGONLY
 	if(ParamIsDefault(shutdownCmdStr))
 		shutdownCmdStr=visaComm_DefaultShutdownCmd
 	endif
@@ -177,7 +197,7 @@ Function visaComm_Shutdown(instr, [openRM, shutdownCmdStr])
 	if(!ParamIsDefault(openRM))
 		viClose(openRM)
 	endif
-		
+#endif
 	return status
 End
 
@@ -187,6 +207,8 @@ Function visaComm_DequeueEvent(instr, timeout_ms, clearPreviousEvents, retOnTime
 	
 	Variable status, event, context
 	
+	status=0
+#ifndef DEBUGONLY
 	event=VI_NULL
 	context=VI_NULL
 	
@@ -204,7 +226,7 @@ Function visaComm_DequeueEvent(instr, timeout_ms, clearPreviousEvents, retOnTime
 	if(context!=VI_NULL)
 		viClose(context)
 	endif
-	
+#endif
 	return status
 End
 
@@ -213,10 +235,13 @@ Function visaComm_ReadStr(instr, str, packetSize, len) //read string until termi
 	String & str
 	Variable packetSize
 	Variable & len
-	
-	Variable rflag=1, retCnt, status, rlen
+
+	Variable status=0
+#ifndef DEBUGONLY	
+	Variable rflag=1, retCnt, rlen
 	String buf=""
 	str=""
+
 	rlen=0
 	if(len>=0)
 		do
@@ -241,6 +266,10 @@ Function visaComm_ReadStr(instr, str, packetSize, len) //read string until termi
 			endswitch		
 		while(rflag && rlen<len)
 	endif
+#else
+	str=visaComm_DEBUGSTR;
+#endif
+
 	return status
 End
 
@@ -251,7 +280,7 @@ Function visaComm_ReadFixedWithPrefix(instr, str)
 	Variable len=0
 	Variable termChar
 	String buf
-	
+#ifndef DEBUGONLY
 	viGetAttribute(instr , VI_ATTR_TERMCHAR_EN , termChar)
 	viSetAttribute(instr, VI_ATTR_TERMCHAR_EN, char2num("\r"))
 	visaComm_ReadStr(instr, buf, visaComm_ReadPacketSize, len)
@@ -277,15 +306,17 @@ Function visaComm_ReadFixedWithPrefix(instr, str)
 		endif
 	endif
 	viSetAttribute(instr, VI_ATTR_TERMCHAR_EN, termChar)
+#endif
 End
 
 Function visaComm_WriteSequence(instr, cmd)
 	Variable instr
 	String cmd
-	
+	Variable status=VI_SUCCESS
+#ifndef DEBUGONLY
 	String str
 	Variable n=ItemsInList(cmd, "\r")
-	Variable i, len, status=VI_SUCCESS, retCnt
+	Variable i, len, retCnt
 	
 	for(i=0; i<n; i+=1)
 		str=StringFromList(i, cmd, "\r")
@@ -297,6 +328,7 @@ Function visaComm_WriteSequence(instr, cmd)
 			endif
 		endif
 	endfor
+#endif
 	return status
 End
 
@@ -310,9 +342,11 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 	String clearQueueCmd
 	Variable fixedlen
 
+#ifndef DEBUGONLY
+
 	Variable len=0
 	Variable retCnt, status, termChar
-	
+
 	if(ParamIsDefault(clearOutputQueue) || clearOutputQueue!=0)
 		if(ParamIsDefault(clearQueueCmd))
 			clearQueueCmd=visaComm_DefaultClearQueueCmd
@@ -350,6 +384,12 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 			endif
 		while(1)
 	endif
+#else
+	if(!ParamIsDefault(response))
+		response=visaComm_DEBUGSTR
+	endif
+#endif
+
 End
 
 
@@ -373,7 +413,7 @@ Function visaComm_PanelButtonFunc(ba) : ButtonControl
 		//String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
 		String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
 		//SetDataFolder(fullPackagePath); AbortOnRTE
-		NVAR request=$WBPkgGetName(visaComm_PackageName, WBPkgDFVar, "ExtRequest")
+		NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest")
 		//if(NVAR_Exists(request))
 			request=-99
 		//endif
@@ -617,8 +657,9 @@ Function visaComm_WriteAndReadTask(s)
 	if(timer1!=-1)
 		exec_time=stopMSTimer(timer1)/1000000
 	endif
+
 	if(retVal!=0)
-		print "visaComm background task ["+s.name+"] exited with code "+num2istr(retVal)
+		print "visaComm background task instance ["+num2istr(instance)+"] exited with code "+num2istr(retVal)
 	endif
 	return retVal
 End
@@ -791,8 +832,9 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 				CtrlNamedBackground $(taskname), period=(cycle_ticks)
 			endif
 		endif
+		print "visaComm background task instance ["+num2istr(instance)+"] initialized"
 	else
-		print "Last request has not been processed yet. Background Task is busy"
+		print "Last request has not been processed yet. Background Task instance ["+num2istr(instance)+"is busy"
 	endif
 	//SetDataFolder(savedDF)
 End
