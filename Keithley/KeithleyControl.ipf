@@ -641,7 +641,7 @@ Function kcontrol_switch(state)
 			dRM=defaultRM
 			session=instr
 			viClear(session)
-			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?", response=statusDesc, clearOutputQueue=1)
+			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?\r", response=statusDesc, clearOutputQueue=0)
 			if(GrepString(UpperStr(statusDesc), "KEITHLEY INSTRUMENTS.*MODEL 26[0-9]{2}[AB]?.*")==1)
 				if(strlen(statusDesc)>38)
 					statusDesc=statusDesc[0,37]+"..."

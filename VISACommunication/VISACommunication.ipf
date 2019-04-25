@@ -617,6 +617,9 @@ Function visaComm_WriteAndReadTask(s)
 	if(timer1!=-1)
 		exec_time=stopMSTimer(timer1)/1000000
 	endif
+	if(retVal!=0)
+		print "visaComm background task ["+s.name+"] exited with code "+num2istr(retVal)
+	endif
 	return retVal
 End
 
@@ -774,17 +777,18 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 		cmdOut=cmdstr
 		request=1
 		
-		CtrlNamedBackground $("visaCommTsk_"+num2istr(instance)), status
+		String taskname="visaCommTsk_"+num2istr(instance)
+		CtrlNamedBackground $(taskname), status
 		if(str2num(StringByKey("RUN", S_info))==0)
-			CtrlNamedBackground visaComm_BackgroundTask, burst=0, dialogsOK=1, proc=visaComm_WriteAndReadTask
+			CtrlNamedBackground $(taskname), burst=0, dialogsOK=1, proc=visaComm_WriteAndReadTask
 			if(ParamIsDefault(cycle_ticks) || cycle_ticks<2)
 				cycle_ticks=visaComm_bkgd_task_ticks
 			endif
-			CtrlNamedBackground visaComm_BackgroundTask, period=(cycle_ticks)			
-			CtrlNamedBackground visaComm_BackgroundTask, start
+			CtrlNamedBackground $(taskname), period=(cycle_ticks)			
+			CtrlNamedBackground $(taskname), start
 		else
 			if(!ParamIsDefault(cycle_ticks) && cycle_ticks>=2)
-				CtrlNamedBackground visaComm_BackgroundTask, period=(cycle_ticks)
+				CtrlNamedBackground $(taskname), period=(cycle_ticks)
 			endif
 		endif
 	else

@@ -77,11 +77,11 @@ Function WaveBrowser(panel_name, panel_title, positionx, positiony, title_folder
 	 
 	NewPanel /K=1 /N=$panel_name /W=(positionx, positiony, positionx+350, positiony+300) as panel_title
 	SetVariable sv_folder win=$panel_name, title=title_folder,size={300,20},pos={20, 20},value=_STR:initialfolder,userdata(options)="0"
-	if((options&1)!=0)
+	if((options & WB_FOLDER_MUST_EXIST)!=0)
 		SetVariable sv_folder,noedit=1,userdata(options)="1"
 	endif
 	SetVariable sv_wave win=$panel_name, title=title_wave,size={300,20},pos={20, 40},value=_STR:initialname,userdata(options)="0"
-	if((options&2)!=0)
+	if((options & WB_WAVE_MUST_EXIST)!=0)
 		SetVariable sv_wave,noedit=1,userdata(options)="1"
 	endif
 	ListBox list_browser win=$panel_name,pos={20,60},size={300,200}
