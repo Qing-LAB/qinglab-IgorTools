@@ -178,7 +178,6 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 		sessionINSTR=0
 	endif
 #endif
-
 	return status
 End
 
