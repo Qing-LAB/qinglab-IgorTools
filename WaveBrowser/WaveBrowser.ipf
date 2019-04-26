@@ -382,12 +382,14 @@ End
 Function /T WBPkgGetInfoString(PackageName)
 	String PackageName
 	String s=""
-	try
+	//try
 		SVAR infostr=$(wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName)
-		s=infostr ; AbortOnRTE
-	catch
-		print "Error getting info string for "+PackageName
-	endtry
+		if(SVAR_Exists(infostr))
+			s=infostr ; AbortOnRTE
+		endif
+	//catch
+	//	print "Error getting info string for "+PackageName
+	//endtry
 	return s
 End
 

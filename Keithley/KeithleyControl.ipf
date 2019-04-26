@@ -81,6 +81,10 @@ StrConstant kcontrol_initscriptNamePrefix="IgorKeithleyInit_"
 Strconstant KeithleyControl_licesence="Igor Pro script for using Keithley 2600 Series in Igor Pro.\r\rAll rights reserved."
 Strconstant KeithleyControl_contact="The Qing Research Lab at Arizona State University\r\rhttp://qinglab.physics.asu.edu"
 
+Strconstant KeithleyDefaultInitString="*CLS\rstatus.reset() status.request_enable=status.MAV\rformat.data=format.REAL64 format.byteorder=1"
+Strconstant KeithleyDefaultClearQueueCmd="*CLS\rstatus.reset() status.request_enable=status.MAV"
+Strconstant KeithleyDefaultShutdownCmd="*CLS\rreset()"
+
 Function KeithleyPanelAbout()
 	DoWindow /K AboutKeithleyPanel
 	NewPanel /K=1 /W=(50,50,530,290) /N=AboutKeithleyPanel
@@ -638,14 +642,14 @@ Function kcontrol_switch(state)
 			TitleBox instr_info win=KeithleyControl, title="No instrument initialized"
 		elseif(cmpstr(UpperStr(state), "ON")==0)
 			ControlInfo /W=KeithleyControl keithley_id
-			status=visaComm_Init(S_Value, sessionRM=defaultRM, sessionINSTR=instr)			
+			status=visaComm_Init(S_Value, sessionRM=defaultRM, sessionINSTR=instr, initCmdStr=KeithleyDefaultInitString)			
 			AbortOnValue status!=VI_SUCCESS, status
 			dRM=defaultRM
 			session=instr
 #ifndef DEBUGONLY
 			viClear(session)
 #endif
-			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?", response=statusDesc, clearOutputQueue=1)
+			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?", response=statusDesc, clearOutputQueue=1, clearQueueCmd=KeithleyDefaultClearQueueCmd)
 			if(GrepString(UpperStr(statusDesc), "KEITHLEY INSTRUMENTS.*MODEL 26[0-9]{2}[AB]?.*")==1)
 				if(strlen(statusDesc)>38)
 					statusDesc=statusDesc[0,37]+"..."
@@ -1609,7 +1613,7 @@ Function kcontrol_startTask()
 	if(NumType(instance)!=0 || instance<0)
 		instance=WBPkgNewInstance
 	endif
-	instance=visaComm_SendAsyncRequest(instr, cmdstr, 1, 2, 0, "", "kcontrol_callbackFunc", param, cycle_ticks=2, instance=instance)
+	instance=visaComm_SendAsyncRequest(instr, cmdstr, 1, 2, 0, KeithleyDefaultClearQueueCmd, "kcontrol_callbackFunc", param, cycle_ticks=2, instance=instance)
 	if(instance>=0)
 		Button smu_startmeasurement win=KeithleyControl, userdata(visaCommInstance)=num2istr(instance)
 	endif
@@ -1810,7 +1814,7 @@ Function kcontrol_callbackFunc(session, strData, strParam, count, strCmd)
 					return -100
 				endif
 				//for every cycle, clear out awaiting visa events or unread data in output queue, just in case there are errors
-				visaComm_SyncedWriteAndRead(session, -1, clearOutputQueue=1)
+				visaComm_SyncedWriteAndRead(session, -1, clearOutputQueue=1, clearQueueCmd=KeithleyDefaultClearQueueCmd)
 				wnote=note(result)
 				Make /O/D/N=(3, dim_result+dim_vector)/FREE tmp=NaN; AbortOnRTE
 				multithread tmp[][0,dim_result-1]=result[x][y]

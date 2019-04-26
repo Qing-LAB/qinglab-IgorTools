@@ -33,22 +33,42 @@ Constant visaComm_ReadWaitTime=50 // in milliseconds
 Constant visaComm_ReadPacketSize=4096
 Constant visaComm_NoWait=0
 Constant visaComm_WaitForEver=-1
-//StrConstant visaComm_PackageRoot="root:Packages"
-//StrConstant visaComm_PackageFolderName="VISACommunication"
 StrConstant visaComm_PackageName="VISAComm"
-
-
-StrConstant visaComm_PanelName="VISACommBkgrdTsk"
 Constant visaComm_bkgd_task_ticks=3
 
-//TODO:need to fix the default init strings. currently keithley control package uses this and this should be really moved to that package.
-StrConstant visaComm_DefaultInitString="*CLS\rstatus.reset() status.request_enable=status.MAV\rformat.data=format.REAL64 format.byteorder=1"
-StrConstant visaComm_DefaultClearQueueCmd="*CLS\rstatus.reset() status.request_enable=status.MAV"
-StrConstant visaComm_DefaultShutdownCmd="*CLS\rreset()"
-//TODO:should just use a constant instead of a string for this option
+StrConstant visaComm_DefaultInitString=""
+StrConstant visaComm_DefaultClearQueueCmd=""
+StrConstant visaComm_DefaultShutdownCmd=""
+//TODO:should just use a constant instead of a string for this option?
 StrConstant visaComm_NoClearQueue="NO_CLEAR"
+StrConstant visaComm_DefaultDevName="No Name"
 
 StrConstant visaComm_DEBUGSTR="KEITHLEY INSTRUMENTS.*MODEL 2636B [DEBUG MODE STRING]"
+
+Menu "visaCommCtrl", dynamic
+	visaComm_MenuItem(0), /Q, visaComm_MenuStopTask(0)
+	visaComm_MenuItem(1), /Q, visaComm_MenuStopTask(1)
+	visaComm_MenuItem(2), /Q, visaComm_MenuStopTask(2)
+	visaComm_MenuItem(3), /Q, visaComm_MenuStopTask(3)
+	visaComm_MenuItem(4), /Q, visaComm_MenuStopTask(4)
+	visaComm_MenuItem(5), /Q, visaComm_MenuStopTask(5)
+	visaComm_MenuItem(6), /Q, visaComm_MenuStopTask(6)
+	visaComm_MenuItem(7), /Q, visaComm_MenuStopTask(7)
+	visaComm_MenuItem(8), /Q, visaComm_MenuStopTask(8)
+	visaComm_MenuItem(9), /Q, visaComm_MenuStopTask(9)
+End
+
+Function /S visaComm_MenuItem(variable idx)
+	String retStr=""
+	String infostr=WBPkgGetInfoString(visaComm_PackageName)
+	
+	Variable instance=str2num(StringFromList(idx, StringByKey("active", infostr, ":", ";"), ","))
+	if(NumType(instance)==0 && instance>=0)
+		retStr="Stop VISA Task["+num2istr(instance)+"]: "+StringByKey("instance"+num2istr(instance), infostr, ":", ";")			
+	endif
+
+	return retStr
+End
 
 Function visaComm_CheckError(session, viObject, status, [quiet, AbortOnError])
 	Variable session
@@ -403,41 +423,42 @@ Function visaComm_CallbackProtoType(session, strData, strParam, count, strCmd)
 	return 0
 End
 
-Function visaComm_PanelButtonFunc(ba) : ButtonControl
-	STRUCT WMButtonAction &ba
+Function visaComm_MenuStopTask(idx, [instance])
+	Variable idx
+	Variable instance
 	
-	switch( ba.eventCode )
-	case 2: // mouse up		
-		Variable instance=str2num(GetUserData(ba.win, ba.ctrlName, "instance"))
-		//String savedDF=GetDataFolder(1)
-		//String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
-		String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
-		//SetDataFolder(fullPackagePath); AbortOnRTE
-		NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest")
-		//if(NVAR_Exists(request))
-			request=-99
-		//endif
-		//SetDataFolder(savedDF)	
-		break
-	case -1: // control being killed
-		break
-	endswitch
+	String infostr=WBPkgGetInfoString(visaComm_PackageName)
+	String active_instances=StringByKey("active", infostr, ":", ";")
+	
+	if(ParamIsDefault(instance))
+		instance=str2num(StringFromList(idx, active_instances, ","))
+		if(NumType(instance)==0 && instance>=0)
+			try
+				String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
+				NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest")
+				request=-99
+			catch
+				print "error when trying to stop visa task by menu for instance: "+num2istr(instance)
+			endtry
+		endif
+	endif
+	if(instance>=0)
+		active_instances=RemoveFromList(num2istr(instance), active_instances, ",")
+		infostr=ReplaceStringByKey("active", infostr, active_instances, ":", ";")
+		WBPkgSetInfoString(visaComm_PackageName, infostr)
+	endif
 End
 
 Function visaComm_WriteAndReadTask(s)
 	STRUCT WMBackgroundStruct &s
 	Variable timer1=StartMSTimer
 	
-	//String savedDF=GetDataFolder(1)
 	Variable instance=str2num(StringFromList(1, s.name, "_")) // task name contains the instance number: visaCommTask_XXX
 	
-	//String fullPackagePath=visaComm_PackageRoot+":"+visaComm_PackageFolderName
 	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgShouldExist)
 	Variable retVal=0
 	try
 		AbortOnValue !DataFolderExists(fullPackagePath), -100
-		
-		//SetDataFolder(fullPackagePath); AbortOnRTE
 		
 		NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest") //set by user
 		NVAR requestType=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequestType") //set by user
@@ -642,23 +663,13 @@ Function visaComm_WriteAndReadTask(s)
 		endif
 		retVal=2
 	endtry
-	//SetDataFolder(savedDF)	
-	if(retVal!=0)
-		if(WinType(visaComm_PanelName)==7)
-			KillWindow $visaComm_PanelName
-		endif
-	else
-		if(WinType(visaComm_PanelName)==0)
-			NewPanel /FLT=1 /K=2 /N=$visaComm_PanelName /W=(0,0,120,40)
-			Button /Z visaComm_PanelButton font="Arial", fsize=10, fstyle=1, title="VISA Running..", valueColor=(65535,0,0), win=$visaComm_PanelName, size={80, 20}, pos={20, 10}, proc=visaComm_PanelButtonFunc, userdata(instance)=num2istr(instance)
-			SetActiveSubwindow _endfloat_
-		endif
-	endif
+	
 	if(timer1!=-1)
 		exec_time=stopMSTimer(timer1)/1000000
 	endif
 
 	if(retVal!=0)
+		visaComm_MenuStopTask(-1, instance=instance)
 		print "visaComm background task instance ["+num2istr(instance)+"] exited with code "+num2istr(retVal)
 	endif
 	return retVal
@@ -786,14 +797,11 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 	
 	status = viGetAttributeString(instr, VI_ATTR_INTF_INST_NAME, name)
 	if(status!=VI_SUCCESS)
-		name="N/A"
+		name=visaComm_DefaultDevName
 	endif
 	
 	instance=visaComm_SetupBackgroundTask(name, instance=instance)
-		
-	//String savedDF=GetDataFolder(1)
 	String fullPackagePath=WBSetupPackageDir(visaComm_PackageName, instance=instance)
-	//SetDataFolder(fullPackagePath)
 	
 	NVAR request=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequest")
 	NVAR requesttype=$WBPkgGetName(fullPackagePath, WBPkgDFVar, "ExtRequestType")
@@ -847,10 +855,17 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 				CtrlNamedBackground $(taskname), period=(cycle_ticks)
 			endif
 		endif
+		
+		String infostr=WBPkgGetInfoString(visaComm_PackageName)
+		String active_instances=StringByKey("active", infostr, ":", ";")
+		active_instances=AddListItem(num2istr(instance), active_instances, ",")
+		infostr=ReplaceStringByKey("active", infostr, active_instances, ":", ";")
+		WBPkgSetInfoString(visaComm_PackageName, infostr)
+		
 		print "visaComm background task instance ["+num2istr(instance)+"] initialized"
 	else
 		print "Last request has not been processed yet. Background Task instance ["+num2istr(instance)+"is busy"
 	endif
-	//SetDataFolder(savedDF)
+
 	return instance
 End
