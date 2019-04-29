@@ -29,7 +29,7 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma moduleName=KeithleyControl
 #pragma Independent Module=KeithleyControl
-#pragma IgorVersion=6.35
+#pragma IgorVersion=7.0
 #include "VISACommunication"
 
 #if exists("LIH_InitInterface")==3
