@@ -141,10 +141,15 @@ Function /S visaComm_GetList([filter, quiet])
 	return list
 End
 
-Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
+//need national instrument VISA driver support
+constant VI_EVENT_SERIAL_TERMCHAR=0x3FFF2024
+constant VI_EVENT_SERIAL_CHAR=0x3FFF2035
+
+Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, termChar, initCmdStr, quiet])
 	String instrDesc
 	Variable & sessionRM
 	Variable & sessionINSTR
+	String termChar
 	String initCmdStr
 	Variable quiet
 	
@@ -158,12 +163,30 @@ Function visaComm_Init(instrDesc, [sessionRM, sessionINSTR, initCmdStr, quiet])
 	if(status==VI_SUCCESS)
 		status=viOpen(RM, instrDesc, 0, 0, INSTR)
 		if(status==VI_SUCCESS)
+			if(!ParamIsDefault(termChar))
+				int char_value=char2num(termChar)
+				//print char_value
+				status=viSetAttribute(INSTR, VI_ATTR_TERMCHAR, char_value)
+				AbortOnValue status!=VI_SUCCESS, -1
+				status=viSetAttribute(INSTR, VI_ATTR_TERMCHAR_EN, VI_TRUE)
+				AbortOnValue status!=VI_SUCCESS, -1
+				status=viSetAttribute(INSTR, VI_ATTR_SEND_END_EN, VI_TRUE)
+				AbortOnValue status!=VI_SUCCESS, -1
+				status=viSetAttribute(INSTR, VI_ATTR_SUPPRESS_END_EN, VI_FALSE)
+				AbortOnValue status!=VI_SUCCESS, -1				
+			endif			
 			viClear(INSTR)
 			viEnableEvent(INSTR, VI_EVENT_SERVICE_REQ, VI_QUEUE, 0)
+			viEnableEvent(INSTR, VI_EVENT_SERIAL_TERMCHAR, VI_QUEUE, 0)
+			viEnableEvent(INSTR, VI_EVENT_SERIAL_CHAR, VI_QUEUE, 0)
+			
 			if(ParamIsDefault(initCmdStr))
 				initCmdStr=visaComm_DefaultInitString
 			endif
-			visaComm_WriteSequence(instr, initCmdStr)
+			
+			if(!ParamIsDefault(initCmdStr))
+				visaComm_WriteSequence(instr, initCmdStr)
+			endif
 		endif
 	endif
 	visaComm_CheckError(RM, INSTR, status, quiet=quiet)
@@ -239,6 +262,13 @@ Function visaComm_DequeueEvent(instr, timeout_ms, clearPreviousEvents, retOnTime
 	do
 		status=viWaitOnEvent(instr, VI_ALL_ENABLED_EVENTS, timeout_ms, event, context)
 		if(retOnTimeOut!=0 || status!=VI_ERROR_TMO)
+			if(status==VI_WARN_QUEUE_OVERFLOW)				
+				status=viDiscardEvents(instr, VI_ALL_ENABLED_EVENTS, VI_QUEUE)
+				print "warning: VISA event queue overflow."
+			endif
+			if(event==VI_EVENT_SERIAL_CHAR)
+				status=VI_SUCCESS_QUEUE_NEMPTY
+			endif
 			break
 		endif
 	while(1)	
@@ -247,21 +277,31 @@ Function visaComm_DequeueEvent(instr, timeout_ms, clearPreviousEvents, retOnTime
 		viClose(context)
 	endif
 #endif
+	//print "status after dequeue:", status
 	return status
 End
 
-Function visaComm_ReadStr(instr, str, packetSize, len) //read string until terminal character is reached, or if len>0, read the string of that length
+Function visaComm_ReadStr(instr, str, packetSize, len, [nowait]) //read string until terminal character is reached, or if len>0, read the string of that length
 	Variable instr
 	String & str
 	Variable packetSize
 	Variable & len
+	variable nowait
 
 	Variable status=0
 #ifndef DEBUGONLY	
 	Variable rflag=1, retCnt, rlen
 	String buf=""
 	str=""
-
+	
+	//print "reading parameters: ", num2istr(instr), str, packetSize, len
+	variable byte_at_port=0
+	viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
+	
+	if(byte_at_port==0 && nowait==1)
+		return VI_ERROR_TMO
+	endif
+	
 	rlen=0
 	if(len>=0)
 		do
@@ -275,12 +315,15 @@ Function visaComm_ReadStr(instr, str, packetSize, len) //read string until termi
 					str+=buf
 					rlen+=retCnt
 					rflag=0
+					//print "read successfully."
 					break
 				case VI_SUCCESS_MAX_CNT:
 					str+=buf
 					rlen+=retCnt
+					//print "read reached max count"
 					break
 				default:
+					//print "read error or time out."
 					rflag=0
 					break
 			endswitch		
@@ -329,9 +372,10 @@ Function visaComm_ReadFixedWithPrefix(instr, str)
 #endif
 End
 
-Function visaComm_WriteSequence(instr, cmd)
+Function visaComm_WriteSequence(instr, cmd, [termChar])
 	Variable instr
 	String cmd
+	String termChar
 	Variable status=VI_SUCCESS
 #ifndef DEBUGONLY
 	String str
@@ -340,6 +384,9 @@ Function visaComm_WriteSequence(instr, cmd)
 	
 	for(i=0; i<n; i+=1)
 		str=StringFromList(i, cmd, "\r")
+		if(!ParamIsDefault(termChar))
+			str+=termChar
+		endif
 		len=strlen(str)
 		if(len>0)
 			status=viWrite(instr, str, len, retCnt)
@@ -365,7 +412,7 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 #ifndef DEBUGONLY
 
 	Variable len=0
-	Variable retCnt, status, termChar
+	Variable retCnt, status, termChar, byte_at_port
 
 	if(ParamIsDefault(clearOutputQueue) || clearOutputQueue!=0)
 		if(ParamIsDefault(clearQueueCmd))
@@ -386,7 +433,8 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 	if(!ParamIsDefault(response))
 		do
 			status=visaComm_DequeueEvent(instr, visaComm_ReadWaitTime, 0, 1)
-			if(status!=VI_ERROR_TMO)
+			//status=viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
+			if(status!=VI_ERROR_TMO)// && byte_at_port>0)
 				if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_EMPTY || VI_SUCCESS_QUEUE_NEMPTY)
 					if(readType==0) //type 0: read whatever is present in the queue
 						len=0
@@ -510,10 +558,10 @@ Function visaComm_WriteAndReadTask(s)
 				fixedlen=setlen
 				cmd=setcmd
 				
-				if(SVAR_Exists(setParam) && SVAR_Exists(setFuncName) && SVAR_Exists(callParam) && SVAR_Exists(callFuncName))
+				//if(SVAR_Exists(setParam) && SVAR_Exists(setFuncName) && SVAR_Exists(callParam) && SVAR_Exists(callFuncName))
 					callParam=setParam
 					callFuncName=setFuncName
-				endif
+				//endif
 				
 				if(requestType & 1) // clear queue?
 					stateoption_clearqueue=1
@@ -557,9 +605,13 @@ Function visaComm_WriteAndReadTask(s)
 			AbortOnRTE
 			break
 		case 1: // reading state
+			//print "reading state request: ", request
 			if(request==0)
-				viStatus=visaComm_DequeueEvent(session, visaComm_NoWait, 0, 1)
-				if(viStatus!=VI_ERROR_TMO)
+				variable byte_at_port=0
+				viGetAttribute(session, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
+				//viStatus=visaComm_DequeueEvent(session, visaComm_NoWait, 0, 1)
+				//if(viStatus!=VI_ERROR_TMO)
+				if(byte_at_port>0)
 					//print "reading coming in..."
 					if(viStatus==VI_SUCCESS || viStatus==VI_SUCCESS_QUEUE_NEMPTY || viStatus==VI_SUCCESS_QUEUE_EMPTY)
 						if(stateoption_fixedlengthprefix) //read with a prefix specifying the length by the server
@@ -574,6 +626,7 @@ Function visaComm_WriteAndReadTask(s)
 							endif
 						endif
 						response=strBuf
+						//print "get response as: ", response
 						callback_flag=1 //need to call the user defined function after getting the buffer filled
 						if(stateoption_repeatwriting)
 							stateflag = stateflag & (~1) //switch to writing period in the next cycle
@@ -588,12 +641,14 @@ Function visaComm_WriteAndReadTask(s)
 				stateflag=0 //new request is coming, get ready for that in the next cycle
 				stateoptions=0
 			endif
+			//print "reading done..."
 			AbortOnRTE
 			break
 		case 2: // writing state
+			//print "request:", request
 			if(request==0)
-				//print "writing new command..."
-				visaComm_WriteSequence(session, cmd)
+				//print "writing new command...", cmd
+				visaComm_WriteSequence(session, cmd, termChar="\r")
 				stateflag = stateflag & (~2) //switch to read period in the next cycle
 				stateflag = stateflag | 1
 			else
@@ -617,10 +672,12 @@ Function visaComm_WriteAndReadTask(s)
 				funcstatus=(strlen(StringByKey("ISPROTO", funcinfo))>0) && (str2num(StringByKey("ISPROTO", funcinfo))==0) && (str2num(StringByKey("ISXFUNC", funcinfo))==0)
 				
 				if(funcstatus)
+					//print "count before calling:", count
 					userRetVal=callbackFunc(session, response, callParam, newcount, newcmd); AbortOnRTE
 					count=newcount
 					count+=1
 					cmd=newcmd
+					//print "new command:", cmd
 					if(userRetVal<0)
 						stateflag=0
 						AbortOnValue 1, -110
@@ -794,6 +851,7 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 	
 	String name=""
 	Variable status
+	Variable queue_len
 	
 	status = viGetAttributeString(instr, VI_ATTR_INTF_INST_NAME, name)
 	if(status!=VI_SUCCESS)
