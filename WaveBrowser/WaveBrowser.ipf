@@ -224,15 +224,6 @@ Function WBrowserCreateDF(dfstr)
 	return retVal
 End
 
-//
-//WBSetupPackageDir setup the directory for a package
-//	If instance is not set, by default, the function will try to create a new instance with zero as index. In this case,
-// if a zero index instance already exists, the function will generate an error.
-// If instance is set, it should be a variable reference. If the variable is set to WBPkgNewInstance, then a new instance
-// will be created and the instance number will be stored in the variable reference. Otherwise, the instance number
-// will be used to check if the instance with that index exists. If so, the path will be returned. If not, an error will
-// be generated.
-//
 static Function /T wbgenerateDFName(root, packagename, instance, [package_name_only])
 	String root, packagename
 	Variable instance
@@ -245,19 +236,49 @@ static Function /T wbgenerateDFName(root, packagename, instance, [package_name_o
 	endif
 End
 
+//
+// package structure:
+// 
+// root-
+//      |-Package-
+//                |-PackageName-
+//                    infoStr
+//                    maxInstanceRecord
+//                              |-vars
+//                              |-strs
+//                              |-waves
+//                              |-privateDF
+//                              |-instance0-
+//												infoStr
+//                                          |-vars
+//                                          |-strs
+//														  |-waves
+//                                          |-privateDF
+//                              |-instance1-
+//												infoStr
+//                                          |-vars
+//                                          |-strs
+//                                          |-waves
+//                                          |-privateDF
+//                               ...
+//
+// infoStr format:
+
 
 StrConstant WB_PackageRoot="root:Packages:"
 Constant WBPkgNewInstance=-1
+Constant WBPkgCommonDirOnly=NaN
 Constant WBPkgDefaultInstance=0
 Constant WBPkgMaxInstances=100
 StrConstant WB_InstanceCountName="maxInstanceRecord"
 StrConstant WB_InfoStringName="infoStr"
 
+//constants for existence
 Constant WBPkgExclusive=-1
 Constant WBPkgOverride=0
 Constant WBPkgShouldExist=1
 
-Function /T WBSetupPackageDir(PackageName, [instance, existence, name]) //when error happens, return ""
+Function /T WBSetupPackageDir(PackageName, [instance, existence, info, init_request]) //when error happens, return ""
 	String PackageName
 	Variable & instance//when instance is not negative, the user asks for a specific instance
 							 //when instance is negative,
@@ -267,102 +288,137 @@ Function /T WBSetupPackageDir(PackageName, [instance, existence, name]) //when e
 							 //when existence is 0, the user do not care, but want to make sure folder is created
 							 //when existence is 1, the user expect the folder to exist, otherwise an error should be produced
 							 //by default, existence is set to 1
-	String name
+	String info			// name for each instance
+	Variable init_request //called by the initialization function, will do the hard work of creating all the directories
+								// otherwise will only return the string of the data folder pathname
+								// this value should only be set to non-zero when instance is omitted (only common directory needed),
+								// or instance is set to WBPkgDefaultInstance, or WBPkgNewInstance
 	
 	Variable createNew=0 // flag for creating new data folder
 	Variable idx
 	String fullPath=""
+	String tmpStrName=""
 	
 	if(ParamIsDefault(existence))
-		existence=1
+		if(!ParamIsDefault(instance))
+			if(instance<0)
+				existence=WBPkgExclusive
+			else
+				existence=WBPkgShouldExist
+			endif
+		endif
 	endif
-	if(ParamIsDefault(name))
-		name="Untitled"
+	if(ParamIsDefault(info))
+		info=""
 	endif
 
-	if(ParamIsDefault(instance)) //by default, instance is zero.
-		print "you have to specify a instance option for all calls to WBSetupPackageDir"
-		AbortOnValue -1, 0
+	//if instance is not provided, or set to NaN (WBPkgCommonDirOnly)
+	//only the top common directory for the package will be prepared.
+	//this is for the case where no special instance is required.
+	if(ParamIsDefault(instance) || NumType(instance)==2) 
+		fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, 0, package_name_only=1)
+		existence=WBPkgOverride
+	else
+		if(instance<0) //if instance is set to negative, means user want to find a new instance slot
+			for(idx=0; idx<WBPkgMaxInstances; idx+=1)
+				fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
+				if(!DataFolderExists(fullPath))
+					break
+				endif
+			endfor
+			
+			if(existence==WBPkgShouldExist) //user asks to find the newest instance that should exist.
+				if(idx>0)
+					idx-=1
+				endif
+			elseif(existence==WBPkgExclusive)//the user asks to create a new instance
+				//keep idx value because this is an available name for the new instance
+				init_request=1
+			else
+				print "existance has to be set to either 1 or -1 when instance is set to negative."
+				AbortOnValue -1, -1
+			endif
+			
+			if(idx>=WBPkgMaxInstances)
+				print "Trying to create too many instances for package "+fullPath
+				AbortOnValue -1, -2
+			endif
+			instance=idx
+		elseif(instance>0) //if the user call with a specific instance number that is not zero,
+								 //that means the user has called this function before with instance=-1
+								 //and got a unique instance assigned. So the existence should be WBPkgShouldExist
+								 //in other words, init_request should only be used with instance=WBPkgDefaultInstance,
+								 // or instance=WBPkgNewInstance
+			existence=WBPkgShouldExist
+		endif
+		fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, instance)		
 	endif
 	
-	if(instance<0) //if instance is set to negative, means user want to find a new instance slot
-		for(idx=0; idx<WBPkgMaxInstances; idx+=1)
-			fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, idx)
-			if(!DataFolderExists(fullPath))
-				break
+	if(init_request!=0) //this means the caller intend to generate the directory structure or check the structure
+							  // instead of only need the string of the pathname.					
+		switch(existence)
+		case WBPkgExclusive:
+			if(DataFolderExists(fullPath))
+				print "package ["+fullPath+"] already exists - this is not expected."
+				AbortOnValue -1, -3
 			endif
-		endfor
-		if(existence==1) //user asks to find the newest instance that should exist.
-			if(idx>0)
-				idx-=1
-			endif
-		elseif(existence==-1)//the user asks to create a new instance
-			//keep idx value because this is an available name for the new instance
-		else
-			print "existance has to be set to either 1 or -1 when instance is set to negative."
-			AbortOnValue -1, -1
-		endif
-		
-		if(idx>=WBPkgMaxInstances)
-			print "Trying to create too many instances for package "+fullPath
-			AbortOnValue -1, -2
-		endif
-		instance=idx
-	endif
-	
-	fullPath=wbgenerateDFName(WB_PackageRoot, PackageName, instance)
-	switch(existence)
-	case -1:
-		if(DataFolderExists(fullPath))
-			print "package ["+fullPath+"] already exists - this is not expected."
-			AbortOnValue -1, -3
-		endif
-		createNew=1
-		break
-	case 0:
-		if(!DataFolderExists(fullPath))
 			createNew=1
-		endif
-		break
-	case 1:
-		if(!DataFolderExists(fullPath))
-			print "package ["+fullPath+"] should already exist but not found."
-			AbortOnValue -1, -4
-		endif
-		break
-	default:
-		print "unknown value of existence request for package "+PackageName
-		AbortOnValue -1, -5
-		break
-	endswitch
-	
-	if(createNew==1)
-		if(WBrowserCreateDF(fullPath)!=0 || WBrowserCreateDF(fullPath+"vars")!=0 || WBrowserCreateDF(fullPath+"strs")!=0 || WBrowserCreateDF(fullPath+"waves")!=0 || WBrowserCreateDF(fulLPath+"privateDF")!=0)
-			print "Error when trying to create a new instance for package "+PackageName
-			AbortOnValue -1, -6
-		endif
+			break
+		case WBPkgOverride:
+			if(!DataFolderExists(fullPath))
+				createNew=1
+			endif
+			break
+		case WBPkgShouldExist:
+			if(!DataFolderExists(fullPath))
+				print "package ["+fullPath+"] should already exist but not found."
+				AbortOnValue -1, -4
+			endif
+			break
+		default:
+			print "unknown value of existence request for package "+PackageName
+			AbortOnValue -1, -5
+			break
+		endswitch
 		
-		try
-			String tmpName=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InstanceCountName
-			NVAR maxInsRecord=$(tmpName)
+		if(createNew==1)
+			if(WBrowserCreateDF(fullPath)!=0 || WBrowserCreateDF(fullPath+"vars")!=0 || WBrowserCreateDF(fullPath+"strs")!=0 || WBrowserCreateDF(fullPath+"waves")!=0 || WBrowserCreateDF(fulLPath+"privateDF")!=0)
+				print "Error when trying to create a new instance for package "+PackageName
+				AbortOnValue -1, -6
+			endif
+		endif //create_new==1
+		
+		try //prepare the common/parent directory for the package
+			//there will be two common variables: instance count, and info string that contains basic information for all instances
+			tmpStrName=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InstanceCountName
+			NVAR maxInsRecord=$(tmpStrName)
 			if(!NVAR_Exists(maxInsRecord))
-				Variable /G $(tmpName)
-				NVAR maInsRecord=$(tmpName)
+				Variable /G $(tmpStrName)
+				NVAR maxInsRecord=$(tmpStrName)
+				maxInsRecord=-1
 			endif
-			maxInsRecord=instance; AbortOnRTE
-		
-			tmpName=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName		
-			SVAR infoStr=$(tmpName)
+			if(!ParamIsDefault(instance) && instance>=0)
+				if(maxInsRecord<instance)
+					maxInsRecord=instance
+				endif
+			endif
+			
+			tmpStrName=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName		
+			SVAR infoStr=$(tmpStrName)
 			if(!SVAR_Exists(infoStr))
-				String /G $(tmpName)
-				SVAR infoStr=$(tmpName)
+				String /G $(tmpStrName)
+				SVAR infoStr=$(tmpStrName)
+				infoStr=""
 			endif
-			infoStr=ReplaceStringByKey("instance"+num2istr(instance), infoStr, name, ":", ";", 1)
+			if(!ParamIsDefault(instance) && instance>=0)
+				WBPkgSetInfoString(PackageName, info, instance=instance); AbortOnRTE
+			endif
+			
 		catch
 			print "Error when trying to set the common instance variables for package "+PackageName
 		endtry
 		
-	endif
+	endif //init_request!=0
 
 	return fullPath
 End
@@ -379,26 +435,57 @@ Function WBPkgGetNumberOfInstances(PackageName)
 	return n
 End
 
-Function /T WBPkgGetInfoString(PackageName)
+Function /T WBPkgGetInfoString(PackageName, [instance])
 	String PackageName
-	String s=""
-	//try
-		SVAR infostr=$(wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName)
-		if(SVAR_Exists(infostr))
-			s=infostr ; AbortOnRTE
+	Variable instance
+	String key
+	String info=""
+	try
+		String infostr_name=""
+		if(ParamIsDefault(instance))
+			infostr_name=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName
+		else
+			infostr_name=wbgenerateDFName(WB_PackageRoot, PackageName, instance)+WB_InfoStringName
 		endif
-	//catch
-	//	print "Error getting info string for "+PackageName
-	//endtry
-	return s
+		SVAR infostr=$infostr_name
+		if(!SVAR_Exists(infostr))
+			String /G $infostr_name=""
+			SVAR infostr=$infostr_name; AbortOnRTE
+			info=""
+		else
+			info=infostr
+		endif
+
+	catch
+		print "Error when accessing infostr for package "+PackageName+" instance "+num2istr(instance)
+		info=""
+	endtry
+	
+	return info
 End
 
-Function WBPkgSetInfoString(PackageName, str)
+Function WBPkgSetInfoString(PackageName, str, [instance])
 	String PackageName
 	String str
+	Variable instance
 	try
-		SVAR infostr=$(wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName)
-		infostr=str ; AbortOnRTE
+		String infostr_name=""
+		if(ParamIsDefault(instance))
+			infostr_name=wbgenerateDFName(WB_PackageRoot, PackageName, -1, package_name_only=1)+WB_InfoStringName
+		else
+			infostr_name=wbgenerateDFName(WB_PackageRoot, PackageName, instance)+WB_InfoStringName
+		endif
+		
+		SVAR infostr=$infostr_name
+		if(!SVAR_Exists(infostr))
+			String /G $infostr_name=""
+			SVAR infostr=$infostr_name
+		endif
+		if(!ParamIsDefault(instance) && instance>=0)
+			infostr=str; AbortOnRTE
+		else
+			infostr=str; AbortOnRTE
+		endif
 	catch
 		print "Error setting info string for "+PackageName
 	endtry
@@ -409,27 +496,40 @@ Constant WBPkgDFVar=1
 Constant WBPkgDFStr=2
 Constant WBPkgDFDF=3
 
-Function WBPrepPackageWaves(fullPath, wlist, [text, datatype])
+Function WBPrepPackageWaves(fullPath, wlist, [text, datatype, sizes, quiet])
 	String fullPath, wlist
 	Variable text, datatype
+	String sizes
+	Variable quiet
 
 	Variable c
 	String s
+	Variable sz
 	Variable retVal=-1
 	try
 		s=""
 		for(c=ItemsInList(wlist)-1;c>=0; c-=1)
 			s=fullPath+"waves:"+PossiblyQuoteName(StringFromList(c, wlist))
+			sz=0
+			if(!ParamIsDefault(sizes))
+				sz=floor(str2num(StringFromList(c, sizes, ";")))
+				if(numtype(sz)!=0)
+					sz=0
+				endif
+			endif
 			//AbortOnValue exists(s)!=0, -1
 			if(!ParamIsDefault(text) && text>0)
-				Make /T /N=0 /O $s; AbortOnRTE
+				Make /T /N=(sz) /O $s=""; AbortOnRTE
 			elseif(ParamIsDefault(datatype))
-				Make /N=0 /O /D $s; AbortOnRTE
+				Make /N=(sz) /O /D $s=0; AbortOnRTE
 			else
-				Make /N=0 /O /Y=(datatype) $s; AbortOnRTE
+				Make /N=(sz) /O /Y=(datatype) $s=0; AbortOnRTE
 			endif
 			WAVE w=$s
-			AbortOnValue !WaveExists(w), -1			
+			AbortOnValue !WaveExists(w), -1
+			if(ParamIsDefault(quiet) || quiet==0)
+				print "["+s+"] created successfully."
+			endif
 		endfor
 		retVal=0
 	catch
@@ -438,9 +538,9 @@ Function WBPrepPackageWaves(fullPath, wlist, [text, datatype])
 	return retVal
 End
 
-Function WBPrepPackageVars(fullPath, vlist, [complx])
+Function WBPrepPackageVars(fullPath, vlist, [complx, quiet])
 	String fullPath, vlist
-	Variable complx
+	Variable complx, quiet
 
 	Variable c
 	String s
@@ -457,6 +557,9 @@ Function WBPrepPackageVars(fullPath, vlist, [complx])
 			endif
 			NVAR v=$s
 			AbortOnValue !NVAR_Exists(v), -1
+			if(ParamIsDefault(quiet) || quiet==0)
+				print "["+s+"] created successfully."
+			endif
 		endfor
 		retVal=0
 	catch
@@ -465,8 +568,9 @@ Function WBPrepPackageVars(fullPath, vlist, [complx])
 	return retVal
 End
 
-Function WBPrepPackageStrs(fullPath, slist)
+Function WBPrepPackageStrs(fullPath, slist, [quiet])
 	String fullPath, slist
+	Variable quiet
 
 	Variable c
 	String s
@@ -480,6 +584,9 @@ Function WBPrepPackageStrs(fullPath, slist)
 			
 			SVAR s1=$s
 			AbortOnValue !SVAR_Exists(s1), -1
+			if(ParamIsDefault(quiet) || quiet==0)
+				print "["+s+"] created successfully."
+			endif
 		endfor
 		retVal=0
 	catch
@@ -488,8 +595,9 @@ Function WBPrepPackageStrs(fullPath, slist)
 	return retVal
 End
 
-Function WBPrepPackagePrivateDF(fullPath, dflist)
+Function WBPrepPackagePrivateDF(fullPath, dflist, [quiet])
 	String fullPath, dflist
+	Variable quiet
 
 	Variable c
 	String s
@@ -501,6 +609,9 @@ Function WBPrepPackagePrivateDF(fullPath, dflist)
 			//AbortOnValue exists(s)!=0, -1
 			WBrowserCreateDF(s); AbortOnRTE
 			AbortOnValue !DataFolderExists(s), -1
+			if(ParamIsDefault(quiet) || quiet==0)
+				print "["+s+"] created successfully."
+			endif
 		endfor
 		retVal=0
 	catch
@@ -533,11 +644,27 @@ Function /T WBPkgGetName(fullPath, type, name, [quiet])
 	endswitch
 	
 	String s=fullPath+subfd+PossiblyQuoteName(name)
+	
 	try
-		AbortOnValue exists(s)==0, -1
+		switch(type)
+		case WBPkgDFWave:
+			AbortOnValue WaveExists($s)==0, -1
+			break
+		case WBPkgDFVar:
+			NVAR nv=$s
+			AbortOnValue NVAR_Exists(nv)==0, -1
+			break
+		case WBPkgDFStr:
+			SVAR sv=$s
+			AbortOnValue SVAR_Exists(sv)==0, -1
+			break
+		case WBPkgDFDF:
+			AbortOnValue strlen(name)==0 || DataFolderExists(s)==0, -1
+		default:
+		endswitch		
 	catch
 		if(ParamIsDefault(quiet) || quiet==0)
-			print "Request to access a content in package ["+s+"] that does not exist."
+			print "Warning: Request to access a content in package ["+s+"] that does not exist."
 		endif
 		s=""
 	endtry

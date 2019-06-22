@@ -132,7 +132,7 @@ StrConstant ITC_TelegraphList="_none_;#GAIN;#CSLOW;#FILTER;#MODE;"
 
 Function /T ITC_setup_directory()
 	Variable instance=WBPkgNewInstance
-	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance, existence=-1)
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance, existence=-1, init_request=1)
 	if(strlen(fPath)<=0)
 		abort "Cannot properly prepare ITC package data folder!"
 	endif

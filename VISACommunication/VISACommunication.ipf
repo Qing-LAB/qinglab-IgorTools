@@ -30,7 +30,7 @@
 #include "WaveBrowser"
 
 Constant visaComm_ReadWaitTime=50 // in milliseconds
-Constant visaComm_ReadPacketSize=4096
+Constant visaComm_ReadPacketSize=16
 Constant visaComm_NoWait=0
 Constant visaComm_WaitForEver=-1
 StrConstant visaComm_PackageName="VISAComm"
@@ -62,7 +62,7 @@ Function /S visaComm_MenuItem(variable idx)
 	String retStr=""
 	String infostr=WBPkgGetInfoString(visaComm_PackageName)
 	
-	Variable instance=str2num(StringFromList(idx, StringByKey("active", infostr, ":", ";"), ","))
+	Variable instance=str2num(StringFromList(idx, StringByKey("active", infostr, "=", ";"), ","))
 	if(NumType(instance)==0 && instance>=0)
 		retStr="Stop VISA Task["+num2istr(instance)+"]: "+StringByKey("instance"+num2istr(instance), infostr, ":", ";")			
 	endif
@@ -281,58 +281,134 @@ Function visaComm_DequeueEvent(instr, timeout_ms, clearPreviousEvents, retOnTime
 	return status
 End
 
-Function visaComm_ReadStr(instr, str, packetSize, len, [nowait]) //read string until terminal character is reached, or if len>0, read the string of that length
+Function visaComm_ReadStr(instr, str, len, [wait, set_attrs, termChar]) //read string until terminal character is reached, or if len>0, read the string of that length
 	Variable instr
 	String & str
-	Variable packetSize
 	Variable & len
-	variable nowait
+	variable wait, set_attrs, termChar
 
 	Variable status=0
-#ifndef DEBUGONLY	
-	Variable rflag=1, retCnt, rlen
-	String buf=""
-	str=""
-	
-	//print "reading parameters: ", num2istr(instr), str, packetSize, len
-	variable byte_at_port=0
-	viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
-	
-	if(byte_at_port==0 && nowait==1)
-		return VI_ERROR_TMO
-	endif
-	
-	rlen=0
-	if(len>=0)
-		do
-			if(len>0 && packetSize>(len-rlen))
-				packetSize=len-rlen
-			endif
-			status=viRead(instr, buf, packetSize, retCnt)
-			switch(status)
-				case VI_SUCCESS:
-				case VI_SUCCESS_TERM_CHAR:
-					str+=buf
-					rlen+=retCnt
-					rflag=0
-					//print "read successfully."
-					break
-				case VI_SUCCESS_MAX_CNT:
-					str+=buf
-					rlen+=retCnt
-					//print "read reached max count"
-					break
-				default:
-					//print "read error or time out."
-					rflag=0
-					break
-			endswitch		
-		while(rflag && rlen<len)
-	endif
-#else
-	str=visaComm_DEBUGSTR;
-#endif
 
+	if(ParamIsDefault(wait))
+		wait=Inf
+	endif
+	
+	str=""
+
+	//print "reading parameters: ", num2istr(instr), str, packetSize, len
+	try
+		variable old_termChar
+		status=viGetAttribute(instr, VI_ATTR_TERMCHAR, old_termChar)
+		AbortOnValue status!=VI_SUCCESS, -1
+		if(!ParamIsDefault(termChar) && termChar!=0)
+			status=viSetAttribute(instr, VI_ATTR_TERMCHAR, termChar)
+			AbortOnValue status!=VI_SUCCESS, -1
+		else
+			termChar=old_termChar
+		endif
+		
+		if(set_attrs==1)
+			status=viSetAttribute(instr, VI_ATTR_TERMCHAR, termChar)
+			AbortOnValue status!=VI_SUCCESS, -1
+			status=viSetAttribute(instr, VI_ATTR_TERMCHAR_EN, VI_TRUE)
+			AbortOnValue status!=VI_SUCCESS, -2
+			status=viEnableEvent(instr, VI_EVENT_SERVICE_REQ, VI_QUEUE, 0)
+			AbortOnValue status!=VI_SUCCESS, -3
+			status=viEnableEvent(instr, VI_EVENT_SERIAL_TERMCHAR, VI_QUEUE, 0)
+			AbortOnValue status!=VI_SUCCESS, -4
+			status=viEnableEvent(instr, VI_EVENT_SERIAL_CHAR, VI_QUEUE, 0)
+			AbortOnValue status!=VI_SUCCESS, -5
+		endif
+		
+		Variable start_time=ticks
+		Variable elapsed_time
+		Variable event=VI_NULL
+		Variable context=VI_NULL
+		Variable byte_at_port=0
+		Variable packetSize
+		Variable rflag=1, retCnt, rlen
+		String buf=""
+		Variable termchar_detected=0
+		Variable event_timeout=0
+		rlen=0
+		do
+			status=viWaitOnEvent(instr, VI_ALL_ENABLED_EVENTS, event_timeout, event, context) 
+			//wait time is about 1 tick from the second round
+			if(context!=VI_NULL)
+				viClose(context)
+			endif
+			elapsed_time=ticks-start_time
+			if(status!=VI_ERROR_TMO)
+				//print "ticks passed without TMO detected:", elapsed_time
+				status=viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
+				AbortOnValue status!=VI_SUCCESS, -6	
+				
+				if(byte_at_port==0)
+					if(elapsed_time>=wait)
+						//print "timeout with no bytes waiting at the port."
+						//print "elapsed time:", elapsed_time
+						//print "set waiting time:", wait
+						//print "rflag, rlen, terminal_detection:", rflag, rlen, termchar_detected
+						break // time out, no char at the port
+					endif
+				else
+					packetSize=byte_at_port
+					if(len>0 && packetSize>(len-rlen))
+						packetSize=len-rlen
+					endif
+					
+					if(packetSize>0)					
+						status=viRead(instr, buf, packetSize, retCnt)
+						if(retCnt>0)
+							str+=buf
+							rlen+=retCnt
+							if(len<=0) //read until terminal char
+								//print "latest char: ", char2num(buf[retCnt-1]), ", rlen: ", rlen
+								if(char2num(buf[retCnt-1])==termChar)
+									termchar_detected=1
+									rflag=0
+									//print "temrinal character detected."
+								else
+									//print "still waiting for extra message."
+								endif //terminal char detected
+							endif //len is set to zero
+						endif //something has been read
+					endif //packetSize is reasonable
+				endif //byte_at_port
+				
+				if(len>0 && rlen>=len) //full length reached
+					rflag=0
+				endif
+				
+			else //TMO
+				//print "ticks passed with TMO detected:", elapsed_time
+				if(elapsed_time>=wait)
+					//print "timeout when waiting for event."
+					//print "elapsed time:", elapsed_time
+					//print "set waiting time:", wait
+					//print "rflag, rlen, terminal_detection:", rflag, rlen, termchar_detected
+					break
+				endif
+			endif //TMO
+			
+			event_timeout=15 //1 tick
+			AbortOnRTE
+		while(rflag)
+
+		if(!ParamIsDefault(termChar) && termChar!=0)
+			viSetAttribute(instr, VI_ATTR_TERMCHAR, old_termChar)
+		endif	
+	catch
+		print "error during visaComm_ReadStr.", GetRTError(1)
+	endtry
+	
+	if(rlen>0 && rlen==len)
+		status=VI_SUCCESS
+	endif
+	if(termchar_detected!=0)
+		status=VI_SUCCESS_TERM_CHAR
+	endif
+	len=rlen
 	return status
 End
 
@@ -346,7 +422,7 @@ Function visaComm_ReadFixedWithPrefix(instr, str)
 #ifndef DEBUGONLY
 	viGetAttribute(instr , VI_ATTR_TERMCHAR_EN , termChar)
 	viSetAttribute(instr, VI_ATTR_TERMCHAR_EN, char2num("\r"))
-	visaComm_ReadStr(instr, buf, visaComm_ReadPacketSize, len)
+	visaComm_ReadStr(instr, buf, len)
 	len=strsearch(buf, "QQDATA_FIXED", 0)
 	str=""
 	if(len>=0)
@@ -354,14 +430,14 @@ Function visaComm_ReadFixedWithPrefix(instr, str)
 			len=str2num(buf[len+16,inf])
 			if(len>0) //length in prefix can be set to zero so no binary reading will be performed, this is used for the intialization
 				viSetAttribute(instr, VI_ATTR_TERMCHAR_EN, 0)
-				visaComm_ReadStr(instr, str, visaComm_ReadPacketSize, len)
+				visaComm_ReadStr(instr, str, len)
 			endif
 		elseif(cmpstr(buf[len+12,len+15], "KDBL")==0)
 			len=str2num(buf[len+16,inf])
 			if(len>0) //length in prefix can be set to zero so no binary reading will be performed, this is used for the intialization
 				len=len*8+3
 				viSetAttribute(instr, VI_ATTR_TERMCHAR_EN, 0)
-				visaComm_ReadStr(instr, buf, visaComm_ReadPacketSize, len)
+				visaComm_ReadStr(instr, buf, len)
 				str=buf[2, len-2]
 			endif
 		else
@@ -400,7 +476,7 @@ Function visaComm_WriteSequence(instr, cmd, [termChar])
 End
 
 
-Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutputQueue, clearQueueCmd, fixedlen])
+Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutputQueue, clearQueueCmd, fixedlen, wait])
 	Variable instr
 	Variable readType
 	String cmd
@@ -408,6 +484,10 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 	Variable clearOutputQueue
 	String clearQueueCmd
 	Variable fixedlen
+	Variable wait
+	if(ParamIsDefault(wait))
+		wait=Inf
+	endif
 
 #ifndef DEBUGONLY
 
@@ -420,6 +500,7 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 		endif
 		visaComm_WriteSequence(instr, clearQueueCmd)
 		visaComm_DequeueEvent(instr, visaComm_NoWait, 1, 1)
+		viClear(instr)
 	endif
 	if(!ParamIsDefault(cmd))
 		len=strlen(cmd)
@@ -438,10 +519,10 @@ Function visaComm_SyncedWriteAndRead(instr, readType, [cmd, response, clearOutpu
 				if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_EMPTY || VI_SUCCESS_QUEUE_NEMPTY)
 					if(readType==0) //type 0: read whatever is present in the queue
 						len=0
-						visaComm_ReadStr(instr, response, visaComm_ReadPacketSize, len)
+						visaComm_ReadStr(instr, response, len, wait=wait)
 					elseif(readType==1 && fixedlen>0) //type 1: read a fixed length of binary string as specified by user
 						len=fixedlen
-						visaComm_ReadStr(instr, response, visaComm_ReadPacketSize, len)
+						visaComm_ReadStr(instr, response, len, wait=wait)
 					elseif(readType==2) //type 2: read a fixed length of binary string as specified by prefix info sent from server
 						visaComm_ReadFixedWithPrefix(instr, response)
 					endif
@@ -476,7 +557,7 @@ Function visaComm_MenuStopTask(idx, [instance])
 	Variable instance
 	
 	String infostr=WBPkgGetInfoString(visaComm_PackageName)
-	String active_instances=StringByKey("active", infostr, ":", ";")
+	String active_instances=StringByKey("active", infostr, "=", ";")
 	
 	if(ParamIsDefault(instance))
 		instance=str2num(StringFromList(idx, active_instances, ","))
@@ -492,7 +573,7 @@ Function visaComm_MenuStopTask(idx, [instance])
 	endif
 	if(instance>=0)
 		active_instances=RemoveFromList(num2istr(instance), active_instances, ",")
-		infostr=ReplaceStringByKey("active", infostr, active_instances, ":", ";")
+		infostr=ReplaceStringByKey("active", infostr, active_instances, "=", ";")
 		WBPkgSetInfoString(visaComm_PackageName, infostr)
 	endif
 End
@@ -618,11 +699,11 @@ Function visaComm_WriteAndReadTask(s)
 							visaComm_ReadFixedWithPrefix(session, strBuf)
 						elseif(stateoption_fixedlengthbyuser) //read with a fixed length as specified by the user
 							len=fixedlen
-							visaComm_ReadStr(session, strBuf, visaComm_ReadPacketSize, len)
+							visaComm_ReadStr(session, strBuf, len)
 						else //read until a terminal character is reached. if no reading is wanted, set fixed length to <0
 							if(fixedlen>=0)
 								len=0
-								visaComm_ReadStr(session, strBuf, visaComm_ReadPacketSize, len)
+								visaComm_ReadStr(session, strBuf, len)
 							endif
 						endif
 						response=strBuf
@@ -746,9 +827,9 @@ Function visaComm_SetupBackgroundTask(name, [instance])
 	
 	String PackageDir
 	if(instance==WBPkgNewInstance)
-		PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgExclusive, name=name)
+		PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgExclusive, info=name, init_request=1)
 	else
-		PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgOverride, name=name)
+		PackageDir=WBSetupPackageDir(visaComm_PackageName, instance=instance, existence=WBPkgOverride, info=name)
 	endif
 	
 	WBPrepPackageVars(PackageDir, visaComm_VARLIST)
@@ -915,9 +996,9 @@ Function visaComm_SendAsyncRequest(instr, cmdstr, repeatwrite, readtype, readlen
 		endif
 		
 		String infostr=WBPkgGetInfoString(visaComm_PackageName)
-		String active_instances=StringByKey("active", infostr, ":", ";")
+		String active_instances=StringByKey("active", infostr, "=", ";")
 		active_instances=AddListItem(num2istr(instance), active_instances, ",")
-		infostr=ReplaceStringByKey("active", infostr, active_instances, ":", ";")
+		infostr=ReplaceStringByKey("active", infostr, active_instances, "=", ";")
 		WBPkgSetInfoString(visaComm_PackageName, infostr)
 		
 		print "visaComm background task instance ["+num2istr(instance)+"] initialized"
