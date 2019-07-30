@@ -496,11 +496,15 @@ Constant WBPkgDFVar=1
 Constant WBPkgDFStr=2
 Constant WBPkgDFDF=3
 
-Function WBPrepPackageWaves(fullPath, wlist, [text, datatype, sizes, quiet])
+//sizes should contain the size of the waves, otherwise the size of waves will be set to zero
+//if all waves are the same size, only one number is needed
+//if not, all different numbers should be listed first, and the waves of one same size will be listed as
+//the last item in sizes
+Function WBPrepPackageWaves(fullPath, wlist, [text, datatype, sizes, quiet, nosubdir])
 	String fullPath, wlist
 	Variable text, datatype
 	String sizes
-	Variable quiet
+	Variable quiet, nosubdir
 
 	Variable c
 	String s
@@ -509,10 +513,20 @@ Function WBPrepPackageWaves(fullPath, wlist, [text, datatype, sizes, quiet])
 	try
 		s=""
 		for(c=ItemsInList(wlist)-1;c>=0; c-=1)
-			s=fullPath+"waves:"+PossiblyQuoteName(StringFromList(c, wlist))
+			if(nosubdir==1)
+				s=fullPath+PossiblyQuoteName(StringFromList(c, wlist))
+			else
+				s=fullPath+"waves:"+PossiblyQuoteName(StringFromList(c, wlist))
+			endif
 			sz=0
 			if(!ParamIsDefault(sizes))
-				sz=floor(str2num(StringFromList(c, sizes, ";")))
+				variable itemnum=ItemsInList(sizes, ";")
+				if(c<itemnum)
+					sz=floor(str2num(StringFromList(c, sizes, ";")))
+				else
+					sz=floor(str2num(StringFromList(itemnum-1, sizes, ";")))
+				endif
+				
 				if(numtype(sz)!=0)
 					sz=0
 				endif
@@ -538,9 +552,9 @@ Function WBPrepPackageWaves(fullPath, wlist, [text, datatype, sizes, quiet])
 	return retVal
 End
 
-Function WBPrepPackageVars(fullPath, vlist, [complx, quiet])
+Function WBPrepPackageVars(fullPath, vlist, [complx, quiet, nosubdir])
 	String fullPath, vlist
-	Variable complx, quiet
+	Variable complx, quiet, nosubdir
 
 	Variable c
 	String s
@@ -548,7 +562,11 @@ Function WBPrepPackageVars(fullPath, vlist, [complx, quiet])
 	try
 		s=""
 		for(c=ItemsInList(vlist)-1;c>=0; c-=1)
-			s=fullPath+"vars:"+PossiblyQuoteName(StringFromList(c, vlist))
+			if(nosubdir==1)
+				s=fullPath+PossiblyQuoteName(StringFromList(c, vlist))
+			else
+				s=fullPath+"vars:"+PossiblyQuoteName(StringFromList(c, vlist))
+			endif
 			//AbortOnValue exists(s)!=0, -1
 			if(ParamIsDefault(complx))
 				Variable /G $s; AbortOnRTE
@@ -568,9 +586,9 @@ Function WBPrepPackageVars(fullPath, vlist, [complx, quiet])
 	return retVal
 End
 
-Function WBPrepPackageStrs(fullPath, slist, [quiet])
+Function WBPrepPackageStrs(fullPath, slist, [quiet, nosubdir])
 	String fullPath, slist
-	Variable quiet
+	Variable quiet, nosubdir
 
 	Variable c
 	String s
@@ -578,7 +596,11 @@ Function WBPrepPackageStrs(fullPath, slist, [quiet])
 	try
 		s=""
 		for(c=ItemsInList(slist)-1;c>=0; c-=1)
-			s=fullPath+"strs:"+PossiblyQuoteName(StringFromList(c, slist))
+			if(nosubdir==1)
+				s=fullPath+PossiblyQuoteName(StringFromList(c, slist))
+			else
+				s=fullPath+"strs:"+PossiblyQuoteName(StringFromList(c, slist))
+			endif
 			//AbortOnValue exists(s)!=0, -1
 			String /G $s; AbortOnRTE
 			
@@ -595,9 +617,9 @@ Function WBPrepPackageStrs(fullPath, slist, [quiet])
 	return retVal
 End
 
-Function WBPrepPackagePrivateDF(fullPath, dflist, [quiet])
+Function WBPrepPackagePrivateDF(fullPath, dflist, [quiet, nosubdir])
 	String fullPath, dflist
-	Variable quiet
+	Variable quiet, nosubdir
 
 	Variable c
 	String s
@@ -608,6 +630,11 @@ Function WBPrepPackagePrivateDF(fullPath, dflist, [quiet])
 			s=fullPath+"privateDF:"+PossiblyQuoteName(StringFromList(c, dflist))
 			//AbortOnValue exists(s)!=0, -1
 			WBrowserCreateDF(s); AbortOnRTE
+			if(ParamIsDefault(nosubdir) || nosubdir==0)
+				WBrowserCreateDF(s+":strs"); AbortOnRTE
+				WBrowserCreateDF(s+":vars"); AbortOnRTE
+				WBrowserCreateDF(s+":waves"); AbortOnRTE
+			endif
 			AbortOnValue !DataFolderExists(s), -1
 			if(ParamIsDefault(quiet) || quiet==0)
 				print "["+s+"] created successfully."
@@ -644,7 +671,9 @@ Function /T WBPkgGetName(fullPath, type, name, [quiet])
 	endswitch
 	
 	String s=fullPath+subfd+PossiblyQuoteName(name)
-	
+	if(type==WBPkgDFDF)
+		s+=":"
+	endif
 	try
 		switch(type)
 		case WBPkgDFWave:
