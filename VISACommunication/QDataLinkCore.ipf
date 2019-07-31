@@ -111,13 +111,37 @@ ThreadSafe Function qdl_dummy_thread_worker_init(Variable i)
 	return 0
 End
 
-Function QDLQuery(Variable instance, String send_msg, [String &receive_msg, 
-						String realtime_func, String postfix_func, String auxparam, Variable timeout])
-	Variable retVal=-1
+Function QDLGetSlot(Variable instance)
+	Variable slot=-1
+	Variable i
+	try
+		String fullPkgPath=WBSetupPackageDir(QDLPackageName)
+		WAVE /T instance_record=$WBPkgGetName(fullPkgPath, WBPkgDFWave, "active_instance_record")
+		
+		for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
+			if(str2num(StringByKey("INSTANCE", instance_record[i]))==instance)
+				break
+			endif
+		endfor
+		if(i<QDL_MAX_CONNECTIONS)
+			slot=i
+		endif
+	catch
+	endtry
 	
+	return slot
+End
+
+Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [Variable instance, String &receive_msg, 
+						String realtime_func, String postfix_func, String auxparam, Variable timeout])
+	String response=""
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName)
 	DFREF dfr=GetDataFolderDFR()
 	SetDataFolder $fullPkgPath
+	
+	if(ParamIsDefault(timeout))
+		timeout=QDL_DEFAULT_TIMEOUT
+	endif
 	
 	try
 		WAVE /T instance_record=:waves:active_instance_record
@@ -131,19 +155,21 @@ Function QDLQuery(Variable instance, String send_msg, [String &receive_msg,
 		WAVE status_record=:waves:status_record
 		WAVE connection_info=:waves:connection_type_info
 		
-		Variable slot
-		for(slot=0; slot<QDL_MAX_CONNECTIONS; slot+=1)
-			if(str2num(instance_record[slot])==instance)
-				break
+		if(!ParamIsDefault(instance))
+			if(str2num(StringByKey("INSTANCE", instance_record[slot]))!=instance)
+				print "QDLQuery has inconsistent record of slot ["+num2istr(slot)+"] and instance ["+num2istr(instance)+"]"
+				AbortOnValue -1, -1
 			endif
-		endfor
+		else
+			instance=str2num(StringByKey("INSTANCE", instance_record[slot]))
+		endif
+
 		if(slot<QDL_MAX_CONNECTIONS)
 			Variable update_func_flag=0
 			Variable request_read=0
-			Variable request_write=0
+			Variable request_write=0			
+			Variable start_time, current_time
 			
-			Variable start_time=StopMSTimer(-2)/1000; AbortOnRTE
-			Variable current_time
 			if(!ParamIsDefault(realtime_func) && strlen(realtime_func)>0)
 				rtfunc_record[slot]=realtime_func; AbortOnRTE
 				update_func_flag=1
@@ -158,10 +184,11 @@ Function QDLQuery(Variable instance, String send_msg, [String &receive_msg,
 				param_record[slot]=""; AbortOnRTE
 			endif
 			if(update_func_flag==1)
+				start_time=StopMSTimer(-2)/1000; AbortOnRTE
 				auxret_record[slot]=""
 				connection_info[slot]=connection_info[slot]|QDL_CONNECTION_ATTACH_FUNC
-				if(!ParamIsDefault(timeout))
-					do
+				if(timeout>0)
+					do //waiting for the thread to answer to request of updating user functions
 						Sleep /T 1
 						DoUpdate; AbortOnRTE
 						current_time=StopMSTimer(-2)/1000; AbortOnRTE
@@ -180,7 +207,7 @@ Function QDLQuery(Variable instance, String send_msg, [String &receive_msg,
 				request_write=1
 				outbox[slot]=send_msg; AbortOnRTE
 			endif
-			if(!ParamIsDefault(receive_msg))
+			if(expect_response)
 				request_read=1
 				inbox[slot]=""; AbortOnRTE
 			endif
@@ -196,14 +223,20 @@ Function QDLQuery(Variable instance, String send_msg, [String &receive_msg,
 			endif
 			
 			request_record[slot]=request_flag; AbortOnRTE
-			if(!ParamIsDefault(timeout))
+			if(timeout>0)
+				start_time=StopMSTimer(-2)/1000; AbortOnRTE
 				do
 					Sleep /T 1
 					DoUpdate; AbortOnRTE
-				while(!(request_record[slot] & response_flag))
+					current_time=StopMSTimer(-2)/1000; AbortOnRTE
+				while((current_time-start_time<timeout) && !(request_record[slot] & response_flag))
+				if(request_record[slot] & QDL_REQUEST_READ_COMPLETE)
+					response=inbox[slot]
+					if(!ParamIsDefault(receive_msg))
+						receive_msg=response
+					endif
+				endif
 			endif
-			
-			retVal=status_record[slot]
 		endif		
 	catch
 		Variable err=GetRTError(1)
@@ -213,12 +246,12 @@ Function QDLQuery(Variable instance, String send_msg, [String &receive_msg,
 	endtry
 	
 	SetDataFolder dfr
-	return retVal
+	return response
 End
 
-ThreadSafe Function qdl_rtfunc_prototype(Variable inittest)
-	if(inittest!=0)
-		return -1
+ThreadSafe Function qdl_rtfunc_prototype(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
+	if(inittest==1)
+		return 0
 	endif
 	return 0
 End
@@ -312,7 +345,7 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 	while(retVal==0)
 	
 	connection_type[slot] = connection_type[slot] | QDL_CONNECTION_QUITTED
-	thread_record[threadIDX]=-1
+	thread_record[threadIDX]=QDL_THREAD_STATE_FREE
 	print "Thread worker for QDataLink slot "+num2istr(slot)+" has quitted."
 	return retVal
 End

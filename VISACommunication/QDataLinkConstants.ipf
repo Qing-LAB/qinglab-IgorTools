@@ -38,6 +38,13 @@ Constant QDL_REQUEST_TIMEOUT				=0x1000
 
 Constant QDL_RTERROR_THREAD_NOT_INITIALIZED=980 //need to make sure this is defined properly for different Igor version
 
+Constant QDL_THREAD_STATE_FREE			= -1
+Constant QDL_THREAD_STATE_RESERVED 		= 0
+Constant QDL_THREAD_STATE_RUNNING		= 1
+
+Constant QDL_SLOT_STATE_FREE			=-1
+Constant QDL_SLOT_STATE_RESERVED		=-2
+
 //list of global str, var and waves
 StrConstant QDLDefaultRMName="visaDefaultRM"
 StrConstant QDLWorkerThreadGroupID="threadGroupID"

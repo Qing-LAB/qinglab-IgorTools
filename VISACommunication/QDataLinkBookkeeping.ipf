@@ -32,6 +32,13 @@ Function qdl_find_instance_for_connection(string connectionDescr)
 	endif
 End
 
+//this function will find an available slot, find a thread that can be attached to
+//returns the slot number and the thread index
+//if either the slot or the thread can not be properly identified, will return -1
+//thread state is tracked in thread_record wave. A thread can be free, reserved (not running), and running
+//when a thread is running, the corresponding element in thread_record will have the number of the slot this thread
+//is associated with.
+//when this function returns successfully, the slot and the thread will be both labelled as reserved
 Function qdl_reserve_active_slot(Variable & threadIDX)
 	Variable slot_num=-1
 	threadIDX=-1
@@ -44,8 +51,9 @@ Function qdl_reserve_active_slot(Variable & threadIDX)
 		if(WaveExists(active_instance_record)==1)
 			Variable i
 			for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
-				if(str2num(active_instance_record[i])==-1)
-					active_instance_record[i]="-2"
+				if(str2num(StringByKey("INSTANCE", active_instance_record[i]))==-1)
+					active_instance_record[i]=ReplaceStringByKey("INSTANCE", active_instance_record[i], num2istr(QDL_SLOT_STATE_RESERVED))
+					active_instance_record[i]=ReplaceStringByKey("THREAD", active_instance_record[i], "-1") //no thread attached yet
 					break
 				endif
 			endfor
@@ -54,18 +62,21 @@ Function qdl_reserve_active_slot(Variable & threadIDX)
 			Variable thIDX=ThreadGroupWait(threadGroupID, -2)-1; AbortOnRTE
 			//thread_record will store the active slot number attached to each thread
 			if(thIDX>=0)
-				if(thread_record[thIDX]==-1)
-					thread_record[thIDX]=i
+				if(thread_record[thIDX]==QDL_THREAD_STATE_FREE)
+					thread_record[thIDX]=QDL_THREAD_STATE_RESERVED
 					threadIDX=thIDX
 					slot_num=i
 				else
 					print "Thread worker "+num2istr(thIDX)+" is labelled as free, which is inconsistent with records. Failed to allocate active connection slot "+num2istr(i)
-					active_instance_record[i]="-1"
+					thIDX=-1
 				endif
 			else
 				print "No free thread can be found. This should not happen."
-					active_instance_record[i]="-1"
-			endif	
+			endif
+			if(thIDX<0) //not properly assigned
+				active_instance_record[i]=ReplaceStringByKey("INSTANCE", active_instance_record[i], num2istr(QDL_SLOT_STATE_FREE))
+				active_instance_record[i]=ReplaceStringByKey("THREAD", active_instance_record[i], "-1") //set things back to free state
+			endif
 		endif
 	catch
 		print "Error happened when reserving active slot for QDataLink connection."
@@ -105,7 +116,7 @@ Function qdl_set_active_slot(Variable slot, [Variable startThreadIDX, Variable i
 		WAVE thread_record=:waves:thread_record; AbortOnRTE
 		
 		if(!ParamIsDefault(instance))
-			instance_record[slot]=num2istr(instance); AbortOnRTE
+			instance_record[slot]=ReplaceStringByKey("INSTANCE", instance_record[slot], num2istr(instance)); AbortOnRTE
 		endif
 		
 		if(!ParamIsDefault(connection_param))
@@ -152,8 +163,9 @@ Function qdl_set_active_slot(Variable slot, [Variable startThreadIDX, Variable i
 		Variable i
 		String active_instances=""
 		for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
-			if(str2num(instance_record[i])>=0)
-				active_instances+=instance_record[i]+","
+			String instance_str = StringByKey("INSTANCE", instance_record[i])
+			if(str2num(instance_str)>=0)
+				active_instances+=instance_str+","
 			endif
 		endfor
 
@@ -163,14 +175,26 @@ Function qdl_set_active_slot(Variable slot, [Variable startThreadIDX, Variable i
 		overall_info=ReplaceStringByKey("ACTIVE_INSTANCES", overall_info, active_instances, "=", ";", 1)
 		WBPkgSetInfoString(QDLPackageName, overall_info)
 		
-		if(!ParamIsDefault(startThreadIDX) && startThreadIDX>=0)
-			ThreadStart threadGroupID, startThreadIDX, qdl_thread_request_handler(slot, startThreadIDX, request_record, \
-																							status_record, connection_type_info, \
-																							instance_record, connection_param_record, \
-																							inbox_all, outbox_all, rt_callback_func_list, \
-																							auxparam_all, auxret_all, thread_record); AbortOnRTE
-																							
-			print "Thread worker index "+num2istr(startThreadIDX)+" for slot "+num2istr(slot)+" started."																					
+		if(!ParamIsDefault(startThreadIDX))
+			if(thread_record[startThreadIDX]!=QDL_THREAD_STATE_RESERVED)
+				print "Thread worker ["+num2istr(startThreadIDX)+"] is not labelled as reserved while attaching to active slot "+num2istr(slot)
+				print "This should not happen. No action will be taken."
+			else
+				if(startThreadIDX>=0 && startThreadIDX<QDL_MAX_CONNECTIONS)
+					ThreadStart threadGroupID, startThreadIDX, qdl_thread_request_handler(slot, startThreadIDX, request_record, \
+																								status_record, connection_type_info, \
+																								instance_record, connection_param_record, \
+																								inbox_all, outbox_all, rt_callback_func_list, \
+																								auxparam_all, auxret_all, thread_record); AbortOnRTE
+					thread_record[startThreadIDX]=slot; AbortOnRTE
+					print "Thread worker index "+num2istr(startThreadIDX)+" for slot "+num2istr(slot)+" started."
+				endif
+				if(startThreadIDX<QDL_MAX_CONNECTIONS)
+					instance_record[slot]=ReplaceStringByKey("THREAD", instance_record[slot], num2istr(startThreadIDX))
+				else
+					print "When setting active slot["+num2istr(slot)+"], thread index ["+num2istr(startThreadIDX)+"]is out of range."
+				endif
+			endif																		
 		endif
 	catch
 		Variable err=GetRTError(1)
@@ -194,35 +218,58 @@ Function qdl_release_active_slot(Variable slot, Variable timeout_ms)
 		NVAR threadGroupID=$WBPkgGetName(fullPkgPath, WBPkgDFVar, "threadGroupID"); AbortOnRTE
 		WAVE thread_record=$WBPkgGetName(fullPkgPath, WBPkgDFWave, "thread_record"); AbortOnRTE
 		
-		if(str2num(active_instance_record[slot])>=0)
+		String instance_str=StringByKey("INSTANCE", active_instance_record[slot])
+		String thread_str=StringByKey("THREAD", active_instance_record[slot])
+		
+		if(str2num(instance_str)>=0)
 			//set signal to thread to ask it to quit
 			connection_type[slot] = connection_type[slot] | QDL_CONNECTION_QUITTING ; AbortOnRTE
-			Variable flag=1
-			Variable threadIDX
-			//find the thread index that the active slot attaches to
-			for(threadIDX=0; threadIDX<QDL_MAX_CONNECTIONS; threadIDX+=1)
-				if(thread_record[threadIDX]==slot)
-					break
+			Variable flag=-1
+			Variable threadIDX=str2num(thread_str)
+			//verify that the correct thread is associated with this lot
+			if(threadIDX>=0 && threadIDX<QDL_MAX_CONNECTIONS)
+				if(thread_record[threadIDX]==slot) //thread is running and associated with the correct slot number
+					flag=1
+					do
+						Sleep /T 1
+						Variable thID=ThreadGroupWait(threadGroupID, 0); AbortOnRTE
+						if(thread_record[threadIDX]==QDL_THREAD_STATE_FREE) //the thread worker should set this value when quitting
+							flag=0; AbortOnRTE
+						endif
+						if((StopMSTimer(-2)-starttime)>=timeout_ms*1000)
+							flag=-1; AbortOnRTE
+						endif
+					while(flag>0)
+					if(flag==0)
+						print "Thread worker for slot "+num2istr(slot)+" stopped gracefully."
+					endif
+				elseif(thread_record[threadIDX]==QDL_THREAD_STATE_RESERVED)
+					thread_record[threadIDX]=QDL_THREAD_STATE_FREE
+					flag=0
+				else
+					print "Inconsistency found in record."
+					print "slot number: ", slot
+					print "instance number:", instance_str
+					print "thread index record:", thread_str
+					if(threadIDX>=0 && threadIDX<QDL_MAX_CONNECTIONS)
+						print "thread state:", thread_record[threadIDX]
+					else
+						print "cannot find thread state for invalid thread index"
+					endif
 				endif
-			endfor
-			//check thread status
-			do
-				Sleep /T 1
-				Variable thID=ThreadGroupWait(threadGroupID, 0); AbortOnRTE
-				if(threadIDX>=0 && threadIDX<QDL_MAX_CONNECTIONS && numtype(ThreadReturnValue(threadGroupID, threadIDX))==0)
-					flag=0; AbortOnRTE
+			endif
+			
+			if(flag>=0)
+				active_instance_record[slot]=ReplaceStringByKey("INSTANCE", active_instance_record[slot], num2istr(QDL_SLOT_STATE_FREE))
+				active_instance_record[slot]=ReplaceStringByKey("THREAD", active_instance_record[slot], "-1")
+				if(flag>0)
+					print "The thread worker did not quit gracefully in time. Will forcefully set thread record as free. This may lead to inconsistency."
+					print "Slot ["+num2istr(slot)+"], instance ["+instance_str+"], thread index [+"+num2istr(threadIDX)+"]"
+					thread_record[threadIDX]=QDL_THREAD_STATE_FREE
 				endif
-				if((StopMSTimer(-2)-starttime)>=timeout_ms*1000)
-					flag=-1; AbortOnRTE
-				endif
-			while(flag>0 && threadIDX<QDL_MAX_CONNECTIONS)
-			//thread quits correctly
-			if(flag==0)
-				active_instance_record[slot]="-3"
-				thread_record[threadIDX]=-1
-				print "Thread worker for slot "+num2istr(slot)+" stopped gracefully."
 			else
-				print "Thread worker does not quit in time. Not able to release slot normally..."
+				print "Invalid record of thread found..."
+				print "Slot ["+num2istr(slot)+"], instance ["+instance_str+"], thread index [+"+num2istr(threadIDX)+"]"
 			endif
 		endif
 	catch
@@ -254,6 +301,10 @@ Function qdl_clear_active_slot(Variable slot)
 	endif
 End
 
+//when not trying to attach a function, or quitting a connection, it is callable
+ThreadSafe Function qdl_is_connection_callable(WAVE connection_type, Variable slot)
+	return !(connection_type[slot] & (QDL_CONNECTION_ATTACH_FUNC | QDL_CONNECTION_QUITTING | QDL_CONNECTION_QUITTED)); AbortOnRTE
+End
 
 Function qdl_is_resource_manager_valid(variable rm)
 	String str=""

@@ -194,7 +194,7 @@ End
 //however, so far we have not successfully demonstrated that USB devices actually trigger these events so 
 //we will need additional tests to evaluate this when communicating through VISA USB interface
 //the function will return a string, which contains the content of Structure QDLConnectionParam
-Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & instance_select, [variable quiet])
+Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & instance_select, [Variable quiet, Variable & slot])
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName)	
 	String retStr=""
 	Variable len, retCnt	
@@ -246,6 +246,9 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 		Variable err=GetRTError(1)
 		if(err!=0)
 			print "Error happened when initializing serial port:"+GetErrMessage(err)
+		endif
+		if(slot_num>0)
+			qdl_release_active_slot(slot_num, QDL_DEFAULT_TIMEOUT)
 		endif
 	endtry
 
@@ -393,18 +396,24 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 			StructPut /S cp, param_str //update the parameter stored in the instance string folder
 			retStr=param_str
 
-			AbortOnValue 0>qdl_set_active_slot(slot_num, startThreadIDX=threadIDX, instance=instance_select, \
+			if(0 > qdl_set_active_slot(slot_num, startThreadIDX=threadIDX, instance=instance_select, \
 														connection_param=param_str, inbox="", outbox="", \
 														auxparam="", auxret="", rt_callback_func="", \
 														post_callback_func="", request=0, status=0, \
-														connection_type=cp.connection_type), -1
-			qdl_update_instance_info(instance_select, "Untitled", "No notes", instrDesc)
+														connection_type=cp.connection_type))
+				AbortOnValue -1, -1
+			endif
 			
+			qdl_update_instance_info(instance_select, "Untitled", "No notes", instrDesc)
+			if(!ParamIsDefault(slot))
+				slot=slot_num
+			endif
 			print "VISA serial port initialization succeeded for instance "+num2istr(instance_select)
 		catch
 			print "Error when trying to clean up the package datafolder for instance ", instance_select
 			print "Will now close the serial port."
 			if(slot_num>=0 && slot_num<QDL_MAX_CONNECTIONS)
+				qdl_release_active_slot(slot_num, QDL_DEFAULT_TIMEOUT)
 				qdl_clear_active_slot(slot_num)
 			endif
 			viClose(instr)		
@@ -413,6 +422,7 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 		SetDataFolder saved_dfr
 	else
 		if(slot_num>=0 && slot_num<QDL_MAX_CONNECTIONS)
+			qdl_release_active_slot(slot_num, QDL_DEFAULT_TIMEOUT)
 			qdl_clear_active_slot(slot_num)
 		endif
 	endif
@@ -439,7 +449,7 @@ Function QDLCloseSerialPort([String instrDesc, Variable instance])
 			WAVE /T active_instance_record=:waves:active_instance_record
 			Variable i
 			for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
-				if(str2num(active_instance_record[i])==instance_select)
+				if(str2num(StringByKey("INSTANCE", active_instance_record[i]))==instance_select)
 					print "Releasing active slot "+num2istr(i)+" ..."
 					qdl_release_active_slot(i, 5000); AbortOnRTE
 					qdl_clear_active_slot(i); AbortOnRTE
@@ -589,10 +599,12 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 		AbortOnValue (cp.instance<0 || cp.instance>=QDL_MAX_CONNECTIONS || instr<=0), -1
 		if(!(req[slot] & QDL_REQUEST_READ_BUSY)) //request for writing comes before reading, but not in the middle of it
 			if((req[slot] & QDL_REQUEST_WRITE) && !(req[slot] & QDL_REQUEST_WRITE_COMPLETE))
+				
 				if(!(req[slot] & QDL_REQUEST_WRITE_BUSY))
 					req[slot] =req[slot] | QDL_REQUEST_WRITE_BUSY
 					cp.outbox_request_len=strlen(outbox[slot])
 				endif
+				
 				current_time=StopMSTimer(-2)/1000
 				if(current_time-cp.starttime_ms >= cp.timeout_ms)
 					req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
@@ -600,20 +612,22 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				endif
 				retCnt=0
 				
-				status=viWrite(instr, outbox[slot], cp.outbox_request_len, retCnt)
-				if(status!=VI_SUCCESS)
-					cp.outbox_attempt_count+=1
-					stat[slot]=status
-					cp.outbox_retCnt=0
-					if(cp.outbox_attempt_count>5)
+				if(qdl_is_connection_callable(connection_type, slot)) //make sure not in a transition or ending time
+					status=viWrite(instr, outbox[slot], cp.outbox_request_len, retCnt)
+					if(status!=VI_SUCCESS)
+						cp.outbox_attempt_count+=1
+						stat[slot]=status
+						cp.outbox_retCnt=0
+						if(cp.outbox_attempt_count>5)
+							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
+											| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
+						endif
+						AbortOnValue -1, -4
+					else
+						cp.outbox_retCnt=retCnt
 						req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
-										| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
+										| QDL_REQUEST_WRITE_COMPLETE
 					endif
-					AbortOnValue -1, -4
-				else
-					cp.outbox_retCnt=retCnt
-					req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
-									| QDL_REQUEST_WRITE_COMPLETE
 				endif
 			endif
 		endif
@@ -633,11 +647,11 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				if((current_time-cp.starttime_ms)>=cp.timeout_ms)
 					req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 							| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
-					print "read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
+					//print "read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
 				endif
 			endif
 			
-			if(!(req[slot] & QDL_REQUEST_READ_COMPLETE))
+			if(qdl_is_connection_callable(connection_type, slot) && !(req[slot] & QDL_REQUEST_READ_COMPLETE))
 				Variable termChar
 				status=viGetAttribute(instr, VI_ATTR_TERMCHAR, termChar)
 				AbortOnValue status!=VI_SUCCESS, -8			
@@ -668,10 +682,9 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 						endif
 					endif
 					
-					if(packetSize>0)
-						retCnt=0
-						status=viRead(instr, receivedStr, packetSize, retCnt)
-						
+					retCnt=0
+					if(packetSize>0)	
+						status=viRead(instr, receivedStr, packetSize, retCnt)						
 						if(retCnt>0)
 							Variable i, termflag=0
 							for(i=0; i<retCnt; i+=1)
@@ -710,6 +723,11 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					endif
 				endif //event arrived
 			endif //read not complete?
+		endif
+		if(qdl_is_connection_callable(connection_type, slot))
+			if(req[slot] & QDL_REQUEST_READ_COMPLETE)
+				rtcallbackfunc_ref(0, slot=slot, cp=cp, request=req, status=stat, inbox=inbox, outbox=outbox, param=auxparam, auxret=auxret)
+			endif
 		endif
 	catch
 		print "RunTime error: ", GetRTError(1), GetRTErrMessage()
