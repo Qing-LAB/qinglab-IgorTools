@@ -534,6 +534,7 @@ Function WBPrepPackageWaves(fullPath, wlist, [text, datatype, sizes, quiet, nosu
 			//AbortOnValue exists(s)!=0, -1
 			if(!ParamIsDefault(text) && text>0)
 				Make /T /N=(sz) /O $s=""; AbortOnRTE
+				SetWaveTextEncoding 255, 16, $s
 			elseif(ParamIsDefault(datatype))
 				Make /N=(sz) /O /D $s=0; AbortOnRTE
 			else

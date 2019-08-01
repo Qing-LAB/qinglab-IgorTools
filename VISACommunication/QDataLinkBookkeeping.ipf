@@ -1,5 +1,7 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+#pragma IgorVersion=7.0
+#pragma ModuleName=QDataLink
 
 Function qdl_is_connection_open(string connectionDescr)
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName)
@@ -321,6 +323,35 @@ Function qdl_is_resource_manager_valid(variable rm)
 	return 0
 End
 
+ThreadSafe Function qdl_update_rtcallback_func(String funcname, WAVE /T funcname_list, Variable slot, [Variable quiet])
+	FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
+	
+	if(ParamIsDefault(quiet) || quiet==0)
+		print "User requested to attach function ["+funcname+"] to QDataLink slot "+num2istr(slot)
+	endif
+	if(strlen(funcname)>0)
+		FUNCREF qdl_rtfunc_prototype ref=$(funcname)
+		try
+			ref(1); AbortOnRTE
+		catch
+			Variable err=GetRTError(1)
+			if(ParamIsDefault(quiet) || quiet==0)
+				print "User defined real-time callback function failed init test for slot "+num2istr(slot)
+				print "No user defined real-time will be called."
+			endif
+			FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
+		endtry
+	endif
+	String update_funcname=StringByKey("NAME", FuncRefInfo(ref))
+	if(strlen(update_funcname)<=0)
+		update_funcname="qdl_rtfunc_prototype"
+	endif
+	funcname_list[slot]=update_funcname
+	if(ParamIsDefault(quiet) || quiet==0)
+		print "New real-time callback function ["+update_funcname+"] attached to slot "+num2istr(slot)
+	endif
+End
+
 Function qdl_get_instance_info(Variable instance, String & name, String & notes, String & connection, [String & param_str, String & panel])
 	try
 		String fullPkgPath=WBSetupPackageDir(QDLPackageName, instance=instance)
@@ -376,15 +407,15 @@ End
 
 
 //print out description of the error associated with status. viObject set to 0 if the error is about the session
-ThreadSafe Function QDLSerialPortPrintError(Variable session, Variable viObject, Variable status)
+ThreadSafe Function QDLPrintVISAError(Variable session, Variable viObject, Variable status)
 	String errDesc=""
-	if(status<0)
+	//if(status<0)
 		if(viObject==0)
 			viObject=session
 		endif
 		viStatusDesc(viObject, status, errDesc)
 		printf "VISA error: %s\n", errDesc
-	endif
+	//endif
 End
 
 //get a list of VISA supported serial ports
@@ -422,8 +453,7 @@ Function /T QDLSerialPortGetList()
 		endif
 		viClose(defaultRM)
 	endif
-	QDLSerialPortPrintError(defaultRM, findList, status)
-
+	
 	return list
 End
 

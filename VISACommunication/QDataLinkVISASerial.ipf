@@ -1,6 +1,7 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7.0
+#pragma ModuleName=QDataLink
 
 //this function will take parameters from configStr to set up a proper dialog for the user to
 //confirm the parameters for the serial connection.
@@ -13,10 +14,7 @@
 //notes gives a user note for the connection
 //timeout for connection timeout
 
-Function /T QDLSetSerialConnectionParameters(String configStr, [String name, String notes, 
-																					Variable timeout, 
-																					Struct QDLConnectionParam & paramStruct, 
-																					variable quiet])
+Function /T QDLSetVISAConnectionParameters(String configStr, [String name, String notes, Variable timeout, Struct QDLConnectionParam & paramStruct, Variable quiet])
 	String newconfigStr=""
 	
 	if(ParamIsDefault(name))
@@ -231,7 +229,7 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 	
 		STRUCT QDLConnectionParam cp
 		cp.connection_type=QDL_CONNECTION_TYPE_NONE
-		String configStr=QDLSetSerialConnectionParameters(initParam, paramStruct=cp, quiet=quiet)
+		String configStr=QDLSetVISAConnectionParameters(initParam, paramStruct=cp, quiet=quiet)
 		
 		if(strlen(configStr)<=0)
 			print "Error or user cancelled the initialization."
@@ -352,7 +350,7 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 			print "Error when initializing serial port."
 			print "Runtime error: ", GetRTErrMessage(), GetRTError(1)
 			if(instr!=0)
-				QDLSerialPortPrintError(instr, 0, status)
+				QDLPrintVISAError(instr, 0, status)
 				viClose(instr)
 			endif
 		endtry
@@ -478,85 +476,26 @@ Function QDLCloseSerialPort([String instrDesc, Variable instance])
 	endif
 End
 
-Function /T QDLSerialConnectionPanel(Variable instance)
-	String name, notes, connection, param_str
+ThreadSafe Function qdl_VISALock(Variable instr, Variable timeout)
+	String tmpKeyin=""
+	String tmpKeyout=""
 	
-	qdl_get_instance_info(instance, name, notes, connection, param_str=param_str)
-	STRUCT QDLConnectionParam cp
-	StructGet /S cp, param_str
-	if(CmpStr(connection, cp.name)!=0)
-		print "possible error: connection information does not match parameter setting."
-		print "connection by instance: "+connection
-		print "connection in parameter setting: "+cp.name
+	Variable status=viLock(instr, VI_EXCLUSIVE_LOCK, timeout, tmpKeyin, tmpKeyout)
+	if(status!=VI_SUCCESS && status!=VI_SUCCESS_NESTED_EXCLUSIVE)
+		print "Error when locking VISA device: ", instr, status
+		QDLPrintVISAError(instr, 0, status)
+		return -1
 	endif
-	if(cp.connection_type!=QDL_CONNECTION_TYPE_SERIAL)
-		print "connection type is wrong for instance "+num2istr(instance)
-		print "type is set to "+num2istr(cp.connection_type)+", but "+num2istr(QDL_CONNECTION_TYPE_SERIAL)+" is expected."
-		return ""
-	endif
-	
-	NewPanel /N=qdlsc_panel /K=1 /FLT /W=(100,100,620,320) as "QDL Serial Connection Panel -"+connection
-	SetVariable sv_name,pos={1,1},size={150,20},title="Name"
-	SetVariable sv_name,value= _STR:(name),fixedSize=1
-	SetVariable sv_connection, pos={160,1}, size={260,20},title="Connection"
-	SetVariable sv_connection, value=_STR:(connection),fixedSize=1,disable=2
-	SetVariable sv_notes,pos={1,20},size={500,20},title="Notes"
-	SetVariable sv_notes,value= _STR:(notes),fixedSize=1
-	Button btn_saveinfo, pos={460,1}, size={50,20}, title="save info",proc=QDLSerialPanel_btnfunc
-	
-	SetVariable sv_outbox,pos={1,40},size={500,20},title="Message for sending"
-	SetVariable sv_outbox,value= _STR:"",fixedSize=1
-	Button btn_send,pos={1,55},size={50,20},title="send"
-	Button btn_query,pos={55,55},size={50,20},title="query"
-	Button btn_read,pos={110,55},size={50,20},title="read"
-	Button btn_clear, pos={170,55}, size={50,20}, title="clear"
-	TitleBox tb_title,pos={5,80},size={75,20},title="Received Message"
-	TitleBox tb_title,frame=0
-	TitleBox tb_receivedmsg,pos={1,95},size={500,80},title=" "
-	TitleBox tb_receivedmsg,fixedSize=1
-	TitleBox tb_status,pos={1,180},size={500,20},title=" ", fixedSize=1
-	SetWindow kwTopWin, userdata(SerialConnectionParam)=param_str
-	SetWindow kwTopWin, userdata(instance)=num2istr(instance)	
-	String wname=WinName(0, 64, 1, 1)
-	SetActiveSubwindow _endfloat_
-	return wname
+	return 0
 End
 
-
-Function QDLSerialPanel_btnfunc(ba) : ButtonControl
-	STRUCT WMButtonAction &ba
-
-	String parent_window=ba.win
-	switch( ba.eventCode )
-		case 2: // mouse up
-			// click code here
-			
-			strswitch(ba.ctrlName)
-			case "btn_saveinfo":
-				Variable instance=str2num(GetUserData(parent_window, "", "instance"))
-				ControlInfo /W=$parent_window sv_name
-				String name=S_Value
-				ControlInfo /W=$parent_window sv_notes
-				String notes=S_Value
-				ControlInfo /W=$parent_window sv_connection
-				String connection=S_Value
-				qdl_update_instance_info(instance, name, notes, connection)
-				break
-			case "btn_send":
-				break
-			case "btn_query":
-				break
-			case "btn_read":
-				break
-			case "btn_clear":
-				break
-			endswitch
-			
-			break
-		case -1: // control being killed
-			break
-	endswitch
-
+ThreadSafe Function qdl_VISAunLock(Variable instr)
+	Variable status=viUnlock(instr)
+	if(status!=VI_SUCCESS  && status!=VI_SUCCESS_NESTED_EXCLUSIVE)
+		print "Error when unlocking VISA device: ", instr
+		QDLPrintVISAError(instr, 0, status)
+		return -1
+	endif
 	return 0
 End
 
@@ -578,7 +517,7 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 	Variable retVal=0
 	Variable status=0
 	
-	if(cp.connection_type!=connection_type[slot] || \
+	if(cp.connection_type!=(connection_type[slot] & QDL_CONNECTION_TYPE_MASK) || \
 			(cp.connection_type!=QDL_CONNECTION_TYPE_SERIAL && \
 			cp.connection_type!=QDL_CONNECTION_TYPE_USB))
 		return -1
@@ -597,6 +536,15 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 		endif
 		
 		AbortOnValue (cp.instance<0 || cp.instance>=QDL_MAX_CONNECTIONS || instr<=0), -1
+		
+		if(!(req[slot] & (QDL_REQUEST_READ_BUSY | QDL_REQUEST_WRITE_BUSY)) && (req[slot] & QDL_REQUEST_CLEAR_BUFFER))
+			status=viClear(instr)
+			req[slot] = req[slot] & (~ QDL_REQUEST_CLEAR_BUFFER)
+#ifdef DEBUG_QDLVISA
+			print "viClear status:", num2istr(status)
+#endif
+			AbortOnValue status!=VI_SUCCESS, -1
+		endif
 		if(!(req[slot] & QDL_REQUEST_READ_BUSY)) //request for writing comes before reading, but not in the middle of it
 			if((req[slot] & QDL_REQUEST_WRITE) && !(req[slot] & QDL_REQUEST_WRITE_COMPLETE))
 				
@@ -622,11 +570,20 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 											| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
 						endif
+#ifdef DEBUG_QDLVISA
+						print "viWrite error."
+						print "viWrite status:", num2istr(status)
+#endif
 						AbortOnValue -1, -4
 					else
 						cp.outbox_retCnt=retCnt
 						req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 										| QDL_REQUEST_WRITE_COMPLETE
+#ifdef DEBUG_QDLVISA
+						print "viWrite sent :"+outbox[slot]
+						print "viWrite sent length:", retCnt
+						print "viWrite status:", num2istr(status)
+#endif
 					endif
 				endif
 			endif
@@ -647,7 +604,9 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				if((current_time-cp.starttime_ms)>=cp.timeout_ms)
 					req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 							| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
-					//print "read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
+#ifdef DEBUG_QDLVISA
+					print "VISA read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
+#endif
 				endif
 			endif
 			
@@ -658,7 +617,9 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 	
 				Variable outEventType, outContext
 				status=viWaitOnEvent(instr, VI_ALL_ENABLED_EVENTS, QDL_EVENT_POLLING_TIMEOUT, outEventType, outContext)
-				
+#ifdef DEBUG_QDLVISA
+				print "viWaitOnEvent returned ", num2istr(status)
+#endif
 				Variable bytes_at_port=0
 				
 				if(cp.byte_at_port_check_flag==1)
@@ -684,8 +645,13 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					
 					retCnt=0
 					if(packetSize>0)	
-						status=viRead(instr, receivedStr, packetSize, retCnt)						
+						status=viRead(instr, receivedStr, packetSize, retCnt)	
 						if(retCnt>0)
+#ifdef DEBUG_QDLVISA
+							print "viRead get message: ", receivedStr
+							print "viRead length:", retCnt
+							print "viRead status:", num2istr(status)
+#endif
 							Variable i, termflag=0
 							for(i=0; i<retCnt; i+=1)
 								if(char2num(receivedStr[i])==termChar)
@@ -712,10 +678,14 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if(cp.inbox_request_len>0 && cp.inbox_received_len>=cp.inbox_request_len)
 						read_complete_flag=1
 					endif
-										
+					
 					if(read_complete_flag)
 						req[slot] = (req[slot] & (~(QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 										 | QDL_REQUEST_READ_COMPLETE
+#ifdef DEBUG_QDLVISA
+						print "read request completed."
+						print "request status:", num2istr(req[slot])
+#endif
 					endif
 					
 					if(outContext!=VI_NULL)
@@ -725,14 +695,16 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 			endif //read not complete?
 		endif
 		if(qdl_is_connection_callable(connection_type, slot))
-			if(req[slot] & QDL_REQUEST_READ_COMPLETE)
-				rtcallbackfunc_ref(0, slot=slot, cp=cp, request=req, status=stat, inbox=inbox, outbox=outbox, param=auxparam, auxret=auxret)
+			if((req[slot] & QDL_REQUEST_READ_COMPLETE) || (req[slot] & QDL_REQUEST_WRITE_COMPLETE))
+				if(!(req[slot] & QDL_CONNECTION_RTCALLBACK_SUSPENSE))
+					rtcallbackfunc_ref(0, slot=slot, cp=cp, request=req, status=stat, inbox=inbox, outbox=outbox, param=auxparam, auxret=auxret)
+				endif
 			endif
 		endif
 	catch
 		print "RunTime error: ", GetRTError(1), GetRTErrMessage()
-		print "VISA status code: "+num2istr(status)	
-		QDLSerialPortPrintError(instr, 0, status)
+		print "VISA status code: "+num2istr(status)
+		QDLPrintVISAError(instr, 0, status)
 		retVal=-1
 	endtry
 

@@ -1,5 +1,7 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+#pragma IgorVersion=7.0
+#pragma ModuleName=QDataLink
 
 Function QDLInit(Variable & initRM)
 	variable init_flag=0
@@ -72,7 +74,7 @@ Function QDLInit(Variable & initRM)
 				defaultRM=RM
 			else
 				print "Error when initializing VISA default resource manager."
-				QDLSerialPortPrintError(RM, 0, status) 
+				QDLPrintVISAError(RM, 0, status) 
 				RM=-1
 			endif
 		endif
@@ -100,6 +102,11 @@ Function QDLInit(Variable & initRM)
 			WAVE thread_record=$WBPkgGetName(fullPkgPath, WBPkgDFWave, "thread_record"); AbortOnRTE
 			thread_record=-1
 		endif
+		
+		CtrlNamedBackground QDL_BACKGROUND_TASK_NAME, status
+		if(str2num(StringByKey("RUN", S_info))==0)
+			CtrlNamedBackground QDL_BACKGROUND_TASK_NAME, burst=0, dialogsOK=1, period=1, proc=qdl_background_task, start
+		endif
 	catch
 		err=GetRTError(1)
 		print "Error initializing QDataLink package: "+GeterrMessage(err)
@@ -111,7 +118,7 @@ ThreadSafe Function qdl_dummy_thread_worker_init(Variable i)
 	return 0
 End
 
-Function QDLGetSlot(Variable instance)
+Function QDLGetSlotInfo(Variable instance)
 	Variable slot=-1
 	Variable i
 	try
@@ -132,9 +139,7 @@ Function QDLGetSlot(Variable instance)
 	return slot
 End
 
-Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [Variable instance, String &receive_msg, 
-						String realtime_func, String postfix_func, String auxparam, Variable timeout])
-	String response=""
+Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [Variable instance, String &receive_msg, Variable clear_device, String realtime_func, String postfix_func, String auxparam, Variable timeout, Variable req_status, Variable quiet])
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName)
 	DFREF dfr=GetDataFolderDFR()
 	SetDataFolder $fullPkgPath
@@ -142,7 +147,13 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 	if(ParamIsDefault(timeout))
 		timeout=QDL_DEFAULT_TIMEOUT
 	endif
+
+	STRUCT QDLConnectionParam cp
+	Variable lock_state=0
+	cp.instr=0
+	cp.connection_type=QDL_CONNECTION_TYPE_NONE
 	
+	String response=""	
 	try
 		WAVE /T instance_record=:waves:active_instance_record
 		WAVE /T rtfunc_record=:waves:rt_callback_func_list
@@ -153,7 +164,11 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 		WAVE /T outbox=:waves:outbox_all
 		WAVE request_record=:waves:request_record
 		WAVE status_record=:waves:status_record
-		WAVE connection_info=:waves:connection_type_info
+		WAVE connection_type_info=:waves:connection_type_info
+		WAVE /T connection_param=:waves:connection_param_record
+		
+		Variable request_flag=0; AbortOnRTE
+		Variable check_response_flag=0
 		
 		if(!ParamIsDefault(instance))
 			if(str2num(StringByKey("INSTANCE", instance_record[slot]))!=instance)
@@ -163,12 +178,23 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 		else
 			instance=str2num(StringByKey("INSTANCE", instance_record[slot]))
 		endif
-
-		if(slot<QDL_MAX_CONNECTIONS)
+		
+		Variable query_quiet=0
+		
+		if(!ParamIsDefault(quiet) && quiet!=0)
+			query_quiet=QDL_CONNECTION_QUERY_QUIET
+		endif
+		
+		if(slot<QDL_MAX_CONNECTIONS)			
+			StructGet /S cp, connection_param[slot]; AbortOnRTE
+			
+			qdl_lock(cp, VI_TMO_INFINITE); AbortOnRTE
+			lock_state=1
+				
 			Variable update_func_flag=0
-			Variable request_read=0
-			Variable request_write=0			
 			Variable start_time, current_time
+			
+			connection_type_info[slot] = connection_type_info[slot] | (QDL_CONNECTION_RTCALLBACK_SUSPENSE| query_quiet)
 			
 			if(!ParamIsDefault(realtime_func) && strlen(realtime_func)>0)
 				rtfunc_record[slot]=realtime_func; AbortOnRTE
@@ -180,69 +206,77 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 			endif
 			if(!ParamIsDefault(auxparam) && strlen(auxparam)>0)
 				param_record[slot]=auxparam; AbortOnRTE
-			else
-				param_record[slot]=""; AbortOnRTE
+			//else
+			//	param_record[slot]=""; AbortOnRTE
 			endif
 			if(update_func_flag==1)
 				start_time=StopMSTimer(-2)/1000; AbortOnRTE
 				auxret_record[slot]=""
-				connection_info[slot]=connection_info[slot]|QDL_CONNECTION_ATTACH_FUNC
-				if(timeout>0)
-					do //waiting for the thread to answer to request of updating user functions
-						Sleep /T 1
-						DoUpdate; AbortOnRTE
-						current_time=StopMSTimer(-2)/1000; AbortOnRTE
-					while((current_time-start_time<timeout) && (connection_info[slot] & QDL_CONNECTION_ATTACH_FUNC))
-				
-					if(connection_info[slot] & QDL_CONNECTION_ATTACH_FUNC)
-						print "Warning: timeout when trying to attach user defined function to instance "+num2istr(instance)
-					endif
-				else
+				connection_type_info[slot] = connection_type_info[slot] | QDL_CONNECTION_ATTACH_FUNC
+				//there will always be a waiting for this operation to make sure that the function attaches appropriately
+				do //waiting for the thread to answer to request of updating user functions
 					Sleep /T 1
-					DoUpdate
+					DoUpdate; AbortOnRTE
+					current_time=StopMSTimer(-2)/1000; AbortOnRTE
+				while((current_time-start_time<QDL_DEFAULT_TIMEOUT) && (connection_type_info[slot] & QDL_CONNECTION_ATTACH_FUNC))
+			
+				if(connection_type_info[slot] & QDL_CONNECTION_ATTACH_FUNC)
+					print "Warning: timeout when trying to attach user defined function to instance "+num2istr(instance)
 				endif
 			endif
 			
+			if(!ParamIsDefault(clear_device) && clear_device==1)
+				request_flag = request_flag | QDL_REQUEST_CLEAR_BUFFER
+			endif
+			
 			if(strlen(send_msg)>0)
-				request_write=1
 				outbox[slot]=send_msg; AbortOnRTE
+				request_flag = request_flag | QDL_REQUEST_WRITE; AbortOnRTE
+				check_response_flag = check_response_flag | QDL_REQUEST_WRITE_COMPLETE; AbortOnRTE
 			endif
 			if(expect_response)
-				request_read=1
 				inbox[slot]=""; AbortOnRTE
-			endif
-			Variable request_flag=0; AbortOnRTE
-			Variable response_flag=0
-			if(request_write)
-				request_flag=request_flag|QDL_REQUEST_WRITE; AbortOnRTE
-				response_flag=QDL_REQUEST_WRITE_COMPLETE; AbortOnRTE
-			endif
-			if(request_read)
-				request_flag=request_flag|QDL_REQUEST_READ; AbortOnRTE
-				response_flag=QDL_REQUEST_READ_COMPLETE; AbortOnRTE
+				request_flag = request_flag | QDL_REQUEST_READ; AbortOnRTE
+				check_response_flag = check_response_flag | QDL_REQUEST_READ_COMPLETE; AbortOnRTE
 			endif
 			
 			request_record[slot]=request_flag; AbortOnRTE
+			
 			if(timeout>0)
 				start_time=StopMSTimer(-2)/1000; AbortOnRTE
 				do
 					Sleep /T 1
 					DoUpdate; AbortOnRTE
 					current_time=StopMSTimer(-2)/1000; AbortOnRTE
-				while((current_time-start_time<timeout) && !(request_record[slot] & response_flag))
+				while((current_time-start_time<timeout) && !((request_record[slot] & check_response_flag)==check_response_flag))
+				
 				if(request_record[slot] & QDL_REQUEST_READ_COMPLETE)
-					response=inbox[slot]
+					response=inbox[slot]; AbortOnRTE
 					if(!ParamIsDefault(receive_msg))
-						receive_msg=response
+						receive_msg=response; AbortOnRTE
 					endif
+				endif
+				
+				if(!ParamIsDefault(req_status))
+					req_status=request_record[slot]; AbortOnRTE
 				endif
 			endif
 		endif		
+		connection_type_info[slot] = connection_type_info[slot] & (~(QDL_CONNECTION_RTCALLBACK_SUSPENSE | query_quiet))
+		qdl_unlock(cp)
+		lock_state=0
 	catch
 		Variable err=GetRTError(1)
 		if(err!=0)
 			print "Error when query from instance "+num2istr(instance)+": "+GetErrMessage(err)
 		endif
+		if(slot<QDL_MAX_CONNECTIONS && WaveExists(connection_type_info))
+			connection_type_info[slot] = connection_type_info[slot] & (~(QDL_CONNECTION_RTCALLBACK_SUSPENSE | query_quiet))
+		endif
+		if(lock_state!=0)
+			qdl_unlock(cp)
+		endif
+		
 	endtry
 	
 	SetDataFolder dfr
@@ -256,27 +290,30 @@ ThreadSafe Function qdl_rtfunc_prototype(Variable inittest, [Variable slot, STRU
 	return 0
 End
 
-ThreadSafe Function qdl_retrieve_funcref(String funcname, WAVE /T funcname_list, Variable slot, FUNCREF qdl_rtfunc_prototype & ref)
-	FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
-	print "User requested to attach function ["+funcname+"] to QDataLink slot "+num2istr(slot)
-	if(strlen(funcname)>0)
-		FUNCREF qdl_rtfunc_prototype ref=$(funcname)
-		try
-			ref(1); AbortOnRTE
-		catch
-			Variable err=GetRTError(1)
-			print "User defined real-time callback function failed init test for slot "+num2istr(slot)
-			print "No user defined real-time will be called."
-			FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
-		endtry
-	endif
-	String update_funcname=StringByKey("NAME", FuncRefInfo(ref))
-	if(strlen(update_funcname)<=0)
-		update_funcname="qdl_rtfunc_prototype"
-		FUNCREF qdl_rtfunc_prototype ref=$(update_funcname)
-	endif
-	funcname_list[slot]=update_funcname
-	print "New real-time callback function ["+update_funcname+"] attached to slot "+num2istr(slot)
+ThreadSafe Function qdl_lock(STRUCT QDLConnectionParam & cp, Variable timeout)
+	switch(cp.connection_type)
+		case QDL_CONNECTION_TYPE_SERIAL:
+		case QDL_CONNECTION_TYPE_USB:
+			if(cp.instr>0)
+				return qdl_VISALock(cp.instr, timeout)
+			endif
+			break
+		default:
+	endswitch
+	return -1
+End
+
+ThreadSafe Function qdl_unlock(STRUCT QDLConnectionParam & cp)
+	switch(cp.connection_type)
+		case QDL_CONNECTION_TYPE_SERIAL:
+		case QDL_CONNECTION_TYPE_USB:
+			if(cp.instr>0)
+				return qdl_VISAUnLock(cp.instr)
+			endif
+			break
+		default:
+	endswitch
+	return -1
 End
 
 ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX, WAVE request, WAVE status, 
@@ -285,6 +322,7 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 																WAVE /T outbox, WAVE /T rt_callback_func, 
 																WAVE /T auxparam, WAVE /T auxret, WAVE thread_record)
 	if(slot<0 || slot >= QDL_MAX_CONNECTIONS)
+		print "invalid slot sent to thread worker!", slot
 		return -1
 	endif
 	
@@ -295,6 +333,7 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 	
 	STRUCT QDLConnectionparam cp
 	cp.connection_type=QDL_CONNECTION_TYPE_NONE
+	cp.instr=0
 	
 	Variable cp_init=0
 	String cp_str=""
@@ -303,12 +342,13 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 		cp_init=1
 	endif
 	
-	FUNCREF qdl_rtfunc_prototype rtcallbackfunc_ref=qdl_rtfunc_prototype
-	
 	String rtcallbackfunc_name=rt_callback_func[slot]
-	qdl_retrieve_funcref(rtcallbackfunc_name, rt_callback_func, slot, rtcallbackfunc_ref)
+	qdl_update_rtcallback_func(rtcallbackfunc_name, rt_callback_func, slot, quiet=(connection_type[slot] & QDL_CONNECTION_QUERY_QUIET))
+	FUNCREF qdl_rtfunc_prototype rtcallbackfunc_ref=$(rt_callback_func[slot])
 	
-	Variable retVal=0	
+	Variable retVal=0
+	Variable lock_state=0, vi_status
+	String tmpkeyin="", tmpkeyout=""
 	do
 		try
 			if((connection_type[slot] & QDL_CONNECTION_QUITTING) !=0)
@@ -316,32 +356,45 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 			else
 				if((connection_type[slot] & QDL_CONNECTION_ATTACH_FUNC)!=0)
 					rtcallbackfunc_name=rt_callback_func[slot]
-					qdl_retrieve_funcref(rtcallbackfunc_name, rt_callback_func, slot, rtcallbackfunc_ref)
+					qdl_update_rtcallback_func(rtcallbackfunc_name, rt_callback_func, slot, quiet=(connection_type[slot] & QDL_CONNECTION_QUERY_QUIET))
+					FUNCREF qdl_rtfunc_prototype rtcallbackfunc_ref=$(rt_callback_func[slot])
 					connection_type[slot] = connection_type[slot] & (~ QDL_CONNECTION_ATTACH_FUNC)
 				endif
-				
-				switch(connection_type[slot] & QDL_CONNECTION_TYPE_MASK)
-				case QDL_CONNECTION_TYPE_SERIAL:
-				case QDL_CONNECTION_TYPE_USB:
-					if((connection_type[slot] & QDL_CONNECTION_QUITTING)==0) //no request to quit yet
-						retVal=qdl_thread_serialport_req(cp, slot, request, status, connection_type, \
-																	inbox, outbox, auxparam, auxret, \
-																	rtcallbackfunc_ref)
+				if((connection_type[slot] & QDL_CONNECTION_TYPE_MASK) != cp.connection_type)
+					print "connection_type_info is inconsistent with parameters stored for slot ["+num2istr(slot)+"]"
+					retVal=-98
+				else
+					if(qdl_lock(cp, VI_TMO_INFINITE)==0)
+						lock_state=1
+						switch(connection_type[slot] & QDL_CONNECTION_TYPE_MASK)
+						case QDL_CONNECTION_TYPE_SERIAL:
+						case QDL_CONNECTION_TYPE_USB:
+							if((connection_type[slot] & QDL_CONNECTION_QUITTING)==0) //no request to quit yet
+								retVal=qdl_thread_serialport_req(cp, slot, request, status, connection_type, \
+																		inbox, outbox, auxparam, auxret, \
+																		rtcallbackfunc_ref); AbortOnRTE
+							endif
+							break
+						default:
+							retVal=-1
+						endswitch
+						qdl_unlock(cp)
+						lock_state=0
 					endif
-					break
-				default:
-					retVal=-1
-				endswitch
-			endif
+				endif //check consistency of connection_type and connection_parameters
+			endif //connection not quitting
 		catch
 			Variable err=GetRTError(1)
 			print "Error happened for thread worker of QDataLink slot "+num2istr(slot)+": "+GetErrMessage(err)
+			if(lock_state)
+				qdl_unlock(cp)
+			endif
 		endtry
 		if(cp_init)
 			StructPut /S cp, cp_str
 			connection_param[slot]=cp_str
 		endif
-		Sleep /T 1
+		//Sleep /T 1
 	while(retVal==0)
 	
 	connection_type[slot] = connection_type[slot] | QDL_CONNECTION_QUITTED
@@ -350,79 +403,59 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 	return retVal
 End
 
+Function qdl_postfix_callback_prototype(Variable instance, Variable slot, DFREF dfr)
+	return 0
+End
+
 //Background task runs in main thread
 //It will cleanup threads that quit. In this case, the connection will be closed properly
 //It will also track the status of request. When the request is complete, it will call user
 //function, if defined, to process this information.
 Function qdl_background_task(s)
 	STRUCT WMBackgroundStruct &s
-	String fullPkgCommonPath=WBSetupPackageDir(QDLPackageName)
-	WAVE /T param_name_records=$WBPkgGetName(fullPkgCommonPath, WBPkgDFWave, StringFromList(0, QDLParamAndDataRecord))
-	WAVE /T inbox_all=$WBPkgGetName(fullPkgCommonPath, WBPkgDFWave, StringFromList(1, QDLParamAndDataRecord))
-	WAVE /T outbox_all=$WBPkgGetName(fullPkgCommonPath, WBPkgDFWave, StringFromList(2, QDLParamAndDataRecord))
-	WAVE request_records=$WBPkgGetName(fullPkgCommonPath, WBPkgDFWave, StringFromList(0, QDLStatusRecord))
-	WAVE status_records=$WBPkgGetName(fullPkgCommonPath, WBPkgDFWave, StringFromList(1, QDLStatusRecord))
-	Make /FREE /N=(QDL_MAX_CONNECTIONS) tmp_retVals, tmp_connection_types
-	Make /FREE /T /N=(QDL_MAX_CONNECTIONS) tmp_params
-	Variable i
+	String fullPkgPath=WBSetupPackageDir(QDLPackageName); AbortOnRTE
+	DFREF old_dfr=GetDataFolderDFR()
+	Variable flag=1
 	
-	String inboxname, outboxname
-	
-	for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
-		if(strlen((param_name_records[i]))>1)
-			SVAR paramstr=$((param_name_records[i])[1,inf])
-			if(SVAR_Exists(paramstr))			
-				tmp_connection_types[i]=str2num((param_name_records[i])[0,0])							
-				//debug sending request begin
-				STRUCT QDLConnectionParam cp
-				StructGet /S cp, paramstr
-				if(!(request_records[i] & QDL_REQUEST_READ) && !(request_records[i] & QDL_REQUEST_READ_BUSY) && !(request_records[i] & QDL_REQUEST_READ_COMPLETE))
-					SVAR cmd=root:cmd
-					SVAR addcmd=root:addcmd
-					outbox_all[i]=cmd
-					inbox_all[i]=""			
-					
-					if(strlen(addcmd)>0)
-						outbox_all[i]+=addcmd
-						addcmd=""
-						print "special cmd updated:"+outbox_all[i]
+	SetDataFolder $fullPkgPath	
+	try
+		NVAR threadGroupID=:vars:threadGroupID
+		WAVE /T post_callback_func=:waves:post_callback_func_list
+		WAVE /T active_instance_record=:waves:active_instance_record
+		do
+			DFREF dfr=ThreadGroupGetDFR(threadGroupID, 0); AbortOnRTE
+			switch(DataFolderRefstatus(dfr))
+			case 0: //invalid
+				flag=0
+				break
+			case 1: //regular global data folder, should not happen
+				print "QDataLink background task received a global datafolder ref. This should not happen..."
+				break
+			case 3: //free datafolder ref
+				NVAR instance=dfr:instance; AbortOnRTE
+				NVAR slot=dfr:slot; AbortOnRTE
+				if(NVAR_Exists(instance) && NVAR_Exists(slot))
+					if(slot>=0 && slot<QDL_MAX_CONNECTIONS)
+						if(str2num(StringByKey("INSTANCE", active_instance_record[slot]))==instance)
+							FUNCREF qdl_postfix_callback_prototype callback_ref=$(post_callback_func[slot])
+							if(str2num(StringByKey("ISPROTO", FuncRefInfo(callback_ref)))==0)
+								callback_ref(instance, slot, dfr); AbortOnRTE
+							endif
+						endif
 					endif
-					cp.outbox_request_len=strlen(outbox_all[i])
-					request_records[i]=QDL_REQUEST_READ | QDL_REQUEST_WRITE
-					StructPut /S cp, paramstr
-					//print "request submitted."
-				endif				
-				//debug sending request end
-			
-				tmp_params[i]=paramstr
-			else
-				tmp_params[i]=""
-				tmp_connection_types[i]=-1
-			endif
-		else
-			tmp_params[i]=""
-			tmp_connection_types[i]=-1
-		endif
-	endfor
+				endif
+				KillDataFolder /Z dfr
+				break
+			default:
+				flag=0
+				break
+			endswitch
+		while(flag==1)
+	catch
+		Variable err=GetRTError(1)
+	endtry
 	
-//	multithread tmp_retVals=qdl_request_handler(p, tmp_connection_types, tmp_params, request_records, status_records, outbox_all, inbox_all)
-
-	for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
-		if(tmp_connection_types[i]>0)
-			SVAR paramstr=$((param_name_records[i])[1,inf])
-			
-			//debug query begin
-			StructGet /S cp, tmp_params[i]
-			if(request_records[i] & QDL_REQUEST_READ_COMPLETE)
-				process_data(inbox_all[i])
-				request_records[i] = 0
-			endif
-			//debug query end
-			
-			paramstr=tmp_params[i] //update the parameter records of each active connection
-		endif
-	endfor
-
+	SetDataFolder old_dfr	
 	return 0
 End
 
