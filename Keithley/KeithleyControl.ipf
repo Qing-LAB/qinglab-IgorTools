@@ -1847,6 +1847,7 @@ Function kcontrol_callbackFunc(session, strData, strParam, count, strCmd)
 		endfor
 		newcmd+="print('QQDATA_FIXEDKDBL"+num2istr(dataDimSize)+"\\r') printnumber("+printvar_list[1,inf]+") "
 		strCmd=newcmd
+		Notebook kcontrol_initscripts text=strCmd+"\r\r"
 	catch
 		return -1
 	endtry	

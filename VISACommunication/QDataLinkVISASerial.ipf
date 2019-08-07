@@ -374,7 +374,7 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 
 			endif
 
-			SetDataFolder $(instancePath)
+			SetDataFolder $(instancePath); AbortOnRTE
 			NVAR connection_active=:vars:connection_active
 			NVAR count=:vars:count
 			NVAR req_readlen=:vars:request_read_len
@@ -443,7 +443,7 @@ Function QDLCloseSerialPort([String instrDesc, Variable instance])
 		DFREF dfr=GetDataFolderDFR()
 		try
 			String fullPkgPath=WBSetupPackageDir(QDLPackageName)
-			SetDataFolder $fullPkgPath
+			SetDataFolder $fullPkgPath; AbortOnRTE
 			WAVE /T active_instance_record=:waves:active_instance_record
 			Variable i
 			for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)

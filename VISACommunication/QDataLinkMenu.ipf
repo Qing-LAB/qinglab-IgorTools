@@ -48,7 +48,7 @@ Function /S QDLMenuItem(variable idx)
 			if(strlen(instance_info)>0)
 				String name, connection, notes
 				qdl_get_instance_info(instance, name, notes, connection)
-
+				Variable slot=QDLGetSlotInfo(instance)
 				Variable instance_ref=floor(str2num(StringByKey(connection, overall_info, "=", ";")))
 				if (instance_ref!=instance)
 					print "instance record is inconsistent with the menu for index ", idx
@@ -60,7 +60,7 @@ Function /S QDLMenuItem(variable idx)
 				endif
 			endif
 			if(instance_check_flag==1)
-				retStr="[instance"+num2istr(instance)+"] "+name+" ("+connection+") "+" {"+notes+"}"
+				retStr="[slot#"+num2istr(slot)+"][instance#"+num2istr(instance)+"] "+name+" ("+connection+") "+" {"+notes+"}"
 			else
 				retStr="[instance"+num2istr(instance)+"] ERROR!"
 			endif
