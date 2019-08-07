@@ -201,7 +201,13 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 			Variable start_time, current_time
 			
 			connection_type_info[slot] = connection_type_info[slot] | (QDL_CONNECTION_RTCALLBACK_SUSPENSE| query_quiet)
-			
+		
+			if(!ParamIsDefault(timeout) && numtype(timeout)==1) //timeout is infinite
+				connection_type_info[slot] = connection_type_info[slot] | QDL_CONNECTION_NO_TIMEOUT
+			else
+				connection_type_info[slot] = connection_type_info[slot] & (~ QDL_CONNECTION_NO_TIMEOUT)
+			endif
+				
 			if(!ParamIsDefault(realtime_func) && strlen(realtime_func)>0)
 				rtfunc_record[slot]=realtime_func; AbortOnRTE
 				update_func_flag=1

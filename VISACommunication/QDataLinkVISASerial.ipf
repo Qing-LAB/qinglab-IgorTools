@@ -600,13 +600,15 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				inbox[slot]=""
 				cp.inbox_received_len=0
 			else
-				current_time=StopMSTimer(-2)/1000
-				if((current_time-cp.starttime_ms)>=cp.timeout_ms)
-					req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
-							| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
+				if(connection_type[slot] & QDL_CONNECTION_NO_TIMEOUT == 0)
+					current_time=StopMSTimer(-2)/1000
+					if((current_time-cp.starttime_ms)>=cp.timeout_ms)
+						req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
+								| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
 #ifdef DEBUG_QDLVISA
-					print "VISA read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
+						print "VISA read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
 #endif
+					endif
 				endif
 			endif
 			
@@ -625,22 +627,41 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				if(cp.byte_at_port_check_flag==1)
 					status=viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, bytes_at_port)
 					AbortOnvalue status!=VI_SUCCESS, -6
+				else
+					if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_NEMPTY || status==VI_WARN_QUEUE_OVERFLOW)
+#ifdef DEBUG_QDLVISA
+						print "viWaitOnEvent returned success:"+num2istr(outEventType)
+#endif
+						bytes_at_port=QDL_MAX_BUFFER_LEN
+					elseif(status==VI_ERROR_TMO)
+						bytes_at_port=0
+					else
+#ifdef DEBUG_QDLVISA
+				print "viWaitOnEvent returned unknown status: ", num2istr(status)
+#endif
+						bytes_at_port=0
+					endif
 				endif
 				
-				if(cp.byte_at_port_check_flag==0 || bytes_at_port>0)
-					Variable packetSize=QDL_SERIAL_PACKET_BUF_SIZE
-					String receivedStr=""
-					
-					if(cp.inbox_request_len>0)
-						packetSize=cp.inbox_request_len-cp.inbox_received_len
-					endif
-					if(packetSize>QDL_SERIAL_PACKET_BUF_SIZE)
-						packetSize=QDL_SERIAL_PACKET_BUF_SIZE
-					endif
+				if(bytes_at_port>0)
+					Variable packetSize					
 					if(cp.byte_at_port_check_flag==1)
-						if(packetSize>bytes_at_port)
-							packetSize=bytes_at_port
+						packetSize=QDL_SERIAL_PACKET_BUF_SIZE
+						String receivedStr=""
+						
+						if(cp.inbox_request_len>0)
+							packetSize=cp.inbox_request_len-cp.inbox_received_len
 						endif
+						if(packetSize>QDL_SERIAL_PACKET_BUF_SIZE)
+							packetSize=QDL_SERIAL_PACKET_BUF_SIZE
+						endif
+						if(cp.byte_at_port_check_flag==1)
+							if(packetSize>bytes_at_port)
+								packetSize=bytes_at_port
+							endif
+						endif
+					else
+						packetSize=bytes_at_port
 					endif
 					
 					retCnt=0
