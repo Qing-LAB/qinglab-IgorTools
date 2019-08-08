@@ -300,7 +300,7 @@ Function ITC_init()
 	CheckBox itc_cb_adc5  win=ITCPanel,title="ADC5",pos={35,165},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "5")
 	CheckBox itc_cb_adc6  win=ITCPanel,title="ADC6",pos={35,185},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "6")
 	CheckBox itc_cb_adc7  win=ITCPanel,title="ADC7",pos={35,205},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_ADCChnDefault, "7")
-	CheckBox itc_cb_adc16  win=ITCPanel,title="DIGI_IN",pos={35,225},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("adc#", ReplaceString("ADC#", ITC_ADCChnDefault, "DIGI_IN", 1), "digi_in", 1)
+	CheckBox itc_cb_adc16  win=ITCPanel,title="DIGI_IN",pos={35,225},proc=itc_cbproc_selchn,userdata(param)=ReplaceStringByKey("SCALEUNIT", ReplaceString("adc#", ReplaceString("ADC#", ITC_ADCChnDefault, "DIGI_IN", 1), "digi_in", 1), "N/A", "=", ";")
 	
 	GroupBox itc_grp_DAC win=ITCPanel,title="DACs",pos={20,245},size={90,115}
 	CheckBox itc_cb_dac0  win=ITCPanel,title="DAC0",pos={35,260},proc=itc_cbproc_selchn,userdata(param)=ReplaceString("#", ITC_DACChnDefault, "0")
@@ -371,7 +371,7 @@ End
 
 Function itc_btnproc_lastrecord(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 		
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
@@ -393,7 +393,7 @@ End
 
 Function ITC_Plot_TraceRecord()
 	Variable recnum=0
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	try
 		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)	
 		NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum"); AbortOnRTE
@@ -417,7 +417,7 @@ End
 
 Function itc_plot_trace_record(recNum, histogram_mode)
 	Variable recNum, histogram_mode
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	try
 		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 		WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
@@ -488,7 +488,7 @@ End
 
 Function itc_btnproc_telegraph(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
@@ -642,6 +642,7 @@ Function itc_set_EPC8_telegraph_default(c)
 		itc_set_adc_scale_factor("itc_cb_adc5", 2, 1, "V")
 		itc_set_adc_scale_factor("itc_cb_adc6", 4, 1, "V")
 		itc_set_adc_scale_factor("itc_cb_adc7", 3, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc16", 3, 1, "N/A")
 	else
 		itc_set_adc_scale_factor("itc_cb_adc0", 1, 1, "V")
 		itc_set_adc_scale_factor("itc_cb_adc1", 1, 1, "V")
@@ -651,6 +652,7 @@ Function itc_set_EPC8_telegraph_default(c)
 		itc_set_adc_scale_factor("itc_cb_adc5", 1, 1, "V")
 		itc_set_adc_scale_factor("itc_cb_adc6", 1, 1, "V")
 		itc_set_adc_scale_factor("itc_cb_adc7", 1, 1, "V")
+		itc_set_adc_scale_factor("itc_cb_adc16", 1, 1, "N/A")
 	endif
 	itc_setup_telegraph()
 End
@@ -709,7 +711,7 @@ End
 
 Function itc_update_telegraphvar([commit])
 	Variable commit
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR ChnOnGainBinFlags=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
@@ -808,7 +810,7 @@ End
 
 Function itc_btnproc_generatewave(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR recordingnum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
@@ -828,7 +830,7 @@ End
 
 Function itc_setup_sealtest_default(pulsev, pulsew, [clear_channels])
 	Variable pulsev, pulsew, clear_channels
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR samplingrate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
 	NVAR recordinglen=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingLength")
@@ -945,7 +947,7 @@ End
 
 Function itc_set_saverecording([flag])
 	Variable flag
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR saverecording=$WBPkgGetName(fPath, WBPkgDFVar, "SaveRecording")
 	String titlestr
@@ -1044,7 +1046,7 @@ Function itc_update_chninfo(windowname, event)
 	if(event!=11) //event is given by TableMonitorHook callback
 		return -1
 	endif
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	String adc_chn_wname=WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel")
 	String dac_chn_wname=WBPkgGetName(fPath, WBPkgDFWave, "DAC_Channel")
@@ -1288,7 +1290,7 @@ End
 Function itc_cbproc_digitals(cba) : CheckBoxControl
 	STRUCT WMCheckboxAction &cba
 	Variable i
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR digitals=$WBPkgGetName(fPath, WBPkgDFVar, "DigitalChannels"); AbortOnRTE
 	int bitset=0
@@ -1342,7 +1344,7 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 		case 2: // mouse up
 			Variable checked = cba.checked
 			try
-				Variable instance=WBPkgNewInstance
+				Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 				String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 				SVAR usrfuncname=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
 				if(checked)
@@ -1505,7 +1507,7 @@ End
 
 Function itc_start_task([flag])
 	Variable flag
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	NVAR TaskStatus=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
 	NVAR Continuous=$WBPkgGetName(fPath, WBPkgDFVar, "ContinuousRecording")
@@ -1583,7 +1585,7 @@ End
 
 Function itc_rtgraph_init(left, top, right, bottom)
 	Variable left, top, right, bottom
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	String wname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 	WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn")
@@ -1850,8 +1852,9 @@ Function rtgraph_btnproc_showinfo(ba) : ButtonControl
 End
 
 Function rtgraph_update_display()
-	Variable instance=WBPkgNewInstance
+
 	try
+		Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 		String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 		WAVE datawave=$dataname; AbortOnRTE
@@ -2169,7 +2172,7 @@ Function itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
 End
 
 Function itc_update_taskinfo()
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	Variable retVal=-1
@@ -2493,7 +2496,7 @@ Function itc_bgTask(s)
 	Variable tRefNum, tMicroSec
 	
 	tRefNum=StartMSTimer
-	Variable instance=WBPkgNewInstance
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 	
 	NVAR itcmodel=$WBPkgGetName(fPath, WBPkgDFVar, "ITCMODEL")

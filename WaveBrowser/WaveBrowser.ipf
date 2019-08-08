@@ -423,7 +423,7 @@ Function /T WBSetupPackageDir(PackageName, [instance, existence, info, init_requ
 	return fullPath
 End
 
-Function WBPkgGetNumberOfInstances(PackageName)
+Function WBPkgGetLatestInstance(PackageName)
 	String PackageName
 	variable n=-1
 	try
@@ -647,6 +647,7 @@ Function WBPrepPackagePrivateDF(fullPath, dflist, [quiet, nosubdir])
 	endtry	
 	return retVal
 End
+
 
 Function /T WBPkgGetName(fullPath, type, name, [quiet])
 	String fullPath

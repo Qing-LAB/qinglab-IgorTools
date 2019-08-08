@@ -416,7 +416,7 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 	return retVal
 End
 
-Function qdl_postfix_callback_prototype(Variable instance, Variable slot, DFREF dfr)
+Function qdl_postfix_callback_prototype(Variable instance, Variable slot, Variable dfr_received, DFREF dfr)
 	return 0
 End
 
@@ -429,7 +429,8 @@ Function qdl_background_task(s)
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName); AbortOnRTE
 	DFREF old_dfr=GetDataFolderDFR()
 	Variable flag=1
-	
+	Variable i
+	Variable err
 	try
 		SetDataFolder $fullPkgPath; AbortOnRTE
 		NVAR threadGroupID=:vars:threadGroupID
@@ -452,20 +453,38 @@ Function qdl_background_task(s)
 						if(str2num(StringByKey("INSTANCE", active_instance_record[slot]))==instance)
 							FUNCREF qdl_postfix_callback_prototype callback_ref=$(post_callback_func[slot])
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(callback_ref)))==0)
-								callback_ref(instance, slot, dfr); AbortOnRTE
+								callback_ref(instance, slot, 1, dfr); err=GetRTError(1) //call user function for processing data
 							endif
 						endif
 					endif
 				endif
-				KillDataFolder /Z dfr
+				KillDataFolder /Z dfr; AbortOnRTE
 				break
 			default:
 				flag=0
 				break
 			endswitch
 		while(flag==1)
+		
+		//will call all background function for non-critical job without dfr
+		for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
+			try
+				Variable inst=str2num(StringByKey("INSTANCE", active_instance_record[slot]))			
+				if(numtype(inst)==0 && strlen(post_callback_func[i])>0)
+					FUNCREF qdl_postfix_callback_prototype callback_ref=$(post_callback_func[i])
+					if(str2num(StringByKey("ISPROTO", FuncRefInfo(callback_ref)))==0)
+						//call user function for maintenance when no data have arrived
+						//user function should be quick and collaborative to handle this
+						callback_ref(inst, i, 0, NULL); err=GetRTError(1)
+					endif
+				endif
+			catch
+				err=GetRTError(1)
+			endtry
+		endfor
+		
 	catch
-		Variable err=GetRTError(1)
+		err=GetRTError(1)
 	endtry
 	
 	SetDataFolder old_dfr	

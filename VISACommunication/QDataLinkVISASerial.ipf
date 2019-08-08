@@ -538,10 +538,20 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 		AbortOnValue (cp.instance<0 || cp.instance>=QDL_MAX_CONNECTIONS || instr<=0), -1
 		
 		if(!(req[slot] & (QDL_REQUEST_READ_BUSY | QDL_REQUEST_WRITE_BUSY)) && (req[slot] & QDL_REQUEST_CLEAR_BUFFER))
+			status=viDiscardEvents(instr, VI_ALL_ENABLED_EVENTS, VI_QUEUE)
+			if(status!=VI_SUCCESS && status!=VI_SUCCESS_QUEUE_EMPTY)
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=3
+				print "viDiscardEvents returned status: "+num2istr(status)
+#endif
+#endif
+			endif
 			status=viClear(instr)
 			req[slot] = req[slot] & (~ QDL_REQUEST_CLEAR_BUFFER)
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=3
 			print "viClear status:", num2istr(status)
+#endif
 #endif
 			AbortOnValue status!=VI_SUCCESS, -1
 		endif
@@ -570,19 +580,23 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 											| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
 						endif
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=1
 						print "viWrite error."
 						print "viWrite status:", num2istr(status)
+#endif
 #endif
 						AbortOnValue -1, -4
 					else
 						cp.outbox_retCnt=retCnt
 						req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 										| QDL_REQUEST_WRITE_COMPLETE
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=3
 						print "viWrite sent :"+outbox[slot]
 						print "viWrite sent length:", retCnt
 						print "viWrite status:", num2istr(status)
+#endif
 #endif
 					endif
 				endif
@@ -605,8 +619,10 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if((current_time-cp.starttime_ms)>=cp.timeout_ms)
 						req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 								| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=2
 						print "VISA read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
+#endif
 #endif
 					endif
 				endif
@@ -617,27 +633,38 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				status=viGetAttribute(instr, VI_ATTR_TERMCHAR, termChar)
 				AbortOnValue status!=VI_SUCCESS, -8			
 	
-				Variable outEventType, outContext
+				Variable outEventType, outContext=VI_NULL
 				status=viWaitOnEvent(instr, VI_ALL_ENABLED_EVENTS, QDL_EVENT_POLLING_TIMEOUT, outEventType, outContext)
-#ifdef DEBUG_QDLVISA
-				print "viWaitOnEvent returned ", num2istr(status)
-#endif
+				
+				if(status==VI_WARN_QUEUE_OVERFLOW)
+					viDiscardEvents(instr, VI_ALL_ENABLED_EVENTS, VI_QUEUE)
+					status=VI_SUCCESS_QUEUE_NEMPTY
+				endif
+				
+				if(outContext!=VI_NULL)
+					viClose(outContext)
+				endif
+
 				Variable bytes_at_port=0
 				
 				if(cp.byte_at_port_check_flag==1)
 					status=viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, bytes_at_port)
 					AbortOnvalue status!=VI_SUCCESS, -6
 				else
-					if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_NEMPTY || status==VI_WARN_QUEUE_OVERFLOW)
-#ifdef DEBUG_QDLVISA
+					if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_NEMPTY)
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=3
 						print "viWaitOnEvent returned success:"+num2istr(outEventType)
+#endif
 #endif
 						bytes_at_port=QDL_MAX_BUFFER_LEN
 					elseif(status==VI_ERROR_TMO)
 						bytes_at_port=0
 					else
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=1
 				print "viWaitOnEvent returned unknown status: ", num2istr(status)
+#endif
 #endif
 						bytes_at_port=0
 					endif
@@ -668,10 +695,12 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if(packetSize>0)	
 						status=viRead(instr, receivedStr, packetSize, retCnt)	
 						if(retCnt>0)
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=3
 							print "viRead get message: ", receivedStr
 							print "viRead length:", retCnt
 							print "viRead status:", num2istr(status)
+#endif
 #endif
 							Variable i, termflag=0
 							for(i=0; i<retCnt; i+=1)
@@ -703,15 +732,14 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if(read_complete_flag)
 						req[slot] = (req[slot] & (~(QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 										 | QDL_REQUEST_READ_COMPLETE
-#ifdef DEBUG_QDLVISA
+#if defined(DEBUG_QDLVISA)
+#if DEBUG_QDLVISA>=3
 						print "read request completed."
 						print "request status:", num2istr(req[slot])
 #endif
+#endif
 					endif
 					
-					if(outContext!=VI_NULL)
-						viClose(outContext)
-					endif
 				endif //event arrived
 			endif //read not complete?
 		endif
