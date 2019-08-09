@@ -25,7 +25,7 @@ Function /S QDLMenuItem(variable idx)
 		AbortOnValue DefaultRM<0, -1
 		DefaultRM=initRM
 		
-		Variable maxinstances=WBPkgGetNumberofInstances(QDLPackageName)
+		Variable maxinstances=WBPkgGetLatestInstance(QDLPackageName)
 		String overall_info=WBPkgGetInfoString(QDLPackageName)
 		//overall_info contains the record of all active connections, and the cross reference between these connections and the instance number.
 		// for example: "ACTIVE_INSTANCES=0,3;0=ASRL3::INSTR;3=ASRL5::INSTR;ASRL3::INSTR=0;ASRL5::INSTR=3"
