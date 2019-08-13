@@ -276,68 +276,79 @@ Function K2336_GenInitScript(Variable smu, String smu_condition, String & script
 End
 
 Function K2336Panel(String smu_list, String configStr)
-	NewPanel /N=K2336Panel /W=(0,0,250,450)/K=1
+
+	NewPanel /N=K2336Panel /W=(0,0,230,400) /K=1
 	String wname=S_name
 	
 	PopupMenu smu_selector win=$wname, title="Select SMU", fSize=12, pos={160, 10}, bodywidth=90
 	PopupMenu smu_selector win=$wname, value=#("\""+smu_list+"\""), mode=1
 	PopupMenu smu_selector win=$wname, proc=k2336_smu_selector_popup
 	
-	PopupMenu smu_source_type win=$wname, title="Source Type",fSize=12,pos={160,30}, bodywidth=90
+	PopupMenu smu_source_type win=$wname, title="Source Type",fSize=12,pos={160,35}, bodywidth=90
 	PopupMenu smu_source_type win=$wname, value=#("\""+k2336_SOURCE_TYPE+"\""), mode=1
 	PopupMenu smu_source_type win=$wname, proc=k2336_smu_popup
 	
-	SetVariable smu_limitv win=$wname,title="Voltage Limit (V)",fSize=12, pos={160,50}, bodywidth=90
+	SetVariable smu_limitv win=$wname,title="Voltage Limit (V)",fSize=12, pos={160,60}, bodywidth=90
 	SetVariable smu_limitv win=$wname,format="%.3g",limits={k2336_MIN_LIMITV,k2336_MAX_LIMITV,0},value=_NUM:20
 	SetVariable smu_limitv win=$wname,proc=k2336_smu_setvar
 	
-	SetVariable smu_limiti win=$wname,title="Current Limit (A)",fSize=12, pos={160,70}, bodywidth=90
+	SetVariable smu_limiti win=$wname,title="Current Limit (A)",fSize=12, pos={160,85}, bodywidth=90
 	SetVariable smu_limiti win=$wname,format="%.3g",limits={k2336_MIN_LIMITI,k2336_MAX_LIMITI,0},value=_NUM:0.1
 	SetVariable smu_limiti win=$wname,proc=k2336_smu_setvar
 	
-	PopupMenu smu_rangev win=$wname,pos={160, 90},fSize=12, bodyWidth=90,title="Voltage Range"
+	PopupMenu smu_rangev win=$wname,pos={120, 110},fSize=12, bodyWidth=50,title="Voltage Range"
 	PopupMenu smu_rangev win=$wname,value=#("\""+k2336_VOLTAGE_RANGE_STR+"\""),mode=2
 	PopupMenu smu_rangev win=$wname, proc=k2336_smu_popup
 	
-	PopupMenu smu_rangei win=$wname,pos={160, 110},fSize=12, bodyWidth=90,title="Current Range"
+	CheckBox smu_autoV title="AUTO",size={40,20},fSize=11,pos={160,110},proc=k2336_smu_checkbox
+	
+	PopupMenu smu_rangei win=$wname,pos={120, 135},fSize=12, bodyWidth=50,title="Current Range"
 	PopupMenu smu_rangei win=$wname,value=#("\""+k2336_CURRENT_RANGE_STR+"\""),mode=2
 	PopupMenu smu_rangei win=$wname, proc=k2336_smu_popup
 	
-	PopupMenu smu_sensetype win=$wname,pos={160, 130},fSize=12, bodyWidth=90,title="Sense type"
+	CheckBox smu_autoI title="AUTO",size={40,20},fSize=11,pos={160,135},proc=k2336_smu_checkbox
+	
+	PopupMenu smu_sensetype win=$wname,pos={160, 160},fSize=12, bodyWidth=90,title="Sense type"
 	PopupMenu smu_sensetype win=$wname,value=#("\""+k2336_SENSE_TYPE+"\"")
 	PopupMenu smu_sensetype win=$wname, proc=k2336_smu_popup
 	
-	PopupMenu smu_autozero win=$wname,pos={160, 150},fSize=12, bodyWidth=90,title="Auto Zero"
+	PopupMenu smu_autozero win=$wname,pos={160, 185},fSize=12, bodyWidth=90,title="Auto Zero"
 	PopupMenu smu_autozero win=$wname,value=#("\""+k2336_AUTOZERO_TYPE+"\"")
 	PopupMenu smu_autozero win=$wname, proc=k2336_smu_popup
 	
-	PopupMenu smu_sinkmode win=$wname,pos={160, 170},fSize=12, bodyWidth=90,title="Sink Mode"
+	PopupMenu smu_sinkmode win=$wname,pos={160, 210},fSize=12, bodyWidth=90,title="Sink Mode"
 	PopupMenu smu_sinkmode win=$wname,value=#("\""+k2336_SINK_MODE+"\"")
 	PopupMenu smu_sinkmode win=$wname, proc=k2336_smu_popup
 	
-	SetVariable smu_speed win=$wname,pos={160, 190},fSize=12, bodyWidth=90,title="Speed (NPLC)"
+	SetVariable smu_speed win=$wname,pos={160, 235},fSize=12, bodyWidth=90,title="Speed (NPLC)"
 	SetVariable smu_speed win=$wname,limits={0.001,25,0.5},value=_NUM:1
 	SetVariable smu_speed win=$wname, proc=k2336_smu_setvar
 	
-	SetVariable smu_delay win=$wname,title="Delay (s)",fSize=12, pos={160,210}, bodywidth=90
+	SetVariable smu_delay win=$wname,title="Delay (s)",fSize=12, pos={160,260}, bodywidth=90
 	SetVariable smu_delay win=$wname,format="%.3g",limits={0,100,0},value=_NUM:0
 	SetVariable smu_delay win=$wname,proc=k2336_smu_setvar
 	
-	PopupMenu smu_filter win=$wname,pos={160, 230},fSize=12, bodyWidth=90,title="Filter Type"
+	PopupMenu smu_filter win=$wname,pos={160, 285},fSize=12, bodyWidth=90,title="Filter Type"
 	PopupMenu smu_filter win=$wname,value=#("\""+k2336_FILTER_TYPE+"\"")
 	PopupMenu smu_filter win=$wname, proc=k2336_smu_popup
 	
-	SetVariable smu_filtercount win=$wname,title="Average count",fSize=12, pos={160,250}, bodywidth=90
+	SetVariable smu_filtercount win=$wname,title="Average count",fSize=12, pos={160,310}, bodywidth=90
 	SetVariable smu_filtercount win=$wname,format="%d",limits={1,100,1},value=_NUM:1
 	SetVariable smu_filtercount win=$wname,proc=k2336_smu_setvar
 	
-	Button smu_reset_default win=$wname,title="Reset to Default", fSize=12, pos={30, 290}, size={120, 25}
-	Button smu_reset_default win=$wname//,proc=kcontrol_resetdefault
+	Button smu_reset_default win=$wname,title="Reset to Default", fSize=12, pos={20, 335}, size={170, 25}
+	Button smu_reset_default win=$wname,proc=k2336_smu_btn
 	
-//	kcontrol_smu_tab_state(tab=0)
-//	kcontrol_UpdateSMU(0)	
-//	kcontrol_UpdateSMU(1)
-//	kcontrol_UpdateSMUAssignment()
+	Button smu_OK win=$wname,title="Accept settings", fSize=12, pos={20, 360}, size={170, 25}
+	Button smu_OK win=$wname,proc=k2336_smu_btn
+	
+	Button smu_CANCEL win=$wname,title="Cancel", fSize=12, pos={20, 385}, size={170, 25}
+	Button smu_CANCEL win=$wname,proc=k2336_smu_btn
+	
+	PauseForUser $wname
+
+	
+
 End
 
 
@@ -370,3 +381,47 @@ Function k2336_smu_popup(pa) : PopupMenuControl
 
 	return 0
 End
+
+Function k2336_smu_setvar(sva) : SetVariableControl
+	STRUCT WMSetVariableAction &sva
+
+	switch( sva.eventCode )
+		case 1: // mouse up
+		case 2: // Enter key
+		case 3: // Live update
+			Variable dval = sva.dval
+			String sval = sva.sval
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+
+Function k2336_smu_btn(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			
+			strswitch(ba.ctrlName)
+			case "smu_reset_default":
+				break
+			case "smu_OK":
+				break
+			case "smu_cancel":
+				break
+			default:
+				break
+			endswitch
+			
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
