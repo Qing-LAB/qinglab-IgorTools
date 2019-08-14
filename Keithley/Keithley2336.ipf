@@ -56,22 +56,21 @@ End
 Function K2336_check_IV_limit(Variable & limitI, Variable & limitV)
 	Variable retVal=0
 	
-	if(limitI>=0.1) //100 mA
-		if(limitV>=20.2) //20.2V
+	if(limitI>0.1) //100 mA
+		if(limitV>20.2) //20.2V
 			limitI=0.1
-			printf "K2336_check_IV_limit: current limit is out of range. force setting to 100mA"
+			print "K2336_check_IV_limit: current limit is out of range. force setting to 100mA"
 			retVal+=1
 		endif
 	endif
 	
-	if(limitV>=20.2)
-		if(limitI>=0.1)
+	if(limitV>20.2)
+		if(limitI>0.1)
 			limitV=20.2
-			printf "K2336_check_IV_limit: voltage limit is out of range. force setting to 20.2V"
+			print "K2336_check_IV_limit: voltage limit is out of range. force setting to 20.2V"
 			retVal+=1
 		endif
-	endif
-	
+	endif	
 End
 
 
@@ -275,14 +274,19 @@ Function K2336_GenInitScript(Variable smu, String smu_condition, String & script
 
 End
 
-Function K2336Panel(String smu_list, String configStr)
-
-	NewPanel /N=K2336Panel /W=(0,0,230,400) /K=1
+Function /T K2336Panel(String smu_list, String configStr)
+	if(ItemsInList(smu_list)<1)
+		return ""
+	endif
+		
+	NewPanel /N=K2336Panel /W=(0,0,240,430) /K=1
 	String wname=S_name
 	
-	PopupMenu smu_selector win=$wname, title="Select SMU", fSize=12, pos={160, 10}, bodywidth=90
-	PopupMenu smu_selector win=$wname, value=#("\""+smu_list+"\""), mode=1
-	PopupMenu smu_selector win=$wname, proc=k2336_smu_selector_popup
+	TabControl smu_tab win=$wname, pos={15,10}, size={220,360}, proc=k2336_smu_tab
+	Variable i
+	for(i=0; i<ItemsInList(smu_list); i+=1)
+		TabControl smu_tab win=$wname, tabLabel(i)=StringFromList(i, smu_list)
+	endfor
 	
 	PopupMenu smu_source_type win=$wname, title="Source Type",fSize=12,pos={160,35}, bodywidth=90
 	PopupMenu smu_source_type win=$wname, value=#("\""+k2336_SOURCE_TYPE+"\""), mode=1
@@ -300,13 +304,13 @@ Function K2336Panel(String smu_list, String configStr)
 	PopupMenu smu_rangev win=$wname,value=#("\""+k2336_VOLTAGE_RANGE_STR+"\""),mode=2
 	PopupMenu smu_rangev win=$wname, proc=k2336_smu_popup
 	
-	CheckBox smu_autoV title="AUTO",size={40,20},fSize=11,pos={160,110},proc=k2336_smu_checkbox
+	CheckBox smu_autoV title="AUTO",size={40,20},fSize=11,pos={175,110},proc=k2336_smu_checkbox
 	
 	PopupMenu smu_rangei win=$wname,pos={120, 135},fSize=12, bodyWidth=50,title="Current Range"
 	PopupMenu smu_rangei win=$wname,value=#("\""+k2336_CURRENT_RANGE_STR+"\""),mode=2
 	PopupMenu smu_rangei win=$wname, proc=k2336_smu_popup
 	
-	CheckBox smu_autoI title="AUTO",size={40,20},fSize=11,pos={160,135},proc=k2336_smu_checkbox
+	CheckBox smu_autoI title="AUTO",size={40,20},fSize=11,pos={175,135},proc=k2336_smu_checkbox
 	
 	PopupMenu smu_sensetype win=$wname,pos={160, 160},fSize=12, bodyWidth=90,title="Sense type"
 	PopupMenu smu_sensetype win=$wname,value=#("\""+k2336_SENSE_TYPE+"\"")
@@ -336,21 +340,132 @@ Function K2336Panel(String smu_list, String configStr)
 	SetVariable smu_filtercount win=$wname,format="%d",limits={1,100,1},value=_NUM:1
 	SetVariable smu_filtercount win=$wname,proc=k2336_smu_setvar
 	
-	Button smu_reset_default win=$wname,title="Reset to Default", fSize=12, pos={20, 335}, size={170, 25}
+	Button smu_reset_default win=$wname,title="Reset to Default", fSize=12, pos={30, 335}, size={180, 25}
 	Button smu_reset_default win=$wname,proc=k2336_smu_btn
 	
-	Button smu_OK win=$wname,title="Accept settings", fSize=12, pos={20, 360}, size={170, 25}
+	Button smu_OK win=$wname,title="Accept settings", fSize=12, pos={30, 375}, size={180, 25}
 	Button smu_OK win=$wname,proc=k2336_smu_btn
 	
-	Button smu_CANCEL win=$wname,title="Cancel", fSize=12, pos={20, 385}, size={170, 25}
+	Button smu_CANCEL win=$wname,title="Cancel", fSize=12, pos={30, 400}, size={180, 25}
 	Button smu_CANCEL win=$wname,proc=k2336_smu_btn
 	
-	PauseForUser $wname
-
+	String strName=UniqueName("S_tmpK2336ConfigStr", 4, 0)
+	String newcfgstr=""
+	try
+		String /G $(strName)
+		SVAR cfgStr=$(strName)
+		cfgStr=configStr; AbortOnRTE
+		SetWindow $wname, UserData(CONFIG_STR_STORAGE_NAME)=strName; AbortOnRTE
+		SetWindow $wname, UserData(CONFIG_STR)=configStr; AbortOnRTE
+		//PauseForUser $wname; AbortOnRTE
+	catch
+		Variable err=GetRTError(1)
+		print "K2336Panel catched an error: "+GetErrMessage(err)
+		cfgStr=""
+	endtry
+	SVAR cfgStr=$(strName)
+	if(SVAR_Exists(cfgStr))
+		newcfgstr=cfgStr
+		KillStrings /Z $strName
+	endif
 	
-
+	return newcfgstr
 End
 
+Function k2336_update_configstr(String wname)
+	String configStrName=GetUserData(wname, "", "CONFIG_STR_STORAGE_NAME")
+	String config=GetUserData(wname, "", "CONFIG_STR")
+	SVAR cfgStr=$(configStrName)
+	
+	if(SVAR_Exists(cfgStr))
+		try
+			ControlInfo /W=$wname smu_tab
+			String smu_name=S_Value
+			String smuconfig=StringByKey(smu_name, cfgStr, "@", "#")
+			
+			ControlInfo /W=$wname smu_source_type
+			switch(V_Value)
+			case 2:
+				smuconfig=ReplaceStringByKey("SOURCE_TYPE_V", smuconfig, "1")
+				break
+			case 3:
+				smuconfig=ReplaceStringByKey("SOURCE_TYPE_V", smuconfig, "2")
+				break
+			default:
+				smuconfig=ReplaceStringByKey("SOURCE_TYPE_V", smuconfig, "-1")
+				break
+			endswitch
+			
+			Variable limitv, limiti
+			ControlInfo /W=$wname smu_limitv
+			limitv=V_Value
+			ControlInfo /W=$wname smu_limiti
+			limiti=V_Value
+			
+			if(K2336_Check_IV_limit(limiti, limitv)!=0)
+				SetVariable smu_limitv, win=$wname, value=_NUM:(limitv)
+				SetVariable smu_limiti, win=$wname, value=_NUM:(limiti)
+			endif
+			smuconfig=ReplaceStringByKey("LIMITV", smuconfig, num2str(limitv))
+			smuconfig=ReplaceStringByKey("LIMITI", smuconfig, num2str(limiti))
+			
+			String rangeSel=""
+			ControlInfo /W=$wname smu_rangev
+			rangeSel=S_Value
+			
+			ControlInfo /W=$wname smu_autoV
+			if(V_Value)
+				smuconfig=ReplaceStringByKey("RANGEV", smuconfig, "AUTO")
+				smuconfig=ReplaceStringByKey("RANGEV_AUTOLOWRANGE", smuconfig, rangeSel)
+			else
+				smuconfig=ReplaceStringByKey("RANGEV", smuconfig, rangeSel)
+				smuconfig=RemoveByKey("RANGEV_AUTOLOWRANGE", smuconfig)
+			endif
+			
+			ControlInfo /W=$wname smu_rangei
+			rangeSel=S_Value
+			
+			ControlInfo /W=$wname smu_autoI
+			if(V_Value)
+				smuconfig=ReplaceStringByKey("RANGEI", smuconfig, "AUTO")
+				smuconfig=ReplaceStringByKey("RANGEI_AUTOLOWRANGE", smuconfig, rangeSel)
+			else
+				smuconfig=ReplaceStringByKey("RANGEI", smuconfig, rangeSel)
+				smuconfig=RemoveByKey("RANGEI_AUTOLOWRANGE", smuconfig)
+			endif
+			
+			ControlInfo /W=$wname smu_sensetype
+			switch(V_Value)
+			case 1: //two wire
+				smuconfig=ReplaceStringByKey("SENSE_TYPE_V", smuconfig, "0")
+				break
+			case 2: //four wire
+				smuconfig=ReplaceStringByKey("SENSE_TYPE_V", smuconfig, "1")
+				break
+			default:
+				break
+			endswitch
+			
+			ControlInfo /W=$wname smu_autozero
+			
+			ControlInfo /W=$wname smu_sinkmode
+			
+			ControlInfo /W=$wname smu_speed
+			
+			ControlInfo /W=$wname smu_delay
+			
+			ControlInfo /W=$wname smu_filter
+			
+			ControlInfo /W=$wname smu_filtercount
+			
+			ControlInfo /W=$wname smu_reset_default
+			
+			cfgStr=ReplaceStringByKey(smu_name, cfgStr, smuconfig, "@", "#")
+		catch
+		endtry
+	endif
+	print cfgStr
+End
 
 Function k2336_smu_selector_popup(pa) : PopupMenuControl
 	STRUCT WMPopupAction &pa
@@ -402,7 +517,9 @@ End
 
 Function k2336_smu_btn(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
-
+	
+	String cfgStrName=GetUserData(ba.win, "", "CONFIG_STR_STORAGE_NAME")
+	
 	switch( ba.eventCode )
 		case 2: // mouse up
 			
@@ -410,8 +527,19 @@ Function k2336_smu_btn(ba) : ButtonControl
 			case "smu_reset_default":
 				break
 			case "smu_OK":
+				SVAR cfgStr=$(cfgStrName)
+				if(SVAR_Exists(cfgStr))
+					//cfgStr="USER SELECTED OK"
+					k2336_update_configstr(ba.win)
+				endif
+				//KillWindow /Z $(ba.win)				
 				break
 			case "smu_cancel":
+				SVAR cfgStr=$(cfgStrName)
+				if(SVAR_Exists(cfgStr))
+					cfgStr="USER SELECTED CANCEL"
+				endif
+				KillWindow /Z $(ba.win)
 				break
 			default:
 				break
