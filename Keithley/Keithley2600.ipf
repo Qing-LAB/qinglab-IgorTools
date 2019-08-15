@@ -311,17 +311,17 @@ Function /T K2600Panel(String smu_list, String configStr)
 	SetVariable smu_limiti win=$wname,format="%.3g",limits={k2600_MIN_LIMITI,k2600_MAX_LIMITI,0},value=_NUM:0.1
 	SetVariable smu_limiti win=$wname,proc=k2600_smu_setvar
 	
-	PopupMenu smu_rangev win=$wname,pos={140, 110},fSize=11, bodyWidth=70,title="Voltage Range"
+	PopupMenu smu_rangev win=$wname,pos={115, 110},fSize=11, bodyWidth=95,title="V Range"
 	PopupMenu smu_rangev win=$wname,value=#("\""+k2600_VOLTAGE_AUTORANGE_STR+"\""),mode=4
 	PopupMenu smu_rangev win=$wname, proc=k2600_smu_popup
 	
-	CheckBox smu_autoV win=$wname,title="AUTO",size={40,20},fSize=11,pos={180,110},value=1,proc=k2600_smu_checkbox
+	CheckBox smu_autoV win=$wname,title="AUTO",size={40,20},fSize=11,pos={175,110},value=1,proc=k2600_smu_checkbox
 	
-	PopupMenu smu_rangei win=$wname,pos={140, 135},fSize=11, bodyWidth=70,title="Current Range"
+	PopupMenu smu_rangei win=$wname,pos={115, 135},fSize=11, bodyWidth=95,title="I Range"
 	PopupMenu smu_rangei win=$wname,value=#("\""+k2600_CURRENT_AUTORANGE_STR+"\""),mode=12
 	PopupMenu smu_rangei win=$wname, proc=k2600_smu_popup
 	
-	CheckBox smu_autoI win=$wname,title="AUTO",size={40,20},fSize=11,pos={180,135},value=1,proc=k2600_smu_checkbox
+	CheckBox smu_autoI win=$wname,title="AUTO",size={40,20},fSize=11,pos={175,135},value=1,proc=k2600_smu_checkbox
 	
 	PopupMenu smu_sensetype win=$wname,pos={160, 160},fSize=11, bodyWidth=90,title="Sense type"
 	PopupMenu smu_sensetype win=$wname,value=#("\""+k2600_SENSE_TYPE+"\""),mode=1
