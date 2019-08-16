@@ -84,6 +84,7 @@ Function k2600_GenInitScript(String configStr, String nbName)
 		String smu_condition=""
 		smu_condition=StringByKey(smuName, configStr, "@", "#", 0)
 		
+		script+="loadscript "+k2600_initscriptNamePrefix+smuName+"\r"
 		script+=smuName+".reset()\r"
 	
 		try
@@ -274,8 +275,24 @@ Function k2600_GenInitScript(String configStr, String nbName)
 	
 		Variable frequency=1000+500*smu
 		script+="beeper.beep(0.2, "+num2istr(frequency)+")\r"
-		script="loadscript "+k2600_initscriptNamePrefix+smuName+"\r"+script+"endscript\r\r"
+		script+="endscript\r\r"
 	endfor
+	
+	script+="loadscript IgorKeithleyInit_all()\r"
+	script+="reset()\r"
+	script+="IgorKeithleyInit_smua()\r"
+	script+="IgorKeithleyInit_smub()\r"
+	script+="display.clear()\r"
+	script+="display.setcursor(1,1)\r"
+	script+="display.settext(\"SMUs Initialized\")\r"
+	script+="status.reset()\r"
+	script+="status.request_enable=status.MAV\r"
+	script+="endscript\r\r"
+	
+	script+="function delay_ms(deltat) t0=timer.measure.t() while(timer.measure.t()-t0<deltat/1000) do end end\r\r"
+
+	script+="function reset_all() smua.reset() smub.reset() reset() end\r\r"
+	
 	Notebook $nbName, text="Keithley Script Generated ["+date()+", "+time()+"]\r\r\r"
 	Notebook $nbName, text="KEITHLEY INIT SCRIPT BEGIN\r\r"
 	Notebook $nbName, text=script
