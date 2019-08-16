@@ -4,22 +4,6 @@
 #include "wavebrowser"
 #include "keithley2600Constants"
 
-Function /T k2600_SMUName(variable smu)
-	String smuName=""
-	
-	switch(smu)
-	case 0:
-		smuName="smua"
-		break
-	case 1:
-		smuName="smub"
-		break
-	default:
-		smuName=""
-	endswitch
-	
-	return smuName
-End
 
 Function k2600_RangeFromList(String range_str, String option_list, String value_list, Variable & range_value, Variable & range_idx)
 	Variable retVal=0
@@ -71,218 +55,232 @@ Function k2600_check_IV_limit(Variable & limitI, Variable & limitV)
 			retVal+=1
 		endif
 	endif	
+	return retVal
 End
 
 
-Function k2600_GenInitScript(Variable smu, String smu_condition, String & script)
+Function k2600_GenInitScript(String configStr, String nbName)
 	
 	Variable retVal=0
 	
 	Variable instance=-1
 	String dfr=WBSetupPackageDir(k2600PackageName, instance=instance, existence=1)
 	
-	String smuName=k2600_SMUName(smu)
-	if(strlen(smuName)==0)
-		return -1
-	endif
+	nbName=UniqueName(nbName, 10, 0)
+	NewNotebook /F=1 /K=3 /N=$nbName
+	String script=""
+			
+	Variable smu, number_of_smu
+	String smuName=""
+	number_of_smu=ItemsInList(configStr, "#")
 	
-	script=smuName+".reset()\r"
-
-	try
-		String svalue
-		Variable dvalue, source_mode=-1
-		String smuMode=""
-						
-		strswitch(StringByKey("SOURCE_TYPE", smu_condition))
-		case "1": //V-source
-			script+=smuName+".source.func="+smuName+".OUTPUT_DCVOLTS\r"
-			source_mode=0
-			break
-		case "2": //I-source
-			script+=smuName+".source.func="+smuName+".OUTPUT_DCAMPS\r"
-			source_mode=1
-			break
-		default:
-			AbortOnValue 1, -200
-			break
-		endswitch
+	for(smu=0; smu<number_of_smu; smu+=1)
+		smuName=LowerStr(StringFromList(0, StringFromList(smu, configStr, "#"), "@"))
 		
-		strswitch(StringByKey("SENSE_TYPE", smu_condition))
-		case "0": //two-wire
-			script+=smuName+".sense="+smuName+".SENSE_LOCAL\r"
-			break
-		case "1": //four-wire
-			script+=smuName+".sense="+smuName+".SENSE_REMOTE\r"
-			break
-		default:
-			break
-		endswitch
-		
-		strswitch(StringByKey("AUTOZERO_TYPE", smu_condition))
-		case "0": //Enable (auto)
-			script+=smuName+".measure.autozero="+smuName+".AUTOZERO_AUTO\r"
-			break
-		case "1": //Only once
-			script+=smuName+".measure.autozero="+smuName+".AUTOZERO_ONCE\r"
-			break
-		case "2": //Disabled
-			script+=smuName+".measure.autozero="+smuName+".AUTOZERO_OFF\r"
-			break
-		default:
-			break
-		endswitch
-		
-		strswitch(StringByKey("SINK_MODE", smu_condition))
-		case "0": //sink mode disabled
-			script+=smuName+".source.sink="+smuName+".DISABLE\r"
-			break
-		case "1": //sink mode enabled
-			script+=smuName+".source.sink="+smuName+".ENABLE\r"
-			break
-		default:
-			break
-		endswitch
-		
-		dvalue=str2num(StringByKey("SPEED", smu_condition))
-		AbortOnValue (dvalue<0.001 || dvalue>25),-110
-		sprintf svalue, "%.3f", dvalue
-		script+=smuName+".measure.nplc="+svalue+"\r"
-		
-		dvalue=str2num(StringByKey("DELAY", smu_condition))
-		if(dvalue==0)
-			svalue=smuName+".DELAY_OFF"
-		elseif(dvalue<0)
-			svalue=smuName+".DELAY_AUTO"
-		else
-			sprintf svalue, "%.3f", dvalue
+		if(strlen(smuName)==0)
+			continue
 		endif
-		script+=smuName+".measure.delay="+svalue+"\r"
-		script+=smuName+".source.delay="+svalue+"\r"
 		
-		dvalue=str2num(StringByKey("FILTER_TYPE", smu_condition))
-		if(dvalue==0)
-			script+=smuName+".measure.filter.enable="+smuName+".FILTER_OFF\r"
-		else
-			script+=smuName+".measure.filter.enable="+smuName+".FILTER_ON\r"
-			switch(dvalue)
-			case 1: //median				
-				script+=smuName+".measure.filter.type="+smuName+".FILTER_MEDIAN\r"
+		String smu_condition=""
+		smu_condition=StringByKey(smuName, configStr, "@", "#", 0)
+		
+		script+=smuName+".reset()\r"
+	
+		try
+			String svalue
+			Variable dvalue, source_mode=-1
+			String smuMode=""
+							
+			strswitch(StringByKey("SOURCE_TYPE", smu_condition))
+			case "1": //V-source
+				script+=smuName+".source.func="+smuName+".OUTPUT_DCVOLTS\r"
+				source_mode=0
 				break
-			case 2: //moving average
-				script+=smuName+".measure.filter.type="+smuName+".FILTER_MOVING_AVG\r"
-				break
-			case 3: //repeat average
-				script+=smuName+".measure.filter.type="+smuName+".FILTER_REPEAT_AVG\r"
+			case "2": //I-source
+				script+=smuName+".source.func="+smuName+".OUTPUT_DCAMPS\r"
+				source_mode=1
 				break
 			default:
-				AbortOnValue 1, -120
+				AbortOnValue 1, -200
 				break
 			endswitch
-			dvalue=str2num(StringByKey("FILTER_AVGCOUNT", smu_condition))
-			AbortOnValue (dvalue<1 || dvalue>100), -110
-			script+=smuName+".measure.filter.count="+num2istr(dvalue)+"\r"
-		endif
-		
-		Variable limitV=str2num(StringByKey("LIMITV", smu_condition))
-		if(numtype(limitV)!=0 || limitV<0)
-			limitV=20.2 // default to 20.2V
-		endif
-		
-		Variable limitI=str2num(StringByKey("LIMITI", smu_condition))
-		if(numtype(limitI)!=0 || limitI<0) 
-			limitI=0.1 // default to 100mA
-		endif
-		
-		if(k2600_check_IV_limit(limitI, limitV)!=0)
-			print "Current and Voltage limits are changed due to instrument limits. limitI, limitV:", limitI, limitV
-		endif
-		
-		sprintf svalue, "%.3e", limitV
-		script+=smuName+".source.limitv="+svalue+"\r"
-		
-		sprintf svalue, "%.3e", limitI
-		script+=smuName+".source.limiti="+svalue+"\r"
-		
-		
-		Variable range_idx
-		//setting range v, depending on v-source or i-source, the key word should be source or measure
-		switch(source_mode)
-		case 0:
-			smuMode=".source" //sourcing V
-			break
-		case 1:
-			smuMode=".measure" //measuring V (sourcing I)
-			break
-		default:
-			AbortOnValue 1, -200
-		endswitch
-		
-		svalue=StringByKey("RANGEV", smu_condition)
-		if(cmpstr(svalue, "AUTO")==0)
-			script+=smuName+smuMode+".autorangev="+smuName+".AUTORANGE_ON\r"
-			svalue=StringByKey("RANGEV_AUTOLOWRANGE", smu_condition)
-			k2600_RangeFromList(svalue, k2600_VOLTAGE_AUTORANGE_STR, k2600_VOLTAGE_RANGE_VALUE, dvalue, range_idx)		
-			sprintf svalue, "%.3e", dvalue
-			script+=smuName+smuMode+".lowrangev="+svalue+"\r"
-		else
-			script+=smuName+smuMode+".autorangev="+smuName+".AUTORANGE_OFF\r"
-			k2600_RangeFromList(svalue, k2600_VOLTAGE_RANGE_STR, k2600_VOLTAGE_RANGE_VALUE, dvalue, range_idx)		
-			sprintf svalue, "%.3e", dvalue
-			script+=smuName+smuMode+".rangev="+svalue+"\r"
-		endif
-
-		//setting range i, depending on v-source or i-source, the key word should be measure or source
-		switch(source_mode)
-		case 0:
-			smuMode=".measure" //measuring I (sourcing V)
-			break
-		case 1:
-			smuMode=".source"	//sourcing I
-			break
-		default:
-			AbortOnValue 1, -200
-		endswitch
-		svalue=StringByKey("RANGEI", smu_condition)
-		if(cmpstr(svalue, "AUTO")==0)
-			script+=smuName+smuMode+".autorangei="+smuName+".AUTORANGE_ON\r"
-			svalue=StringByKey("RANGEI_AUTOLOWRANGE", smu_condition)
-			k2600_RangeFromList(svalue, k2600_CURRENT_AUTORANGE_STR, k2600_CURRENT_RANGE_VALUE, dvalue, range_idx)	
-			sprintf svalue, "%.3e", dvalue
-			script+=smuName+smuMode+".lowrangei="+svalue+"\r"
-		else
-			script+=smuName+smuMode+".autorangev="+smuName+".AUTORANGE_OFF\r"
-			k2600_RangeFromList(svalue, k2600_CURRENT_RANGE_STR, k2600_CURRENT_RANGE_VALUE, dvalue, range_idx)
-			sprintf svalue, "%.3e", dvalue
-			script+=smuName+smuMode+".rangei="+svalue+"\r"
-		endif
-	catch
-		switch(V_AbortCode)
-		case -100:
-			print "error: cannot find the condition variable."
-			break
-		case -110:
-			print "invalid speed NPLC value in the condition string for "+smuName+"."
-			break
-		case -120:
-			print "invalid filter count value in the condition string for "+smuName+"."
-			break
-		case -200:
-			print "SMU not used. Blank script with only resetting will be generated."
-		default:
-			break
-		endswitch
-
-		//script=""
-		retVal=-1
-
-	endtry
-
-	Variable frequency=1000+500*smu
-	script+="beeper.beep(0.2, "+num2istr(frequency)+")\r"
-	script="loadscript "+k2600_initscriptNamePrefix+smuName+"\r"+script+"endscript\r"
-
+			
+			strswitch(StringByKey("SENSE_TYPE", smu_condition))
+			case "0": //two-wire
+				script+=smuName+".sense="+smuName+".SENSE_LOCAL\r"
+				break
+			case "1": //four-wire
+				script+=smuName+".sense="+smuName+".SENSE_REMOTE\r"
+				break
+			default:
+				break
+			endswitch
+			
+			strswitch(StringByKey("AUTOZERO_TYPE", smu_condition))
+			case "0": //Enable (auto)
+				script+=smuName+".measure.autozero="+smuName+".AUTOZERO_AUTO\r"
+				break
+			case "1": //Only once
+				script+=smuName+".measure.autozero="+smuName+".AUTOZERO_ONCE\r"
+				break
+			case "2": //Disabled
+				script+=smuName+".measure.autozero="+smuName+".AUTOZERO_OFF\r"
+				break
+			default:
+				break
+			endswitch
+			
+			strswitch(StringByKey("SINK_MODE", smu_condition))
+			case "0": //sink mode disabled
+				script+=smuName+".source.sink="+smuName+".DISABLE\r"
+				break
+			case "1": //sink mode enabled
+				script+=smuName+".source.sink="+smuName+".ENABLE\r"
+				break
+			default:
+				break
+			endswitch
+			
+			dvalue=str2num(StringByKey("SPEED", smu_condition))
+			AbortOnValue (dvalue<0.001 || dvalue>25),-110
+			sprintf svalue, "%.3f", dvalue
+			script+=smuName+".measure.nplc="+svalue+"\r"
+			
+			dvalue=str2num(StringByKey("DELAY", smu_condition))
+			if(dvalue==0)
+				svalue=smuName+".DELAY_OFF"
+			elseif(dvalue<0)
+				svalue=smuName+".DELAY_AUTO"
+			else
+				sprintf svalue, "%.3f", dvalue
+			endif
+			script+=smuName+".measure.delay="+svalue+"\r"
+			script+=smuName+".source.delay="+svalue+"\r"
+			
+			dvalue=str2num(StringByKey("FILTER_TYPE", smu_condition))
+			if(dvalue==0)
+				script+=smuName+".measure.filter.enable="+smuName+".FILTER_OFF\r"
+			else
+				script+=smuName+".measure.filter.enable="+smuName+".FILTER_ON\r"
+				switch(dvalue)
+				case 1: //median				
+					script+=smuName+".measure.filter.type="+smuName+".FILTER_MEDIAN\r"
+					break
+				case 2: //moving average
+					script+=smuName+".measure.filter.type="+smuName+".FILTER_MOVING_AVG\r"
+					break
+				case 3: //repeat average
+					script+=smuName+".measure.filter.type="+smuName+".FILTER_REPEAT_AVG\r"
+					break
+				default:
+					AbortOnValue 1, -120
+					break
+				endswitch
+				dvalue=str2num(StringByKey("FILTER_AVGCOUNT", smu_condition))
+				AbortOnValue (dvalue<1 || dvalue>100), -110
+				script+=smuName+".measure.filter.count="+num2istr(dvalue)+"\r"
+			endif
+			
+			Variable limitV=str2num(StringByKey("LIMITV", smu_condition))
+			if(numtype(limitV)!=0 || limitV<0)
+				limitV=20.2 // default to 20.2V
+			endif
+			
+			Variable limitI=str2num(StringByKey("LIMITI", smu_condition))
+			if(numtype(limitI)!=0 || limitI<0) 
+				limitI=0.1 // default to 100mA
+			endif
+			
+			if(k2600_check_IV_limit(limitI, limitV)!=0)
+				print "Current and Voltage limits are changed due to instrument limits. limitI, limitV:", limitI, limitV
+			endif
+			
+			sprintf svalue, "%.3e", limitV
+			script+=smuName+".source.limitv="+svalue+"\r"
+			
+			sprintf svalue, "%.3e", limitI
+			script+=smuName+".source.limiti="+svalue+"\r"
+			
+			
+			Variable range_idx
+			//setting range v, depending on v-source or i-source, the key word should be source or measure
+			switch(source_mode)
+			case 0:
+				smuMode=".source" //sourcing V
+				break
+			case 1:
+				smuMode=".measure" //measuring V (sourcing I)
+				break
+			default:
+				AbortOnValue 1, -200
+			endswitch
+			
+			svalue=StringByKey("RANGEV", smu_condition)
+			if(cmpstr(svalue, "AUTO")==0)
+				script+=smuName+smuMode+".autorangev="+smuName+".AUTORANGE_ON\r"
+				svalue=StringByKey("RANGEV_AUTOLOWRANGE", smu_condition)
+				k2600_RangeFromList(svalue, k2600_VOLTAGE_AUTORANGE_STR, k2600_VOLTAGE_RANGE_VALUE, dvalue, range_idx)		
+				sprintf svalue, "%.3e", dvalue
+				script+=smuName+smuMode+".lowrangev="+svalue+"\r"
+			else
+				script+=smuName+smuMode+".autorangev="+smuName+".AUTORANGE_OFF\r"
+				k2600_RangeFromList(svalue, k2600_VOLTAGE_RANGE_STR, k2600_VOLTAGE_RANGE_VALUE, dvalue, range_idx)		
+				sprintf svalue, "%.3e", dvalue
+				script+=smuName+smuMode+".rangev="+svalue+"\r"
+			endif
+	
+			//setting range i, depending on v-source or i-source, the key word should be measure or source
+			switch(source_mode)
+			case 0:
+				smuMode=".measure" //measuring I (sourcing V)
+				break
+			case 1:
+				smuMode=".source"	//sourcing I
+				break
+			default:
+				AbortOnValue 1, -200
+			endswitch
+			svalue=StringByKey("RANGEI", smu_condition)
+			if(cmpstr(svalue, "AUTO")==0)
+				script+=smuName+smuMode+".autorangei="+smuName+".AUTORANGE_ON\r"
+				svalue=StringByKey("RANGEI_AUTOLOWRANGE", smu_condition)
+				k2600_RangeFromList(svalue, k2600_CURRENT_AUTORANGE_STR, k2600_CURRENT_RANGE_VALUE, dvalue, range_idx)	
+				sprintf svalue, "%.3e", dvalue
+				script+=smuName+smuMode+".lowrangei="+svalue+"\r"
+			else
+				script+=smuName+smuMode+".autorangev="+smuName+".AUTORANGE_OFF\r"
+				k2600_RangeFromList(svalue, k2600_CURRENT_RANGE_STR, k2600_CURRENT_RANGE_VALUE, dvalue, range_idx)
+				sprintf svalue, "%.3e", dvalue
+				script+=smuName+smuMode+".rangei="+svalue+"\r"
+			endif
+		catch
+			switch(V_AbortCode)
+			case -100:
+				print "error: cannot find the condition variable."
+				break
+			case -110:
+				print "invalid speed NPLC value in the condition string for "+smuName+"."
+				break
+			case -120:
+				print "invalid filter count value in the condition string for "+smuName+"."
+				break
+			case -200:
+				print "SMU not used. Blank script with only resetting will be generated."
+			default:
+				break
+			endswitch
+			retVal=-1	
+		endtry
+	
+		Variable frequency=1000+500*smu
+		script+="beeper.beep(0.2, "+num2istr(frequency)+")\r"
+		script="loadscript "+k2600_initscriptNamePrefix+smuName+"\r"+script+"endscript\r\r"
+	endfor
+	Notebook $nbName, text="Keithley Script Generated ["+date()+", "+time()+"]\r\r\r"
+	Notebook $nbName, text="KEITHLEY INIT SCRIPT BEGIN\r\r"
+	Notebook $nbName, text=script
+	Notebook $nbName, text="\rKEITHLEY INIT SCRIPT END\r"
 	return retVal
-
 End
 
 Function /T K2600Panel(String smu_list, String configStr)
@@ -293,7 +291,7 @@ Function /T K2600Panel(String smu_list, String configStr)
 	NewPanel /N=k2600Panel /W=(0,0,240,430) /K=1
 	String wname=S_name
 	
-	TabControl smu_tab win=$wname, pos={10,10}, size={220,360}, proc=k2600_smu_tab
+	TabControl smu_tab win=$wname, pos={5,5}, size={230,360}, proc=k2600_smu_tab
 	Variable i
 	for(i=0; i<ItemsInList(smu_list); i+=1)
 		TabControl smu_tab win=$wname, tabLabel(i)=StringFromList(i, smu_list)
@@ -311,13 +309,13 @@ Function /T K2600Panel(String smu_list, String configStr)
 	SetVariable smu_limiti win=$wname,format="%.3g",limits={k2600_MIN_LIMITI,k2600_MAX_LIMITI,0},value=_NUM:0.1
 	SetVariable smu_limiti win=$wname,proc=k2600_smu_setvar
 	
-	PopupMenu smu_rangev win=$wname,pos={115, 110},fSize=11, bodyWidth=95,title="V Range"
+	PopupMenu smu_rangev win=$wname,pos={120, 110},fSize=11, bodyWidth=95,title="V Range"
 	PopupMenu smu_rangev win=$wname,value=#("\""+k2600_VOLTAGE_AUTORANGE_STR+"\""),mode=4
 	PopupMenu smu_rangev win=$wname, proc=k2600_smu_popup
 	
 	CheckBox smu_autoV win=$wname,title="AUTO",size={40,20},fSize=11,pos={175,110},value=1,proc=k2600_smu_checkbox
 	
-	PopupMenu smu_rangei win=$wname,pos={115, 135},fSize=11, bodyWidth=95,title="I Range"
+	PopupMenu smu_rangei win=$wname,pos={120, 135},fSize=11, bodyWidth=95,title="I Range"
 	PopupMenu smu_rangei win=$wname,value=#("\""+k2600_CURRENT_AUTORANGE_STR+"\""),mode=12
 	PopupMenu smu_rangei win=$wname, proc=k2600_smu_popup
 	
@@ -339,8 +337,8 @@ Function /T K2600Panel(String smu_list, String configStr)
 	SetVariable smu_speed win=$wname,limits={0.001,25,0.5},value=_NUM:1
 	SetVariable smu_speed win=$wname, proc=k2600_smu_setvar
 	
-	SetVariable smu_delay win=$wname,title="Delay (s) (-1=AUTO)",fSize=11, pos={160,260}, bodywidth=90
-	SetVariable smu_delay win=$wname,format="%.3g",limits={-1,100,0},value=_NUM:(-1)
+	SetVariable smu_delay win=$wname,title="Delay (s)",fSize=11, pos={160,260}, bodywidth=90
+	SetVariable smu_delay win=$wname,format="%.3g",limits={-1,100,0},value=_NUM:(-1),help={"-1 means AUTO delay"}
 	SetVariable smu_delay win=$wname,proc=k2600_smu_setvar
 	
 	PopupMenu smu_filter win=$wname,pos={160, 285},fSize=11, bodyWidth=90,title="Filter Type"
@@ -359,9 +357,7 @@ Function /T K2600Panel(String smu_list, String configStr)
 	
 	Button smu_CANCEL win=$wname,title="Cancel", fSize=11, pos={40, 400}, size={160, 20}
 	Button smu_CANCEL win=$wname,proc=k2600_smu_btn
-	
-	k2600_smu_resetdefault(wname)
-	
+		
 	String strName=UniqueName("S_"+wname+"_CfgStr", 4, 0)
 	String newcfgstr=""
 	try
@@ -371,7 +367,7 @@ Function /T K2600Panel(String smu_list, String configStr)
 		SetWindow $wname, UserData(CONFIG_STR_STORAGE_NAME)=strName; AbortOnRTE
 		SetWindow $wname, UserData(CONFIG_STR)=configStr; AbortOnRTE
 		
-		k2600_update_configstr(wname)
+		k2600_smu_resetdefault(wname)
 		
 		PauseForUser $wname; AbortOnRTE
 	catch
