@@ -59,7 +59,7 @@ Function k2600_check_IV_limit(Variable & limitI, Variable & limitV)
 End
 
 
-Function k2600_GenInitScript(String configStr, String nbName)
+Function KeithleyGenerateInitScript(String configStr, String nbName)
 	
 	Variable retVal=0
 	
@@ -300,7 +300,7 @@ Function k2600_GenInitScript(String configStr, String nbName)
 	return retVal
 End
 
-Function /T K2600Panel(String smu_list, String configStr)
+Function /T KeithleyConfigSMUs(String smu_list, String configStr, [Variable timeout])
 	if(ItemsInList(smu_list)<1)
 		return ""
 	endif
@@ -369,7 +369,7 @@ Function /T K2600Panel(String smu_list, String configStr)
 	Button smu_reset_default win=$wname,title="Reset to Default", fSize=11, pos={50, 335}, size={140, 20}
 	Button smu_reset_default win=$wname,proc=k2600_smu_btn
 	
-	Button smu_OK win=$wname,title="Accept settings", fSize=11, pos={40, 375}, size={160, 20}
+	Button smu_OK win=$wname,title="Accept settings", fSize=11, pos={40, 380}, size={160, 20}
 	Button smu_OK win=$wname,proc=k2600_smu_btn
 	
 	Button smu_CANCEL win=$wname,title="Cancel", fSize=11, pos={40, 400}, size={160, 20}
@@ -377,6 +377,7 @@ Function /T K2600Panel(String smu_list, String configStr)
 		
 	String strName=UniqueName("S_"+wname+"_CfgStr", 4, 0)
 	String newcfgstr=""
+	Variable starttime=ticks
 	try
 		String /G $(strName);AbortOnRTE
 		SVAR cfgStr=$(strName)
@@ -384,13 +385,43 @@ Function /T K2600Panel(String smu_list, String configStr)
 		SetWindow $wname, UserData(CONFIG_STR_STORAGE_NAME)=strName; AbortOnRTE
 		SetWindow $wname, UserData(CONFIG_STR)=configStr; AbortOnRTE
 		
-		k2600_smu_resetdefault(wname)
+		String smuconfig=""
+		for(i=ItemsInList(smu_list)-1; i>=0; i-=1)
+			TabControl smu_tab win=$wname, value=i
+			k2600_update_controls(wname)
+			k2600_update_configstr(wname)
+		endfor
 		
-		PauseForUser $wname; AbortOnRTE
+		Variable timeoutflag=0
+		
+		if(!ParamIsDefault(timeout))
+			Button smu_OK win=$wname,pos={40, 390}
+			Button smu_CANCEL win=$wname,pos={40, 410}
+			do
+				PauseForUser /C $wname; AbortOnRTE
+				if(V_Flag)
+					Sleep /T 10
+					TitleBox smu_timeout_note, win=$wname, fColor=(65535,0,0), title="Time out in "+num2istr(round((timeout*60-(ticks-starttime))/60))+" secs...", pos={40, 370}; AbortOnRTE
+				else
+					break
+				endif
+			while(ticks-starttime<timeout*60)
+			timeoutflag=1
+		else
+			PauseForUser $wname; AbortOnRTE
+		endif
+		
+		if(timeoutflag==1)
+			KillWindow /Z $wname
+		endif
+		
 	catch
 		Variable err=GetRTError(1)
 		print "k2600Panel catched an error: "+GetErrMessage(err)
-		cfgStr=""
+		if(SVAR_Exists(cfgStr))
+			cfgStr=""
+		endif
+		newcfgstr=""
 	endtry
 	SVAR cfgStr=$(strName)
 	if(SVAR_Exists(cfgStr))
@@ -863,3 +894,154 @@ Function k2600_smu_checkbox(cba) : CheckBoxControl
 
 	return 0
 End
+
+
+Function KeithleyGetInitScript(String nbName, String & initScript)
+	initScript=""
+	try
+		Notebook $nbName, findText={"KEITHLEY INIT SCRIPT BEGIN", 0x01+0x04+0x08}
+		if(V_flag==1)
+			Variable textflag=0
+			do
+				Notebook $nbName, selection={startOfNextParagraph, endOfNextParagraph}
+				if(V_flag==0)
+					GetSelection notebook, $nbName, 0x02
+					if(V_flag==1 && CmpStr(TrimString(S_selection), "KEITHLEY INIT SCRIPT END")!=0)
+						initScript+=S_selection
+					else
+						textflag=1
+					endif
+				else
+					textflag=-1
+				endif
+			while (textflag==0)
+			if(textflag!=1)
+				print "Init script is not contained between 'KEITHLEY INIT SCRIPT BEGIN' and 'KEITHLEY INIT SCRIPT END' properly."
+			endif
+		endif
+	catch
+	endtry
+End
+
+StrConstant EMLogBookName="EMLogBook"
+
+Function EMLog(String msg, [Variable r, Variable g, Variable b, Variable notimestamp])
+	if(ParamIsDefault(r))
+		r=0
+	endif
+	if(ParamIsDefault(g))
+		g=0
+	endif
+	if(ParamIsDefault(b))
+		b=0
+	endif
+	
+	String wname=EMLogBookName
+	if(WinType(wname)!=5)
+		NewNotebook /N=$wname /F=1 /K=3 /OPTS=4
+	endif
+	Notebook $wname, selection={endOfFile, endOfFile}, findText={"",1}
+	if(ParamIsDefault(notimestamp) || notimestamp==0)
+		Notebook $wname, textRGB=(0, 0, 65535), text="["+date()+"] ["+time()+"]\r\n"
+	endif
+	Notebook $wname, textRGB=(r, g, b), text=msg+"\r\n"
+End
+
+Strconstant KeithleyClearStatusCmd="*CLS\rstatus.reset() status.request_enable=status.MAV"
+
+Function KeithleyInit(Variable slot, String nbScript, Variable timeout_ms)
+
+	String initscript=""
+	SVAR iscript=root:KeithleyInitScript
+	
+	KeithleyGetInitScript(nbScript, initscript)
+	iscript=ReplaceString("\r", initscript, "\n")
+	Variable maxcount=0
+	Variable count=0
+	Variable req_stat
+	Variable error=0
+	maxcount=ItemSInList(iscript, "\n")
+	
+	QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
+	EMLog("KeithleyINIT sending init scripts to Keithley...")
+	do
+		String line=StringFromList(count, iscript, "\n")
+		if(strlen(line)>0)		
+			req_stat=0
+			//print TrimString(line)
+			QDLQuery(slot, TrimString(line), 0, req_status=req_stat, timeout=inf)
+			if((req_stat & QDL_REQUEST_WRITE_COMPLETE)==0 || (req_stat & QDL_REQUEST_ERROR_MASK)!=0)
+				EMLog("KeithleyINIT get error during QDLQuery when sending line: "+line+", with status code "+num2istr(req_stat), r=65535, notimestamp=1)
+				error+=1
+			else
+				EMLog(line+"\r", b=65535, notimestamp=1)
+			endif
+		endif
+		count+=1
+	while(count<maxcount)
+	
+	if(error>0)
+		EMLog("KeithleyINIT found "+num2istr(error)+" error(s) in this process.")
+	else
+		EMLog("KeithleyINIT successfully uploaded code.")
+	endif
+	EMLog("KeithleyINIT will now call init script remotely...")
+	QDLQuery(slot, "IgorKeithleyInit_all()", 0, timeout=inf)
+	Sleep /T 3
+	EMLog("Keithley should be initialized.")	
+End
+	
+Function KeithleyShutdown(Variable slot, Variable timeout_ms)
+	QDLQuery(slot, KeithleyClearStatusCmd, 0, timeout=inf) 
+	String cmd="reset()"
+	QDLQuery(slot, cmd, 0, timeout=inf)
+	cmd="reset_all()"
+	QDLQuery(slot, cmd, 0, timeout=inf)
+	EMLog("KeithleyShutdown sent reset() and reset_all()")
+End
+
+Function KeithleySMUMeasure(Variable slot, Variable smua_out, Variable smub_out, Variable initial_take, WAVE output, Variable timeout_ms, Variable count)
+	
+	QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf) 
+	
+	String cmd=""
+	String line=""
+	if(initial_take==1)
+		cmd="timer.reset() "
+	
+		sprintf line, "format.data=format.ASCII format.asciiprecision=10 smua.source.leveli=%.10e smua.source.output=1 i0,v0=smua.measure.iv() t0=timer.measure.t() ", smua_out
+		cmd+=line
+		sprintf line, "smub.source.leveli=%.10e smub.source.output=1 i1,v1=smub.measure.iv() t1=timer.measure.t() printnumber(i0,v0,t0,i1,v1,t1) ", smub_out
+		cmd+=line
+	else
+		sprintf line, "beeper.beep(0.2,1500) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") smua.source.leveli=%.10e i0,v0=smua.measure.iv() t0=timer.measure.t() ", round(count), smua_out
+		cmd+=line
+		sprintf line, "smub.source.leveli=%.10e i1,v1=smub.measure.iv() t1=timer.measure.t() ", smub_out
+		cmd+=line
+		sprintf line, "printnumber(i0,v0,t0,i1,v1,t1) display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
+		cmd+=line
+	endif
+	
+	Variable repeat=1
+	do
+		EMLog("KeithleySMUMeasure count#"+num2istr(round(count))+" TRY#"+num2istr(repeat)+", command sent to Keithley: "+cmd)
+		String response=QDLQuery(slot, cmd, 1, timeout=inf)
+		EMLog("responce from Keithley: "+response)
+		if(strlen(response)==0)
+			EMLog("keithley did not respond in time. Will retry", r=65535)
+			QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
+		endif
+		repeat+=1
+	while(repeat<=5 && strlen(response)==0)
+	
+	Variable i, dim=DimSize(output, 0)
+	String sval=""
+	Variable val
+	for(i=0; i<dim && i<6; i+=1)
+		sval=StringFromList(i, response, ",")
+		sscanf sval, "%f", val
+		output[i]=val
+	endfor
+End
+
+
