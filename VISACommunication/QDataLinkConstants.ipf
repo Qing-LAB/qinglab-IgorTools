@@ -2,6 +2,7 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7.0
 #pragma ModuleName=QDataLink
+//#pragma IndependentModule=QDataLink
 
 StrConstant QDLPackageName="QDataLink"
 StrConstant QDL_BACKGROUND_TASK_NAME="QDataLink_Background_Task"

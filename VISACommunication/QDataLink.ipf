@@ -2,13 +2,8 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7.0
 #pragma ModuleName=QDataLink
-#include "VISA"
-#include "WaveBrowser"
-#include "QDataLinkConstants"
-#include "QDataLinkBookkeeping"
-#include "QDataLinkVISASerial"
+#include "QDataLinkconstants"
 #include "QDataLinkCore"
-#include "QDataLinkMenu"
 
 ///////////////////////////////////////////////////////////
 //QDataLink data folder structure

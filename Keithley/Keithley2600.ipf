@@ -59,7 +59,7 @@ Function k2600_check_IV_limit(Variable & limitI, Variable & limitV)
 End
 
 
-Function KeithleyGenerateInitScript(String configStr, String nbName)
+Function KeithleyGenerateInitScript(String configStr, String & nbName)
 	
 	Variable retVal=0
 	
@@ -67,7 +67,7 @@ Function KeithleyGenerateInitScript(String configStr, String nbName)
 	String dfr=WBSetupPackageDir(k2600PackageName, instance=instance, existence=1)
 	
 	nbName=UniqueName(nbName, 10, 0)
-	NewNotebook /F=1 /K=3 /N=$nbName
+	NewNotebook /F=1 /K=3 /N=$nbName; AbortOnRTE
 	String script=""
 			
 	Variable smu, number_of_smu
@@ -952,7 +952,7 @@ Strconstant KeithleyClearStatusCmd="*CLS\rstatus.reset() status.request_enable=s
 Function KeithleyInit(Variable slot, String nbScript, Variable timeout_ms)
 
 	String initscript=""
-	SVAR iscript=root:KeithleyInitScript
+	String iscript=""
 	
 	KeithleyGetInitScript(nbScript, initscript)
 	iscript=ReplaceString("\r", initscript, "\n")
@@ -962,14 +962,14 @@ Function KeithleyInit(Variable slot, String nbScript, Variable timeout_ms)
 	Variable error=0
 	maxcount=ItemSInList(iscript, "\n")
 	
-	QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
+	QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
 	EMLog("KeithleyINIT sending init scripts to Keithley...")
 	do
 		String line=StringFromList(count, iscript, "\n")
 		if(strlen(line)>0)		
 			req_stat=0
 			//print TrimString(line)
-			QDLQuery(slot, TrimString(line), 0, req_status=req_stat, timeout=inf)
+			QDataLinkCore#QDLQuery(slot, TrimString(line), 0, req_status=req_stat, timeout=inf)
 			if((req_stat & QDL_REQUEST_WRITE_COMPLETE)==0 || (req_stat & QDL_REQUEST_ERROR_MASK)!=0)
 				EMLog("KeithleyINIT get error during QDLQuery when sending line: "+line+", with status code "+num2istr(req_stat), r=65535, notimestamp=1)
 				error+=1
@@ -986,53 +986,57 @@ Function KeithleyInit(Variable slot, String nbScript, Variable timeout_ms)
 		EMLog("KeithleyINIT successfully uploaded code.")
 	endif
 	EMLog("KeithleyINIT will now call init script remotely...")
-	QDLQuery(slot, "IgorKeithleyInit_all()", 0, timeout=inf)
+	QDataLinkCore#QDLQuery(slot, "IgorKeithleyInit_all()", 0, timeout=inf)
 	Sleep /T 3
 	EMLog("Keithley should be initialized.")	
 End
 	
 Function KeithleyShutdown(Variable slot, Variable timeout_ms)
-	QDLQuery(slot, KeithleyClearStatusCmd, 0, timeout=inf) 
+	QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, timeout=inf) 
 	String cmd="reset()"
-	QDLQuery(slot, cmd, 0, timeout=inf)
+	QDataLinkCore#QDLQuery(slot, cmd, 0, timeout=inf)
 	cmd="reset_all()"
-	QDLQuery(slot, cmd, 0, timeout=inf)
+	QDataLinkCore#QDLQuery(slot, cmd, 0, timeout=inf)
 	EMLog("KeithleyShutdown sent reset() and reset_all()")
 End
 
 Function KeithleySMUMeasure(Variable slot, Variable smua_out, Variable smub_out, Variable initial_take, WAVE output, Variable timeout_ms, Variable count)
 	
-	QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf) 
-	
 	String cmd=""
 	String line=""
 	if(initial_take==1)
-		cmd="timer.reset() "
-	
-		sprintf line, "format.data=format.ASCII format.asciiprecision=10 smua.source.leveli=%.10e smua.source.output=1 i0,v0=smua.measure.iv() t0=timer.measure.t() ", smua_out
-		cmd+=line
-		sprintf line, "smub.source.leveli=%.10e smub.source.output=1 i1,v1=smub.measure.iv() t1=timer.measure.t() printnumber(i0,v0,t0,i1,v1,t1) ", smub_out
-		cmd+=line
-	else
-		sprintf line, "beeper.beep(0.2,1500) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") smua.source.leveli=%.10e i0,v0=smua.measure.iv() t0=timer.measure.t() ", round(count), smua_out
-		cmd+=line
-		sprintf line, "smub.source.leveli=%.10e i1,v1=smub.measure.iv() t1=timer.measure.t() ", smub_out
-		cmd+=line
-		sprintf line, "printnumber(i0,v0,t0,i1,v1,t1) display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
-		cmd+=line
+		cmd="timer.reset() format.data=format.ASCII format.asciiprecision=10 "
 	endif
 	
+	sprintf line, "beeper.beep(0.2,1000) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") smua.source.leveli=%.10e ", round(count), smua_out
+	cmd+=line
+	if(initial_take==1)
+		cmd+="smua.source.output=1 "
+	endif
+	
+	cmd+="i0,v0=smua.measure.iv() t0=timer.measure.t() "
+	sprintf line, "smub.source.leveli=%.10e ", smub_out
+	cmd+=line
+	if(initial_take==1)
+		cmd+="smub.source.output=1 "
+	endif
+	
+	cmd+="i1,v1=smub.measure.iv() t1=timer.measure.t() printnumber(i0,v0,t0,i1,v1,t1) "
+	cmd+="display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
+		
 	Variable repeat=1
 	do
 		EMLog("KeithleySMUMeasure count#"+num2istr(round(count))+" TRY#"+num2istr(repeat)+", command sent to Keithley: "+cmd)
-		String response=QDLQuery(slot, cmd, 1, timeout=inf)
+		String response=QDataLinkCore#QDLQuery(slot, cmd, 1, timeout=inf)
 		EMLog("responce from Keithley: "+response)
 		if(strlen(response)==0)
 			EMLog("keithley did not respond in time. Will retry", r=65535)
-			QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
+			QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
 		endif
 		repeat+=1
 	while(repeat<=5 && strlen(response)==0)
+	
+//	QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf) 
 	
 	Variable i, dim=DimSize(output, 0)
 	String sval=""
