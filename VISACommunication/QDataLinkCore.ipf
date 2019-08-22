@@ -5,6 +5,7 @@
 #include "VISA"
 #include "WaveBrowser"
 #include "QDataLinkConstants"
+#include "QDataLinkUserFunctions"
 
 #ifdef DEBUG_QDLVISA_3
 #ifndef DEBUG_QDLVISA_2
