@@ -4,7 +4,6 @@
 #include "wavebrowser"
 #include "keithley2600Constants"
 
-
 Function k2600_RangeFromList(String range_str, String option_list, String value_list, Variable & range_value, Variable & range_idx)
 	Variable retVal=0
 	
@@ -970,7 +969,10 @@ Function KeithleyInit(Variable slot, String nbScript, Variable timeout_ms)
 			req_stat=0
 			//print TrimString(line)
 			QDataLinkCore#QDLQuery(slot, TrimString(line), 0, req_status=req_stat, timeout=inf)
-			if((req_stat & QDL_REQUEST_WRITE_COMPLETE)==0 || (req_stat & QDL_REQUEST_ERROR_MASK)!=0)
+			Variable rcomplete, wcomplete, rerror, werror
+			QDataLinkCore#QDLCheckStatus(req_stat, read_complete=rcomplete, write_complete=wcomplete, read_error=rerror, write_error=werror)
+			
+			if(wcomplete==0 || rerror!=0 || werror!=0)
 				EMLog("KeithleyINIT get error during QDLQuery when sending line: "+line+", with status code "+num2istr(req_stat), r=65535, notimestamp=1)
 				error+=1
 			else

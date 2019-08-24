@@ -1,8 +1,7 @@
+#pragma IndependentModule= QDataLinkCore
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7.0
-#pragma ModuleName=QDataLink
-//#pragma IndependentModule=QDataLink
 
 StrConstant QDLPackageName="QDataLink"
 StrConstant QDL_BACKGROUND_TASK_NAME="QDataLink_Background_Task"
@@ -103,3 +102,19 @@ Structure QDLConnectionParam
 	uint32 instance
 	uint32 status
 EndStructure
+
+#ifndef QDL_PROTOTYPE_FUNC
+#define QDL_PROTOTYPE_FUNC
+
+ThreadSafe Function qdl_rtfunc_prototype(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
+	if(inittest==1)
+		return 0
+	endif
+	return 0
+End
+
+Function qdl_postprocess_bgfunc_prototype(Variable instance, Variable slot, Variable dfr_received, DFREF dfr, String instanceDir)
+	return 0
+End
+
+#endif

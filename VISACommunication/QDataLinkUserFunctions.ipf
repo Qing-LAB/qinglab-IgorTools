@@ -1,188 +1,523 @@
+#pragma IndependentModule= QDataLinkCore
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
-#pragma IndependentModule= QDataLinkCore
-
-
+//////////////////////////////////////////////////////////////////////////////
 //Please use the following as a template to define user functions
-//
-//ThreadSafe Function qdl_rtfunc_prototype(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
-//	if(inittest==1)
-//		return 0
-//	endif
-//	return 0
-//End
-//
-//Function qdl_postfix_callback_prototype(Variable instance, Variable slot, Variable dfr_received, DFREF dfr, String instanceDir)
-//	return 0
-//End
+//////////////////////////////////////////////////////////////////////////////
 
+//DO NOT MODIFY OR DELETE, NEEDED by EMController Module
 ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
 	Variable dfr_flag=0
-	
-	if(inittest==0) //initial call just to verify that the function exists
-		return 0
+	String msg=""
+	if(inittest==1) //initial call just to verify that the function exists
+		return 0xFF
 	endif
 	
 	//all optional parameters will be properly defined, by design, from the caller in the worker thread
 	try
-		if(request[slot] | QDL_REQUEST_WRITE_COMPLETE)
-			//writing task is done
-			
+		if(request[slot] & QDL_REQUEST_WRITE_COMPLETE)
+			//print "command sent: ", outbox[slot]
+			request[slot]=request[slot] & (~QDL_REQUEST_WRITE_COMPLETE)
 		endif
-		if(request[slot] | QDL_REQUEST_READ_COMPLETE)
+		
+		if(request[slot] & QDL_REQUEST_READ_COMPLETE)
 			//reading task is done
+			//print "READ COMPLETE is done."
+			dfr_flag=1
+		else
+			dfr_flag=0
 		endif
+		
 		if(dfr_flag==1)
-			//need to send message back to background post-process function
-			NewDataFolder :dfr; AbortOnRTE
-			Variable /G :dfr:instance; AbortOnRTE
-			Variable /G :dfr:slot; AbortOnRTE
-			String /G :dfr:received_message=""; AbortOnRTE
-			Variable /G :dfr:request_status; AbortOnRTE
-			Variable /G :dfr:request_id; AbortOnRTE
-			Make /D/N=4 :dfr:input_chn=NaN; AbortOnRTE
-			Make /D/N=4 :dfr:output_chn=NaN; AbortOnRTE
-			Variable /G :dfr:pid_gain_P; AbortOnRTE
-			Variable /G :dfr:pid_gain_I; AbortOnRTE
-			Variable /G :dfr:pid_gain_D; AbortOnRTE
-			Variable /G :dfr:pid_gain_filter; AbortOnRTE
-			Variable /G :dfr:pid_scale_factor; AbortOnRTE
-			Variable /G :dfr:pid_offset_factor; AbortOnRTE
-			Variable /G :dfr:pid_setpoint; AbortOnRTE
-			Variable /G :dfr:pid_input_chn=NaN; AbortOnRTE
-			Variable /G :dfr:pid_output_chn=NaN; AbortOnRTE
-			Variable /G :dfr:cpu_load_total; AbortOnRTE
-			String /G :dfr:fpga_state=""; AbortOnRTE
-			Variable /G :dfr:fpga_cycle_time; AbortOnRTE
-			String /G :dfr:system_init_time=""; AbortOnRTE
-			Variable /G :dfr:data_timestamp; AbortOnRTE
-			Variable /G :dfr:status_timestamp; AbortOnRTE
+			msg=inbox[slot]
+			//print "message received: ", msg
+			//print "request status: ", request[slot]
+			if(strlen(msg)>0)					
+				//need to send message back to background post-process function
+				NewDataFolder :dfr; AbortOnRTE
+				Variable /G :dfr:instance; AbortOnRTE
+				Variable /G :dfr:slot; AbortOnRTE
+				String /G :dfr:sent_cmd; AbortOnRTE
+				String /G :dfr:received_message=""; AbortOnRTE
+				Variable /G :dfr:request_status; AbortOnRTE
+				Variable /G :dfr:request_id_out; AbortOnRTE
+				Variable /G :dfr:request_id_in; AbortOnRTE
+				Make /D/N=4 :dfr:input_chn=NaN; AbortOnRTE
+				Make /D/N=4 :dfr:output_chn=NaN; AbortOnRTE
+				Variable /G :dfr:pid_gain_P; AbortOnRTE
+				Variable /G :dfr:pid_gain_I; AbortOnRTE
+				Variable /G :dfr:pid_gain_D; AbortOnRTE
+				Variable /G :dfr:pid_gain_filter; AbortOnRTE
+				Variable /G :dfr:pid_scale_factor; AbortOnRTE
+				Variable /G :dfr:pid_offset_factor; AbortOnRTE
+				Variable /G :dfr:pid_setpoint; AbortOnRTE
+				Variable /G :dfr:pid_input_chn=NaN; AbortOnRTE
+				Variable /G :dfr:pid_output_chn=NaN; AbortOnRTE
+				Variable /G :dfr:cpu_load_total; AbortOnRTE
+				String /G :dfr:fpga_state=""; AbortOnRTE
+				Variable /G :dfr:fpga_cycle_time; AbortOnRTE
+				String /G :dfr:system_init_time=""; AbortOnRTE
+				Variable /G :dfr:data_timestamp; AbortOnRTE
+				Variable /G :dfr:status_timestamp; AbortOnRTE
+				Variable /G :dfr:error_log_num; AbortOnRTE
+				
+				NVAR inst=:dfr:instance; AbortOnRTE
+				inst=cp.instance; AbortOnRTE
+				NVAR slt=:dfr:slot; AbortOnRTE
+				slt=slot; AbortOnRTE
+				SVAR recv_msg=:dfr:received_message; AbortOnRTE
+				recv_msg=inbox[slot]; AbortOnRTE
+				NVAR req_stat=:dfr:request_status; AbortOnRTE
+				req_stat=request[slot]; AbortOnRTE
+				SVAR snt_cmd=:dfr:sent_cmd; AbortOnRTE
+				snt_cmd=outbox[slot]; AbortOnRTE
+				
+				String s=""; AbortOnRTE
+				Variable d=NaN; AbortOnRTE
+				s=StringByKey("REQUEST_ID", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%x", d; AbortOnRTE
+				endif
+				NVAR req_id_in=:dfr:request_id_in; AbortOnRTE
+				req_id_in=d; AbortOnRTE
+				
+				s=StringByKey("REQUEST_ID", snt_cmd, ":", ";"); AbortOnRTE
+				d=NaN
+				if(strlen(s)>0)
+					sscanf s, "%x", d; AbortOnRTE
+				endif
+				NVAR req_id_out=:dfr:request_id_out; AbortOnRTE
+				req_id_out=d; AbortOnRTE
+				
+				variable clear_flag=0
+				
+				if(req_id_in==req_id_out)
+					//print "REQUEST_ID matches!"
+				else
+					if(numtype(req_id_in)!=numtype(req_id_out))
+						print "EMController rtfunc WARNING: REQUEST_ID OUT does not match REQUEST_ID IN:", req_id_out, req_id_in
+						clear_flag=QDL_REQUEST_CLEAR_BUFFER
+					endif
+				endif
+				
+				Variable d1,d2,d3,d4
+				WAVE in_chn=:dfr:input_chn; AbortOnRTE
+				s=StringByKey("INPUT_CHN_DATA", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f,%f,%f,%f", d1, d2, d3, d4; AbortOnRTE
+					in_chn[0]=d1
+					in_chn[1]=d2
+					in_chn[2]=d3
+					in_chn[3]=d4
+				endif
+				
+				WAVE out_chn=:dfr:output_chn
+				s=StringByKey("OUTPUT_CHN_DATA", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f,%f,%f,%f", d1, d2, d3, d4; AbortOnRTE
+					out_chn[0]=d1
+					out_chn[1]=d2
+					out_chn[2]=d3
+					out_chn[3]=d4
+				endif
+				
+				NVAR Gain_P=:dfr:pid_gain_P; AbortOnRTE
+				NVAR Gain_I=:dfr:pid_gain_I; AbortOnRTE
+				NVAR Gain_D=:dfr:pid_gain_D; AbortOnRTE
+				NVAR Gain_F=:dfr:pid_gain_filter; AbortOnRTE
+				NVAR Gain_S=:dfr:pid_scale_factor; AbortOnRTE
+				NVAR Gain_O=:dfr:pid_offset_factor; AbortOnRTE
+				s=StringByKey("PID_GAINS", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f,%f,%f,%f,%f,%f", Gain_P, Gain_I, Gain_D, Gain_F, Gain_S, Gain_O; AbortOnRTE
+				endif
+				
+				s=StringByKey("PID_SETPOINT", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f", d; AbortOnRTE
+				endif
+				NVAR pid_setpoint=:dfr:pid_setpoint; AbortOnRTE
+				pid_setpoint=d; AbortOnRTE
+				
+				s=StringByKey("PID_INPUT_CHN", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%d", d; AbortOnRTE
+				endif
+				NVAR pid_inputchn=:dfr:pid_input_chn; AbortOnRTE
+				pid_inputchn=d; AbortOnRTE
+				
+				s=StringByKey("PID_OUTPUT_CHN", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%d", d; AbortOnRTE
+				endif
+				NVAR pid_outputchn=:dfr:pid_output_chn; AbortOnRTE
+				pid_outputchn=d; AbortOnRTE
+				
+				s=StringByKey("CPU_LOAD_PERCENT", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f", d; AbortOnRTE
+				endif
+				NVAR cpu_total=:dfr:cpu_load_total; AbortOnRTE
+				cpu_total=d; AbortOnRTE
+				
+				s=StringByKey("FPGA_STATE", recv_msg, ":", ";"); AbortOnRTE
+				SVAR fpga_state=:dfr:fpga_state; AbortOnRTE
+				if(strlen(s)>0)
+					fpga_state=s; AbortOnRTE
+				endif
+				
+				s=StringByKey("FPGA_CYCLE_TIME", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f", d; AbortOnRTE
+				endif
+				NVAR fpga_cycle_time=:dfr:fpga_cycle_time; AbortOnRTE
+				fpga_cycle_time=d; AbortOnRTE
+				
+				s=StringByKey("ERROR_NUMBER", recv_msg, ":", ";"); AbortOnRTE
+				d=0
+				if(strlen(s)>0)
+					sscanf s, "%d", d; AbortOnRTE
+				endif
+				NVAR errnum=:dfr:error_log_num
+				errnum=d
+				
+				s=StringByKey("SYSTEM_INIT_TIME", recv_msg, ":", ";"); AbortOnRTE
+				SVAR init_time=:dfr:system_init_time; AbortOnRTE
+				if(strlen(s)>0)
+					init_time=s; AbortOnRTE
+				endif
+				
+				s=StringByKey("DATA_TIMESTAMP", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f", d; AbortOnRTE
+				endif
+				NVAR data_timestamp=:dfr:data_timestamp; AbortOnRTE
+				data_timestamp=d; AbortOnRTE
+				
+				
+				s=StringByKey("SYSTEM_STATUS_TIMESTAMP", recv_msg, ":", ";"); AbortOnRTE
+				if(strlen(s)>0)
+					sscanf s, "%f", d; AbortOnRTE
+				endif
+				NVAR status_timestamp=:dfr:status_timestamp; AbortOnRTE
+				status_timestamp=d; AbortOnRTE
 			
-			NVAR inst=:dfr:instance; AbortOnRTE
-			inst=cp.instance; AbortOnRTE
-			NVAR slt=:dfr:slot; AbortOnRTE
-			slt=slot; AbortOnRTE
-			SVAR recv_msg=:dfr:received_message; AbortOnRTE
-			recv_msg=inbox[slot]; AbortOnRTE
-			NVAR req_stat=:dfr:request_status; AbortOnRTE
-			req_stat=request[slot]; AbortOnRTE
-			
-			String s=""; AbortOnRTE
-			Variable d=NaN; AbortOnRTE
-			s=StringByKey("REQUEST_ID", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%x", d; AbortOnRTE
+				WaveClear in_chn; AbortOnRTE
+				WaveClear out_chn; AbortOnRTE				
+				ThreadGroupPutDF 0, :dfr; AbortOnRTE
+				//print "dfr put in queue to postprocess background function."
+			//else
+				//print "Length of message is zero."
 			endif
-			NVAR req_id=:dfr:request_id; AbortOnRTE
-			req_id=d; AbortOnRTE
 			
-			Variable d1,d2,d3,d4
-			WAVE in_chn=:dfr:input_chn; AbortOnRTE
-			s=StringByKey("INPUT_CHN_DATA", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f,%f,%f,%f", d1, d2, d3, d4; AbortOnRTE
-				in_chn[0]=d1
-				in_chn[1]=d2
-				in_chn[2]=d3
-				in_chn[3]=d4
+			//initiate the next read cycle
+			String cmdStr=param[slot]; AbortOnRTE
+			String idstr=""; AbortOnRTE
+			sprintf idstr, "%x", ticks; AbortOnRTE
+			if(strlen(cmdStr)>0)				
+				cmdStr=ReplaceStringByKey("REQUEST_ID", cmdStr, idstr, ":", ";"); AbortOnRTE
+				cmdStr=ReplaceStringByKey("GET_DATA", cmdStr, "", ":", ";"); AbortOnRTE
+				cmdStr=ReplaceStringByKey("GET_SYSTEM_STATUS", cmdStr, "", ":", ";"); AbortOnRTE
+				print "new user command sent: ", cmdStr
+			else
+				cmdStr="REQUEST_ID:"+idstr+";GET_DATA;GET_SYSTEM_STATUS;"; AbortOnRTE
 			endif
 			
-			WAVE out_chn=:dfr:output_chn
-			s=StringByKey("OUTPUT_CHN_DATA", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f,%f,%f,%f", d1, d2, d3, d4; AbortOnRTE
-				out_chn[0]=d1
-				out_chn[1]=d2
-				out_chn[2]=d3
-				out_chn[3]=d4
-			endif
-			
-			NVAR Gain_P=:dfr:pid_gain_P; AbortOnRTE
-			NVAR Gain_I=:dfr:pid_gain_I; AbortOnRTE
-			NVAR Gain_D=:dfr:pid_gain_D; AbortOnRTE
-			NVAR Gain_F=:dfr:pid_gain_filter; AbortOnRTE
-			NVAR Gain_S=:dfr:pid_scale_factor; AbortOnRTE
-			NVAR Gain_O=:dfr:pid_offset_factor; AbortOnRTE
-			s=StringByKey("PID_GAINS", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f,%f,%f,%f,%f,%f", Gain_P, Gain_I, Gain_D, Gain_F, Gain_S, Gain_O; AbortOnRTE
-			endif
-			
-			s=StringByKey("PID_SETPOINT", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f", d; AbortOnRTE
-			endif
-			NVAR pid_setpoint=:dfr:pid_setpoint; AbortOnRTE
-			pid_setpoint=d; AbortOnRTE
-			
-			s=StringByKey("PID_INPUT_CHN", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%d", d; AbortOnRTE
-			endif
-			NVAR pid_input=:dfr:pid_input_chn; AbortOnRTE
-			pid_input=d; AbortOnRTE
-			
-			s=StringByKey("PID_OUTPUT_CHN", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%d", d; AbortOnRTE
-			endif
-			NVAR pid_output=:dfr:pid_output_chn; AbortOnRTE
-			pid_output=d; AbortOnRTE
-			
-			s=StringByKey("CPU_LOAD_PERCENT", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f", d; AbortOnRTE
-			endif
-			NVAR cpu_total=:dfr:cpu_load_total; AbortOnRTE
-			cpu_total=d; AbortOnRTE
-			
-			s=StringByKey("FPGA_STATE", recv_msg, ":", ";"); AbortOnRTE
-			SVAR fpga_state=:dfr:fpga_state; AbortOnRTE
-			if(strlen(s)>0)
-				fpga_state=s; AbortOnRTE
-			endif
-			
-			s=StringByKey("FPGA_CYCLE_TIME", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f", d; AbortOnRTE
-			endif
-			NVAR fpga_cycle_time=:dfr:fpga_cycle_time; AbortOnRTE
-			fpga_cycle_time=d; AbortOnRTE
-			
-			
-			s=StringByKey("SYSTEM_INIT_TIME", recv_msg, ":", ";"); AbortOnRTE
-			SVAR init_time=:dfr:system_init_time; AbortOnRTE
-			if(strlen(s)>0)
-				init_time=s; AbortOnRTE
-			endif
-			
-			s=StringByKey("DATA_TIMESTAMP", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f", d; AbortOnRTE
-			endif
-			NVAR data_timestamp=:dfr:data_timestamp; AbortOnRTE
-			data_timestamp=d; AbortOnRTE
-			
-			
-			s=StringByKey("SYSTEM_STATUS_TIMESTAMP", recv_msg, ":", ";"); AbortOnRTE
-			if(strlen(s)>0)
-				sscanf s, "%f", d; AbortOnRTE
-			endif
-			NVAR status_timestamp=:dfr:status_timestamp; AbortOnRTE
-			status_timestamp=d; AbortOnRTE
-			
-			WaveClear in_chn; AbortOnRTE
-			WaveClear out_chn; AbortOnRTE
-			
-			ThreadGroupPutDF 0, :dfr; AbortOnRTE
-			
+			outbox[slot]=cmdStr; AbortOnRTE
+			cmdStr=""; AbortOnRTE
+			param[slot]=cmdStr; AbortOnRTE
+			inbox[slot]=cmdStr; AbortOnRTE
+			request[slot]=QDL_REQUEST_READ | QDL_REQUEST_WRITE; AbortOnRTE
 		endif
 	catch
 		Variable err=GetRTError(1)
 		if(err!=0)
-			print "qdl_general_rtfunc encountered an error for slot "+num2istr(slot)+": "+GetErrMessage(err)
+			print "EMController_rtfunc encountered an error for slot "+num2istr(slot)+": "+GetErrMessage(err)
 		endif
 	endtry
+	return 0
+End
+
+//DO NOT MODIFY OR DELETE, NEEDED by EMController Module
+Constant EMCONTROLLER_MAX_RECORD_LEN=50
+Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in, Variable dfr_received, DFREF dfr, String instanceDir)
+	DFREF olddfr=GetDataFolderDFR(); AbortOnRTE
+	try
+		String PkgPath=WBSetupPackageDir(QDLPackageName); AbortOnRTE
+		WAVE /T outbox=$WBPkgGetName(PkgPath, WBPkgDFWave, "outbox_all"); AbortOnRTE
+		WAVE /T inbox=$WBPkgGetName(PkgPath, WBPkgDFWave, "inbox_all"); AbortOnRTE
+		WAVE /T param=$WBPkgGetName(PkgPath, WBPkgDFWave, "auxparam_all"); AbortOnRTE
+		WAVE request=$WBPkgGetName(PkgPath, WBPkgDFWave, "request_record"); AbortOnRTE
+			
+		if(dfr_received==0)
+			//no dfr received
+			NVAR active=root:EMController_Active
+			if(NVAR_Exists(active))
+				if(active==1)
+					if(request[slot_in]==0)
+						String tmpcmd=""
+						sprintf tmpcmd, "REQUEST_ID:%x;GET_DATA;GET_SYSTEM_STATUS;", ticks
+						outbox[slot_in] = tmpcmd
+						request[slot_in] = QDL_REQUEST_READ | QDL_REQUEST_WRITE
+					endif
+				else
+					if(request[slot_in]!=0)
+						request[slot_in]=0
+						outbox[slot_in]=""
+					endif
+				endif
+			endif
+		elseif(DataFolderRefStatus(dfr)==3) //Do not delete data folder as it will be handled at higher level
+			String privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "EMController"); AbortOnRTE
+			DFREF privateDFR=$privateDF
+			if(DataFolderRefStatus(privateDFR)!=1)
+				print "prepare privateDF for EMController:", privateDF
+				WBPrepPackagePrivateDF(instanceDir, "EMController", nosubdir=1); AbortOnRTE
+				privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "EMController"); AbortOnRTE
+				
+				SetDataFolder $privateDF; AbortOnRTE
+				
+				Variable /G instance; AbortOnRTE
+				Variable /G slot; AbortOnRTE
+				String /G sent_cmd; AbortOnRTE
+				String /G received_message=""; AbortOnRTE
+				Variable /G request_status; AbortOnRTE
+				Variable /G request_id_out; AbortOnRTE
+				Variable /G request_id_in; AbortOnRTE
+				Make /D/N=4 input_chn=NaN; AbortOnRTE
+				Make /D/N=4 output_chn=NaN; AbortOnRTE
+				Variable /G pid_gain_P; AbortOnRTE
+				Variable /G pid_gain_I; AbortOnRTE
+				Variable /G pid_gain_D; AbortOnRTE
+				Variable /G pid_gain_filter; AbortOnRTE
+				Variable /G pid_scale_factor; AbortOnRTE
+				Variable /G pid_offset_factor; AbortOnRTE
+				Variable /G pid_setpoint; AbortOnRTE
+				Variable /G pid_input_chn=NaN; AbortOnRTE
+				Variable /G pid_output_chn=NaN; AbortOnRTE
+				Variable /G cpu_load_total; AbortOnRTE
+				String /G fpga_state=""; AbortOnRTE
+				Variable /G fpga_cycle_time; AbortOnRTE
+				String /G system_init_time=""; AbortOnRTE
+				Variable /G data_timestamp; AbortOnRTE
+				Variable /G status_timestamp; AbortOnRTE
+				Variable /G error_log_num; AbortOnRTE
+				
+				Variable /G record_counter=0; AbortOnRTE
+				Make /D/N=(EMCONTROLLER_MAX_RECORD_LEN, 15) history_record=NaN
+				//0-3 : input channel
+				//4-7 : output channel
+				//8   : time stamp
+				//9   : pid_setpoint
+				//10  : pid_scale_factor
+				//11  : pid_offset_factor
+				//12  : cpu_load_total
+				//13  : request_id_in
+				//14  : request_id_out
+			else
+				SetDataFolder $privateDF
+			endif
+			
+			NVAR instance=:instance; AbortOnRTE
+			NVAR instance2=dfr:instance; AbortOnRTE
+			instance=instance2
+			
+			NVAR slot=:slot; AbortOnRTE
+			NVAR slot2=dfr:slot; AbortOnRTE
+			slot=slot2
+			
+			SVAR sent_cmd=:sent_cmd; AbortOnRTE
+			SVAR sent_cmd2=dfr:sent_cmd; AbortOnRTE
+			sent_cmd=sent_cmd2
+			
+			SVAR received_message=:received_message; AbortOnRTE
+			SVAR received_message2=dfr:received_message; AbortOnRTE
+			received_message=received_message2
+			
+			NVAR request_status=:request_status; AbortOnRTE
+			NVAR request_status2=dfr:request_status; AbortOnRTE
+			request_status=request_status2
+			
+			NVAR request_id_out=:request_id_out; AbortOnRTE
+			NVAR request_id_out2=dfr:request_id_out; AbortOnRTE
+			request_id_out=request_id_out2
+			
+			NVAR request_id_in=:request_id_in; AbortOnRTE
+			NVAR request_id_in2=dfr:request_id_in; AbortOnRTE
+			request_id_in=request_id_in2
+			
+			if(request_id_in!=request_id_out)
+				print "warning: request id mismatch when checked at the background task."
+			endif
+			
+			WAVE input_chn=:input_chn; AbortOnRTE
+			WAVE input_chn2=dfr:input_chn; AbortOnRTE
+			input_chn=input_chn2
+			
+			WAVE output_chn=:output_chn; AbortOnRTE
+			WAVE output_chn2=dfr:output_chn; AbortOnRTE
+			output_chn=output_chn2
+			
+			NVAR pid_gain_P=:pid_gain_P; AbortOnRTE
+			NVAR pid_gain_P2=dfr:pid_gain_P; AbortOnRTE
+			pid_gain_P=pid_gain_P2
+			
+			
+			NVAR pid_gain_I=:pid_gain_I; AbortOnRTE
+			NVAR pid_gain_I2=dfr:pid_gain_I; AbortOnRTE
+			pid_gain_I=pid_gain_I2
+			
+			NVAR pid_gain_D=:pid_gain_D; AbortOnRTE
+			NVAR pid_gain_D2=dfr:pid_gain_D; AbortOnRTE
+			pid_gain_D=pid_gain_D2			
+			
+			NVAR pid_gain_filter=:pid_gain_filter; AbortOnRTE
+			NVAR pid_gain_filter2=dfr:pid_gain_filter; AbortOnRTE
+			pid_gain_filter=pid_gain_filter2			
+			
+			NVAR pid_scale_factor=:pid_scale_factor; AbortOnRTE
+			NVAR pid_scale_factor2=dfr:pid_scale_factor; AbortOnRTE
+			pid_scale_factor=pid_scale_factor2
+			
+			NVAR pid_offset_factor=:pid_offset_factor; AbortOnRTE
+			NVAR pid_offset_factor2=dfr:pid_offset_factor; AbortOnRTE
+			pid_offset_factor=pid_offset_factor2
+			
+			NVAR pid_setpoint=:pid_setpoint; AbortOnRTE
+			NVAR pid_setpoint2=dfr:pid_setpoint; AbortOnRTE
+			pid_setpoint=pid_setpoint2
+			
+			NVAR pid_input_chn=:pid_input_chn; AbortOnRTE
+			NVAR pid_input_chn2=dfr:pid_input_chn; AbortOnRTE
+			pid_input_chn=pid_input_chn2
+			
+			NVAR pid_output_chn=:pid_output_chn; AbortOnRTE
+			NVAR pid_output_chn2=dfr:pid_output_chn; AbortOnRTE
+			pid_output_chn=pid_output_chn2
+			
+			NVAR cpu_load_total=:cpu_load_total; AbortOnRTE
+			NVAR cpu_load_total2=dfr:cpu_load_total; AbortOnRTE
+			cpu_load_total=cpu_load_total2
+			
+			SVAR fpga_state=:fpga_state; AbortOnRTE
+			SVAR fpga_state2=dfr:fpga_state; AbortOnRTE
+			fpga_state=fpga_state2			
+			
+			NVAR fpga_cycle_time=:fpga_cycle_time; AbortOnRTE
+			NVAR fpga_cycle_time2=dfr:fpga_cycle_time; AbortOnRTE
+			fpga_cycle_time=fpga_cycle_time2
+			
+			SVAR system_init_time=:system_init_time; AbortOnRTE
+			SVAR system_init_time2=dfr:system_init_time; AbortOnRTE
+			system_init_time=system_init_time2
+			
+			NVAR data_timestamp=:data_timestamp; AbortOnRTE
+			NVAR data_timestamp2=dfr:data_timestamp; AbortOnRTE
+			data_timestamp=data_timestamp2; AbortOnRTE			
+			
+			NVAR status_timestamp=:status_timestamp; AbortOnRTE
+			NVAR status_timestamp2=dfr:status_timestamp; AbortOnRTE
+			status_timestamp=status_timestamp2
+			
+			NVAR error_log_num=:error_log_num; AbortOnRTE
+			NVAR error_log_num2=dfr:error_log_num; AbortOnRTE
+			error_log_num=error_log_num2
+			
+			WAVE history_record=:history_record
+			NVAR counter=:record_counter
+			history_record[counter][0,3]=input_chn[q]
+			history_record[counter][4,7]=output_chn[q-4]
+			history_record[counter][8]=data_timestamp
+			history_record[counter][9]=pid_setpoint
+			history_record[counter][10]=pid_scale_factor
+			history_record[counter][11]=pid_offset_factor
+			history_record[counter][12]=cpu_load_total
+			history_record[counter][13]=request_id_in
+			history_record[counter][14]=request_id_out
+			
+			counter+=1
+			if(counter>=EMCONTROLLER_MAX_RECORD_LEN)
+				counter=0
+			endif
+			
+			SVAR extra_cmd=root:EMController_CMD
+			if(SVAR_Exists(extra_cmd) && strlen(extra_cmd)>0)
+				string tmpstr=extra_cmd
+				param[slot]=tmpstr
+				extra_cmd=""
+			endif
+		endif
+	catch
+		Variable err=GetRTError(1)
+		if(err!=0)
+			print "EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err)
+		endif
+	endtry
+	
+	SetDataFolder olddfr
+	
+	return 0
+End
+
+Function EMControllerStatusPanel(String path)
+	DFREF olddfr=GetDataFolderDFR()
+	
+	try
+		SetDataFolder $path
+		
+		NVAR request_id_out=:request_id_out; AbortOnRTE
+		NVAR request_id_in=:request_id_in; AbortOnRTE
+		WAVE input_chn=:input_chn; AbortOnRTE
+		WAVE output_chn=:output_chn; AbortOnRTE
+		NVAR pid_gain_P=:pid_gain_P; AbortOnRTE
+		NVAR pid_gain_I=:pid_gain_I; AbortOnRTE
+		NVAR pid_gain_D=:pid_gain_D; AbortOnRTE
+		NVAR pid_gain_filter=:pid_gain_filter; AbortOnRTE
+		NVAR pid_scale_factor=:pid_scale_factor; AbortOnRTE
+		NVAR pid_offset_factor=:pid_offset_factor; AbortOnRTE
+		NVAR pid_setpoint=:pid_setpoint; AbortOnRTE
+		NVAR pid_input_chn=:pid_input_chn; AbortOnRTE
+		NVAR pid_output_chn=:pid_output_chn; AbortOnRTE
+		NVAR cpu_load_total=:cpu_load_total; AbortOnRTE
+		SVAR fpga_state=:fpga_state; AbortOnRTE
+		NVAR fpga_cycle_time=:fpga_cycle_time; AbortOnRTE
+		SVAR system_init_time=:system_init_time; AbortOnRTE
+		NVAR data_timestamp=:data_timestamp; AbortOnRTE
+		NVAR status_timestamp=:status_timestamp; AbortOnRTE
+		NVAR error_log_num=:error_log_num; AbortOnRTE
+		
+		NewPanel /N=EMControllerStatus /K=1 /W=(50, 50, 300, 550); AbortOnRTE
+		SetVariable req_id_in, disable=2, value=request_id_in; AbortOnRTE
+		SetVariable req_id_out, disable=2, value=request_id_out; AbortOnRTE
+		SetVariable fpga_state, disable=2, value=fpga_state; AbortOnRTE
+		SetVariable fpga_cycle_time, disable=2, value=fpga_cycle_time; AbortOnRTE
+		SetVariable cpu_load_total, disable=2, value=cpu_load_total; AbortOnRTE
+		SetVariable system_init_time, disable=2, value=system_init_time; AbortOnRTE
+		SetVariable data_timestamp, disable=2, value=data_timestamp; AbortOnRTE
+		SetVariable status_timestamp, disable=2, value=status_timestamp; AbortOnRTE
+		SetVariable error_number, disable=2, value=error_log_num; AbortOnRTE
+		SetVariable input_chn0, disable=2, value=input_chn[0]; AbortOnRTE
+		SetVariable input_chn1, disable=2, value=input_chn[1]; AbortOnRTE
+		SetVariable input_chn2, disable=2, value=input_chn[2]; AbortOnRTE
+		SetVariable input_chn3, disable=2, value=input_chn[3]; AbortOnRTE
+		SetVariable output_chn0, disable=2, value=output_chn[0]; AbortOnRTE
+		SetVariable output_chn1, disable=2, value=output_chn[1]; AbortOnRTE
+		SetVariable output_chn2, disable=2, value=output_chn[2]; AbortOnRTE
+		SetVariable output_chn3, disable=2, value=output_chn[3]; AbortOnRTE
+		SetVariable	pid_setpoint, disable=2, value=pid_setpoint; AbortOnRTE
+		SetVariable pid_gain_P, disable=2, value=pid_gain_P; AbortOnRTE
+		SetVariable pid_gain_I, disable=2, value=pid_gain_I; AbortOnRTE
+		SetVariable pid_gain_D, disable=2, value=pid_gain_D; AbortOnRTE
+		SetVariable pid_scale_factor, disable=2, value=pid_scale_factor; AbortOnRTE
+		SetVariable pid_offset_factor, disable=2, value=pid_offset_factor; AbortOnRTE
+	catch
+		Variable err=GetRTError(1)
+		if(err!=0)
+			print "EMControllerStatusPanel encountered an error : "+GetErrMessage(err)
+		endif
+	endtry
+	
+	SetDataFolder olddfr
 End
 

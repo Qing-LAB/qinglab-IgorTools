@@ -7,6 +7,7 @@
 #include "QDataLinkConstants"
 #include "QDataLinkUserFunctions"
 
+
 #ifdef DEBUG_QDLVISA_3
 #ifndef DEBUG_QDLVISA_2
 #define DEBUG_QDLVISA_2
@@ -575,12 +576,26 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 	return response
 End
 
-ThreadSafe Function qdl_rtfunc_prototype(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
-	if(inittest==1)
-		return 0
+Function QDLCheckStatus(Variable req_stat, [Variable & read_complete, Variable & write_complete, Variable & read_error, Variable & write_error, Variable & timeout)
+	if(!ParamIsDefault(read_complete))
+		read_complete=((req_stat | QDL_REQUEST_READ_COMPLETE)!=0)
 	endif
-	return 0
+	if(!ParamIsDefault(write_complete))
+		write_complete=((req_stat | QDL_REQUEST_WRITE_COMPLETE)!=0)
+	endif
+
+	if(!ParamIsDefault(read_error))
+		read_error=((req_stat | QDL_REQUEST_READ_ERROR)!=0)
+	endif
+	if(!ParamIsDefault(write_error))
+		write_error=((req_stat | QDL_REQUEST_WRITE_ERROR)!=0)
+	endif
+	
+	if(!ParamIsDefault(timeout))
+		timeout=((req_stat | QDL_REQUEST_TIMEOUT)!=0)
+	endif
 End
+
 //
 //ThreadSafe Function qdl_lock(STRUCT QDLConnectionParam & cp, Variable timeout)
 //	switch(cp.connection_type)
@@ -695,10 +710,6 @@ ThreadSafe Function qdl_thread_request_handler(Variable slot, Variable threadIDX
 	return retVal
 End
 
-Function qdl_postfix_callback_prototype(Variable instance, Variable slot, Variable dfr_received, DFREF dfr, String instanceDir)
-	return 0
-End
-
 //Background task runs in main thread
 //It will cleanup threads that quit. In this case, the connection will be closed properly
 //It will also track the status of request. When the request is complete, it will call user
@@ -726,14 +737,15 @@ Function qdl_background_task(s)
 				print "QDataLink background task received a global datafolder ref. This should not happen..."
 				break
 			case 3: //free datafolder ref
+				//print "dfr received. dfr status: ", DataFolderRefstatus(dfr)
 				NVAR DFinstance=dfr:instance; AbortOnRTE
 				NVAR slot=dfr:slot; AbortOnRTE								
 				if(NVAR_Exists(DFinstance) && NVAR_Exists(slot))
 					Variable instance=DFinstance
-					if(slot>=0 && slot<QDL_MAX_CONNECTIONS)
+					if(slot>=0 && slot<QDL_MAX_CONNECTIONS && instance>=0)
 						if(str2num(StringByKey("INSTANCE", active_instance_record[slot]))==instance)
-							instanceDir=WBSetupPackageDir(QDLPackageName, instance=instance)							
-							FUNCREF qdl_postfix_callback_prototype callback_ref=$(post_callback_func[slot])
+							instanceDir=WBSetupPackageDir(QDLPackageName, instance=instance)
+							FUNCREF qdl_postprocess_bgfunc_prototype callback_ref=$(post_callback_func[slot])
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(callback_ref)))==0)
 								callback_ref(instance, slot, 1, dfr, instanceDir); err=GetRTError(1) //call user function for processing data
 							endif
@@ -751,13 +763,15 @@ Function qdl_background_task(s)
 		//will call all background function for non-critical job without dfr
 		for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
 			try
-				Variable inst=str2num(StringByKey("INSTANCE", active_instance_record[slot]))			
-				if(numtype(inst)==0 && strlen(post_callback_func[i])>0)
-					FUNCREF qdl_postfix_callback_prototype callback_ref=$(post_callback_func[i])
+				Variable inst=str2num(StringByKey("INSTANCE", active_instance_record[i]))
+				if(numtype(inst)==0 && inst>=0 && strlen(post_callback_func[i])>0)
+					//print "user function is set as ...", post_callback_func[i]
+					FUNCREF qdl_postprocess_bgfunc_prototype callback_ref=$(post_callback_func[i])
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(callback_ref)))==0)
 						instanceDir=WBSetupPackageDir(QDLPackageName, instance=inst)
 						//call user function for maintenance when no data have arrived
 						//user function should be quick and collaborative to handle this
+						//print "calling user function when no dfr has come."
 						callback_ref(inst, i, 0, NULL, instanceDir); err=GetRTError(1)
 					endif
 				endif
@@ -770,7 +784,7 @@ Function qdl_background_task(s)
 		err=GetRTError(1)
 	endtry
 	
-	SetDataFolder old_dfr	
+	SetDataFolder old_dfr
 	return 0
 End
 
@@ -1100,14 +1114,16 @@ End
 
 ThreadSafe Function qdl_update_rtcallback_func(String funcname, WAVE /T funcname_list, Variable slot, [Variable quiet])
 	FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
-	
+	String update_funcname=StringByKey("NAME", FuncRefInfo(ref))
 	if(ParamIsDefault(quiet) || quiet==0)
 		print "User requested to attach function ["+funcname+"] to QDataLink slot "+num2istr(slot)
 	endif
 	if(strlen(funcname)>0)
 		FUNCREF qdl_rtfunc_prototype ref=$(funcname)
 		try
-			ref(1); AbortOnRTE
+			print "Initial call to "+funcname+"(1) successfully returned: ", ref(1); AbortOnRTE
+			//update_funcname=StringByKey("NAME", FuncRefInfo(ref))
+			update_funcname=funcname
 		catch
 			Variable err=GetRTError(1)
 			if(ParamIsDefault(quiet) || quiet==0)
@@ -1117,7 +1133,8 @@ ThreadSafe Function qdl_update_rtcallback_func(String funcname, WAVE /T funcname
 			FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
 		endtry
 	endif
-	String update_funcname=StringByKey("NAME", FuncRefInfo(ref))
+	
+	print "NAME tag from funcref is: ", update_funcname
 	if(strlen(update_funcname)<=0)
 		update_funcname="qdl_rtfunc_prototype"
 	endif
@@ -1700,28 +1717,28 @@ Function QDLCloseSerialPort([String instrDesc, Variable instance])
 	endif
 End
 
-ThreadSafe Function qdl_VISALock(Variable instr, Variable timeout)
-	String tmpKeyin=""
-	String tmpKeyout=""
-	
-	Variable status=viLock(instr, VI_EXCLUSIVE_LOCK, timeout, tmpKeyin, tmpKeyout)
-	if(status!=VI_SUCCESS && status!=VI_SUCCESS_NESTED_EXCLUSIVE)
-		print "Error when locking VISA device: ", instr, status
-		QDLPrintVISAError(instr, 0, status)
-		return -1
-	endif
-	return 0
-End
-
-ThreadSafe Function qdl_VISAunLock(Variable instr)
-	Variable status=viUnlock(instr)
-	if(status!=VI_SUCCESS  && status!=VI_SUCCESS_NESTED_EXCLUSIVE)
-		print "Error when unlocking VISA device: ", instr
-		QDLPrintVISAError(instr, 0, status)
-		return -1
-	endif
-	return 0
-End
+//ThreadSafe Function qdl_VISALock(Variable instr, Variable timeout)
+//	String tmpKeyin=""
+//	String tmpKeyout=""
+//	
+//	Variable status=viLock(instr, VI_EXCLUSIVE_LOCK, timeout, tmpKeyin, tmpKeyout)
+//	if(status!=VI_SUCCESS && status!=VI_SUCCESS_NESTED_EXCLUSIVE)
+//		print "Error when locking VISA device: ", instr, status
+//		QDLPrintVISAError(instr, 0, status)
+//		return -1
+//	endif
+//	return 0
+//End
+//
+//ThreadSafe Function qdl_VISAunLock(Variable instr)
+//	Variable status=viUnlock(instr)
+//	if(status!=VI_SUCCESS  && status!=VI_SUCCESS_NESTED_EXCLUSIVE)
+//		print "Error when unlocking VISA device: ", instr
+//		QDLPrintVISAError(instr, 0, status)
+//		return -1
+//	endif
+//	return 0
+//End
 
 //This function will be called by the thread handling the specific instance
 //the thread will be called by the qdl_thread_request_handler in QDataLinkCore.ipf
@@ -1905,12 +1922,10 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if(packetSize>0)	
 						status=viRead(instr, receivedStr, packetSize, retCnt)	
 						if(retCnt>0)
-#if defined(DEBUG_QDLVISA)
-#if DEBUG_QDLVISA>=3
+#if defined(DEBUG_QDLVISA_3)
 							print "viRead get message: ", receivedStr
 							print "viRead length:", retCnt
 							print "viRead status:", num2istr(status)
-#endif
 #endif
 							Variable i, termflag=0
 							for(i=0; i<retCnt; i+=1)
