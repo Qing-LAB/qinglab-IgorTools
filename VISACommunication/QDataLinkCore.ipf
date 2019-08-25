@@ -721,6 +721,7 @@ Function qdl_background_task(s)
 	Variable flag=1
 	Variable i
 	Variable err
+	//print "qdl_background_task called."
 	try
 		SetDataFolder $fullPkgPath; AbortOnRTE
 		NVAR threadGroupID=:vars:threadGroupID
@@ -777,11 +778,17 @@ Function qdl_background_task(s)
 				endif
 			catch
 				err=GetRTError(1)
+				if(err!=0)
+					print "QDataLink background function encountered an error when calling user function:"+GetErrMessage(err)
+				endif
 			endtry
 		endfor
 		
 	catch
 		err=GetRTError(1)
+		if(err!=0)
+			print "QDataLink background function encountered an error:"+GetErrMessage(err)
+		endif
 	endtry
 	
 	SetDataFolder old_dfr
@@ -1329,7 +1336,7 @@ Function /T QDLSetVISAConnectionParameters(String configStr, [String name, Strin
 	PROMPT endin_str, "End mode for reading", popup endin_list
 	
 	String endout_list="None;LastBit;TermChar;Break;"
-	String endout_str=StringByKey("END_IN", configStr, ":", ";")
+	String endout_str=StringByKey("END_OUT", configStr, ":", ";")
 	if(strlen(endout_str)==0 || WhichListItem(endout_str, endout_list, ";")<0)
 		endout_str="None"
 	endif
@@ -1357,7 +1364,7 @@ Function /T QDLSetVISAConnectionParameters(String configStr, [String name, Strin
 		while(prompt_done!=1)
 	
 		if(prompt_done==1)
-			sprintf newconfigStr, "BAUDRATE:%s;DATABITS:%s;STOPBITS:%s;PARITY:%s;FLOWCONTROL:%s;XONCHAR:%d;XOFFCHAR:%d;TERMCHAR:%d;TIMEOUT:%d", baudrate_str, databits_str, stopbits_str, parity_str, flowcontrol_str, xon_char, xoff_char, term_char, timeout
+			sprintf newconfigStr, "BAUDRATE:%s;DATABITS:%s;STOPBITS:%s;PARITY:%s;FLOWCONTROL:%s;XONCHAR:%d;XOFFCHAR:%d;TERMCHAR:%d;TIMEOUT:%d;END_IN:%s;END_OUT:%s;", baudrate_str, databits_str, stopbits_str, parity_str, flowcontrol_str, xon_char, xoff_char, term_char, timeout, endin_str, endout_str
 		else
 			newconfigStr=""
 		endif
