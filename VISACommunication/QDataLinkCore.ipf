@@ -5,6 +5,8 @@
 #include "VISA"
 #include "WaveBrowser"
 #include "QDataLinkConstants"
+#include "QDataLinkEMControllerFunctions"
+#include "QDataLinkKeithleyFunctions"
 #include "QDataLinkUserFunctions"
 
 
@@ -419,7 +421,7 @@ Function QDLGetSlotInfo(Variable instance)
 	return slot
 End
 
-Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [Variable instance, String &receive_msg, Variable clear_device, String realtime_func, String postfix_func, String auxparam, Variable timeout, Variable & req_status, Variable quiet])
+Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [Variable instance, String &receive_msg, Variable clear_device, String realtime_func, String postprocess_bgfunc, String auxparam, Variable timeout, Variable & req_status, Variable quiet])
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName)
 	DFREF dfr=GetDataFolderDFR()
 	
@@ -438,7 +440,7 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 		
 		WAVE /T instance_record=:waves:active_instance_record
 		WAVE /T rtfunc_record=:waves:rt_callback_func_list
-		WAVE /T postfixfunc_record=:waves:post_callback_func_list
+		WAVE /T postprocessfunc_record=:waves:post_callback_func_list
 		WAVE /T param_record=:waves:auxparam_all
 		WAVE /T auxret_record=:waves:auxret_all
 		WAVE /T inbox=:waves:inbox_all
@@ -492,8 +494,8 @@ Function /T QDLQuery(Variable slot, String send_msg, Variable expect_response, [
 				rtfunc_record[slot]=realtime_func; AbortOnRTE
 				update_func_flag=1
 			endif
-			if(!ParamIsDefault(postfix_func) && strlen(postfix_func)>0)
-				postfixfunc_record[slot]=postfix_func; AbortOnRTE
+			if(!ParamIsDefault(postprocess_bgfunc) && strlen(postprocess_bgfunc)>0)
+				postprocessfunc_record[slot]=postprocess_bgfunc; AbortOnRTE
 				update_func_flag=1
 			endif
 			if(!ParamIsDefault(auxparam) && strlen(auxparam)>0)
@@ -1549,6 +1551,7 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 				cp.starttime_ms=0
 				cp.inbox_attempt_count=0
 				cp.outbox_attempt_count=0
+				cp.instance=instance_select
 				success_flag=1
 				break
 			case VI_INTF_USB:
@@ -1588,6 +1591,7 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 				cp.starttime_ms=0
 				cp.inbox_attempt_count=0
 				cp.outbox_attempt_count=0
+				cp.instance=instance_select
 				success_flag=1
 				break
 			default:
@@ -1815,29 +1819,34 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				retCnt=0
 				
 				if(qdl_is_connection_callable(connection_type, slot)) //make sure not in a transition or ending time
-					status=viWrite(instr, outbox[slot], cp.outbox_request_len, retCnt)
-					if(status!=VI_SUCCESS)
-						cp.outbox_attempt_count+=1
-						stat[slot]=status
-						cp.outbox_retCnt=0
-						if(cp.outbox_attempt_count>5)
-							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
-											| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
-						endif
+					if(cp.outbox_request_len>0)
+						status=viWrite(instr, outbox[slot], cp.outbox_request_len, retCnt)
+						if(status!=VI_SUCCESS)
+							cp.outbox_attempt_count+=1
+							stat[slot]=status
+							cp.outbox_retCnt=retCnt
+							if(cp.outbox_attempt_count>5)
+								req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
+												| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
+							endif
 #if defined(DEBUG_QDLVISA_1)
-						print "viWrite error."
-						print "viWrite status:", num2istr(status)
+							print "viWrite error."
+							print "viWrite status:", num2istr(status)
 #endif
-						AbortOnValue -1, -4
-					else
-						cp.outbox_retCnt=retCnt
-						req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
-										| QDL_REQUEST_WRITE_COMPLETE
+							AbortOnValue -1, -4
+						else
+							cp.outbox_retCnt=retCnt
+							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
+											| QDL_REQUEST_WRITE_COMPLETE
 #if defined(DEBUG_QDLVISA_3)
-						print "viWrite sent :"+outbox[slot]
-						print "viWrite sent length:", retCnt
-						print "viWrite status:", num2istr(status)
+							print "viWrite sent :"+outbox[slot]
+							print "viWrite sent length:", retCnt
+							print "viWrite status:", num2istr(status)
 #endif
+						endif
+					else //zero length writing will be marked finished immediately without actual writing
+						req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
+											| QDL_REQUEST_WRITE_COMPLETE
 					endif
 				endif
 			endif
