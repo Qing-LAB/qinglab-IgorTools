@@ -4,11 +4,12 @@
 
 Menu "QDataLink"
 	Submenu "EMController"
-		"InitEMController", EMControllerINIT()
+		"Connect to EMController", EMControllerConnectionINIT()
+		"EMController Panel", EMControllerPanel(EMControllerGetPrivateFolderName())
 	End
 End
 
-Function EMControllerINIT()
+Function EMControllerConnectionINIT()
 	String port_list=QDataLinkcore#QDLSerialPortGetList()
 	String port_select=""
 	PROMPT port_select, "Port Name", popup port_list
@@ -27,9 +28,27 @@ Function EMControllerINIT()
 		Variable instance_select=-1
 		String cpStr=""
 		cpStr=QDataLinkCore#QDLInitSerialPort(port_select, configStr, instance_select, quiet=1)
-		if(strlen(cpStr)>0)
-			QDataLinkCore#QDLQuery(0, "", 0, realtime_func="EMController_rtfunc", postprocess_bgfunc="EMController_postprocess_bgfunc")
+		if(strlen(cpStr)>0 && instance_select>=0)
+			Variable slot=QDataLinkCore#QDLGetSlotInfo(instance_select)
+			QDataLinkCore#QDLQuery(slot, "", 0, realtime_func="EMController_rtfunc", postprocess_bgfunc="EMController_postprocess_bgfunc")
+			QDataLinkCore#qdl_update_instance_info(instance_select, "EMController", "Remote Control for Electromagnet", port_select)
+			configStr=ReplaceStringByKey("SLOT", configStr, num2istr(slot))
+			configStr=ReplaceStringByKey("INSTANCE", configStr, num2istr(instance_select))
 		endif
+	endif
+End
+
+Function /T EMControllerGetPrivateFolderName()
+	SVAR configStr=root:S_EMControllerPortConfig
+	if(!SVAR_Exists(configStr))
+		return ""
+	endif
+	Variable instance=str2num(StringByKey("INSTANCE", configStr))
+	if(instance>=0)
+		String fullPath=WBSetupPackageDir(QDLPackageName, instance=instance)
+		return WBPkgGetName(fullPath, WBPkgDFDF, "EMController")
+	else
+		return ""
 	endif
 End
 

@@ -88,9 +88,9 @@ Function /S QDLMenuItem(variable idx)
 				endif
 			endif
 			if(instance_check_flag==1)
-				retStr="[slot#"+num2istr(slot)+"][instance#"+num2istr(instance)+"] "+name+" ("+connection+") "+" {"+notes+"}"
+				retStr="["+name+"] [s"+num2istr(slot)+"i"+num2istr(instance)+"] ("+connection+") "+" {"+notes+"}"
 			else
-				retStr="[instance"+num2istr(instance)+"] ERROR!"
+				retStr="[s"+num2istr(slot)+"i"+num2istr(instance)+"] [ERROR!]"
 			endif
 		else
 			return ""

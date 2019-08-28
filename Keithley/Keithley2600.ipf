@@ -4,6 +4,56 @@
 #include "wavebrowser"
 #include "keithley2600Constants"
 
+Menu "QDataLink"
+	Submenu "Keithley2600"
+		"Connect to Keithley 2600", Keithley2600ConnectionINIT()
+		"Setup SMUs", KeithleyConfigSMUs("SMUA;SMUB", "", SaveConfigStr="root:S_KeithleySMUConfig")
+	end
+end
+
+Function Keithley2600ConnectionINIT()
+	String port_list=QDataLinkcore#QDLSerialPortGetList()
+	String port_select=""
+	PROMPT port_select, "Port Name", popup port_list
+	DoPrompt "Select Serial Port", port_select
+	
+	SVAR configStr=root:S_KeithleyPortConfig
+	if(!SVAR_Exists(configStr))
+		String /G root:S_KeithleyPortConfig=""
+		SVAR configStr=root:S_KeithleyPortConfig
+	endif
+	if(strlen(configStr)==0)		
+		STRUCT QDLConnectionParam cp
+		configStr=QDataLinkCore#QDLSetVISAConnectionParameters(configStr, paramStruct=cp)
+	endif
+	if(V_Flag==0)
+		Variable instance_select=-1
+		String cpStr=""
+		cpStr=QDataLinkCore#QDLInitSerialPort(port_select, configStr, instance_select, quiet=1)
+		if(strlen(cpStr)>0 && instance_select>=0)
+			Variable slot=QDataLinkCore#QDLGetSlotInfo(instance_select)
+			QDataLinkCore#QDLQuery(slot, "", 0, realtime_func="Keithley2600_rtfunc", postprocess_bgfunc="Keithley2600_postprocess_bgfunc")
+			QDataLinkCore#qdl_update_instance_info(instance_select, "Keithley SMUs", "Keithley 2600 series", port_select)
+			configStr=ReplaceStringByKey("SLOT", configStr, num2istr(slot))
+			configStr=ReplaceStringByKey("INSTANCE", configStr, num2istr(instance_select))
+		endif
+	endif
+End
+
+Function /T Keithley2600GetPrivateFolderName()
+	SVAR configStr=root:S_KeithleyPortConfig
+	if(!SVAR_Exists(configStr))
+		return ""
+	endif
+	Variable instance=str2num(StringByKey("INSTANCE", configStr))
+	if(instance>=0)
+		String fullPath=WBSetupPackageDir(QDLPackageName, instance=instance)
+		return WBPkgGetName(fullPath, WBPkgDFDF, "Keithley2600")
+	else
+		return ""
+	endif
+End
+
 Function k2600_RangeFromList(String range_str, String option_list, String value_list, Variable & range_value, Variable & range_idx)
 	Variable retVal=0
 	
@@ -83,7 +133,7 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 		String smu_condition=""
 		smu_condition=StringByKey(smuName, configStr, "@", "#", 0)
 		
-		script+="loadscript "+k2600_initscriptNamePrefix+smuName+"\r"
+		script+="loadscript "+k2600_initscriptNamePrefix+smuName+"\n"
 		script+=smuName+".reset()\r"
 	
 		try
@@ -273,11 +323,11 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 		endtry
 	
 		Variable frequency=1000+500*smu
-		script+="beeper.beep(0.2, "+num2istr(frequency)+")\r"
-		script+="endscript\r\r"
+		script+="beeper.beep(0.2, "+num2istr(frequency)+")\n"
+		script+="endscript\n"
 	endfor
 	
-	script+="loadscript IgorKeithleyInit_all()\r"
+	script+="loadscript IgorKeithleyInit_all()\n"
 	script+="reset()\r"
 	script+="IgorKeithleyInit_smua()\r"
 	script+="IgorKeithleyInit_smub()\r"
@@ -286,11 +336,13 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 	script+="display.settext(\"SMUs Initialized\")\r"
 	script+="status.reset()\r"
 	script+="status.request_enable=status.MAV\r"
-	script+="endscript\r\r"
+	script+="print(\"Keithley initialized.\")\n"
+	script+="endscript\n"
 	
-	script+="function delay_ms(deltat) t0=timer.measure.t() while(timer.measure.t()-t0<deltat/1000) do end end\r\r"
+//	script+="function delay_ms(deltat) t0=timer.measure.t() while(timer.measure.t()-t0<deltat/1000) do end end\r\r"
 
-	script+="function reset_all() smua.reset() smub.reset() reset() end\r\r"
+	script+="function reset_all() smua.reset() smub.reset() reset() end\n"
+	script+="IgorKeithleyInit_all()\n"
 	
 	Notebook $nbName, text="Keithley Script Generated ["+date()+", "+time()+"]\r\r\r"
 	Notebook $nbName, text="KEITHLEY INIT SCRIPT BEGIN\r\r"
@@ -299,7 +351,7 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 	return retVal
 End
 
-Function /T KeithleyConfigSMUs(String smu_list, String configStr, [Variable timeout])
+Function /T KeithleyConfigSMUs(String smu_list, String configStr, [Variable timeout, String SaveConfigStr])
 	if(ItemsInList(smu_list)<1)
 		return ""
 	endif
@@ -377,6 +429,18 @@ Function /T KeithleyConfigSMUs(String smu_list, String configStr, [Variable time
 	String strName=UniqueName("S_"+wname+"_CfgStr", 4, 0)
 	String newcfgstr=""
 	Variable starttime=ticks
+	
+	if(!ParamIsDefault(SaveConfigStr))
+		SVAR saveto=$SaveConfigStr; AbortOnRTE
+		if(!SVAR_Exists(saveto))
+			String /G $SaveConfigStr=""; AbortOnRTE
+			SVAR saveto=$SaveConfigStr; AbortOnRTE
+		endif
+		if(strlen(configStr)==0 && strlen(saveto)>0)
+			configStr=saveto; AbortOnRTE
+		endif
+	endif
+	
 	try
 		String /G $(strName);AbortOnRTE
 		SVAR cfgStr=$(strName)
@@ -426,6 +490,11 @@ Function /T KeithleyConfigSMUs(String smu_list, String configStr, [Variable time
 	if(SVAR_Exists(cfgStr))
 		newcfgstr=cfgStr
 		KillStrings /Z $strName
+	endif
+	
+	if(strlen(newcfgstr)>0 && !ParamIsDefault(SaveConfigStr))
+		SVAR saveto=$SaveConfigStr; AbortOnRTE
+		saveto=newcfgstr; AbortOnRTE
 	endif
 	
 	return newcfgstr
@@ -905,8 +974,11 @@ Function KeithleyGetInitScript(String nbName, String & initScript)
 				Notebook $nbName, selection={startOfNextParagraph, endOfNextParagraph}
 				if(V_flag==0)
 					GetSelection notebook, $nbName, 0x02
-					if(V_flag==1 && CmpStr(TrimString(S_selection), "KEITHLEY INIT SCRIPT END")!=0)
-						initScript+=S_selection
+					String content=TrimString(S_selection)
+					if(V_flag==1 && CmpStr(content, "KEITHLEY INIT SCRIPT END")!=0)
+						if(strlen(content)>0)
+							initScript+=S_selection
+						endif
 					else
 						textflag=1
 					endif
@@ -946,55 +1018,38 @@ Function EMLog(String msg, [Variable r, Variable g, Variable b, Variable notimes
 	Notebook $wname, textRGB=(r, g, b), text=msg+"\r\n"
 End
 
-Strconstant KeithleyClearStatusCmd="*CLS\rstatus.reset() status.request_enable=status.MAV"
-
-Function KeithleyInit(Variable slot, String nbScript, Variable timeout_ms)
+Function KeithleyInit()
 
 	String initscript=""
 	String iscript=""
 	
-	KeithleyGetInitScript(nbScript, initscript)
-	iscript=ReplaceString("\r", initscript, "\n")
-	Variable maxcount=0
-	Variable count=0
-	Variable req_stat
-	Variable error=0
-	maxcount=ItemSInList(iscript, "\n")
-	
-	QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
-	EMLog("KeithleyINIT sending init scripts to Keithley...")
-	do
-		String line=StringFromList(count, iscript, "\n")
-		if(strlen(line)>0)		
-			req_stat=0
-			//print TrimString(line)
-			QDataLinkCore#QDLQuery(slot, TrimString(line), 0, req_status=req_stat, timeout=inf)
-			Variable rcomplete, wcomplete, rerror, werror
-			QDataLinkCore#QDLCheckStatus(req_stat, read_complete=rcomplete, write_complete=wcomplete, read_error=rerror, write_error=werror)
-			
-			if(wcomplete==0 || rerror!=0 || werror!=0)
-				EMLog("KeithleyINIT get error during QDLQuery when sending line: "+line+", with status code "+num2istr(req_stat), r=65535, notimestamp=1)
-				error+=1
-			else
-				EMLog(line+"\r", b=65535, notimestamp=1)
-			endif
-		endif
-		count+=1
-	while(count<maxcount)
-	
-	if(error>0)
-		EMLog("KeithleyINIT found "+num2istr(error)+" error(s) in this process.")
-	else
-		EMLog("KeithleyINIT successfully uploaded code.")
+	SVAR configStr=root:S_KeithleySMUConfig
+	if(!SVAR_Exists(configStr) || strlen(configStr)==0)
+		return -1
 	endif
-	EMLog("KeithleyINIT will now call init script remotely...")
-	QDataLinkCore#QDLQuery(slot, "IgorKeithleyInit_all()", 0, timeout=inf)
-	Sleep /T 3
-	EMLog("Keithley should be initialized.")	
+	
+	SVAR portStr=root:S_KeithleyPortConfig
+	if(!SVAR_Exists(portStr) || strlen(portStr)==0)
+		return -1
+	endif
+	
+	Variable slot=str2num(StringByKey("SLOT", portStr))
+	if(slot>=0)
+	
+		String nbName="KeithleyINITScript"
+		KeithleyGenerateInitScript(configStr, nbName)	
+		KeithleyGetInitScript(nbName, initscript)
+		
+		SVAR cmd_out=root:S_KeithleyCMD
+		NVAR cmd_responseflag=root:V_KeithleyCMDReadFlag
+		
+		cmd_out=ReplaceString("\r", initscript, "; ")
+		cmd_responseflag=1
+	endif
 End
 	
 Function KeithleyShutdown(Variable slot, Variable timeout_ms)
-	QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, timeout=inf) 
+	//QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, timeout=inf) 
 	String cmd="reset()"
 	QDataLinkCore#QDLQuery(slot, cmd, 0, timeout=inf)
 	cmd="reset_all()"
@@ -1033,7 +1088,7 @@ Function KeithleySMUMeasure(Variable slot, Variable smua_out, Variable smub_out,
 		EMLog("responce from Keithley: "+response)
 		if(strlen(response)==0)
 			EMLog("keithley did not respond in time. Will retry", r=65535)
-			QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
+			//QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
 		endif
 		repeat+=1
 	while(repeat<=5 && strlen(response)==0)

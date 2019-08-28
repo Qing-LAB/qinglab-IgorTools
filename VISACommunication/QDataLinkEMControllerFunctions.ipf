@@ -21,11 +21,17 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 		if(!NVAR_Exists(usercmdstatus) || !NVAR_Exists(responseCount))
 			Variable /G USER_CMD_STATUS=0
 			Variable /G RESPONSE_COUNT=0
+			NVAR usercmdStatus=:USER_CMD_STATUS
+			NVAR responseCount=:RESPONSE_COUNT
 		endif
 		
 		if(request[slot] & QDL_REQUEST_WRITE_COMPLETE)
 			//print "command sent: ", outbox[slot]
 			//request[slot]=request[slot] & (~QDL_REQUEST_WRITE_COMPLETE)
+			if(usercmdStatus==1)
+				usercmdStatus=2
+				responseCount=0
+			endif
 		endif
 		
 		if(request[slot] & QDL_REQUEST_READ_COMPLETE)
@@ -68,6 +74,13 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 				Variable /G :dfr:data_timestamp; AbortOnRTE
 				Variable /G :dfr:status_timestamp; AbortOnRTE
 				Variable /G :dfr:error_log_num; AbortOnRTE
+				Variable /G :dfr:user_cmd_status; AbortOnRTE
+				Variable /G :dfr:response_count; AbortOnRTE
+				
+				NVAR ucs=:dfr:user_cmd_status; AbortOnRTE
+				ucs=usercmdStatus
+				NVAR rc=:dfr:response_count; AbortOnRTE
+				rc=responseCount
 				
 				NVAR inst=:dfr:instance; AbortOnRTE
 				inst=cp.instance; AbortOnRTE
@@ -226,14 +239,19 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 				if(cmpstr("__STOP__", cmdStr)==0)
 					cmdStr=""
 					req_update=0
+					usercmdStatus=0
+					responseCount=0
 				else
 					cmdStr=ReplaceStringByKey("REQUEST_ID", cmdStr, idstr, ":", ";"); AbortOnRTE
 					cmdStr=ReplaceStringByKey("GET_DATA", cmdStr, "", ":", ";"); AbortOnRTE
 					cmdStr=ReplaceStringByKey("GET_SYSTEM_STATUS", cmdStr, "", ":", ";"); AbortOnRTE
 					print "new user command sent: ", cmdStr
+					usercmdStatus=1
+					responseCount=0
 				endif
 			else
 				cmdStr="REQUEST_ID:"+idstr+";GET_DATA;GET_SYSTEM_STATUS;"; AbortOnRTE
+				responseCount+=1
 			endif
 			
 			outbox[slot]=cmdStr; AbortOnRTE
@@ -293,7 +311,7 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 					break
 				endswitch
 			else
-				Variable /G root:V_EMControllerActiveFlag=0
+				Variable /G root:V_EMControllerActiveFlag=1
 				print "root:V_EMControllerActiveFlag created. Setting this to 0 stops probing, set to 1 starts probing, set to -1 force stopping."
 			endif
 			
@@ -343,6 +361,8 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 				Variable /G data_timestamp; AbortOnRTE
 				Variable /G status_timestamp; AbortOnRTE
 				Variable /G error_log_num; AbortOnRTE
+				Variable /G user_cmd_status; AbortOnRTE
+				Variable /G response_count; AbortOnRTE
 				
 				Variable /G record_counter=0; AbortOnRTE
 				Make /D/N=(EMCONTROLLER_MAX_RECORD_LEN, 15) history_record=NaN
@@ -464,22 +484,30 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			NVAR error_log_num2=dfr:error_log_num; AbortOnRTE
 			error_log_num=error_log_num2
 			
-			WAVE history_record=:history_record
-			NVAR counter=:record_counter
-			history_record[counter][0,3]=input_chn[q]
-			history_record[counter][4,7]=output_chn[q-4]
-			history_record[counter][8]=data_timestamp
-			history_record[counter][9]=pid_setpoint
-			history_record[counter][10]=pid_scale_factor
-			history_record[counter][11]=pid_offset_factor
-			history_record[counter][12]=cpu_load_total
-			history_record[counter][13]=request_id_in
-			history_record[counter][14]=request_id_out
+			WAVE history_record=:history_record; AbortOnRTE
+			NVAR counter=:record_counter; AbortOnRTE
+			history_record[counter][0,3]=input_chn[q]; AbortOnRTE
+			history_record[counter][4,7]=output_chn[q-4]; AbortOnRTE
+			history_record[counter][8]=data_timestamp; AbortOnRTE
+			history_record[counter][9]=pid_setpoint; AbortOnRTE
+			history_record[counter][10]=pid_scale_factor; AbortOnRTE
+			history_record[counter][11]=pid_offset_factor; AbortOnRTE
+			history_record[counter][12]=cpu_load_total; AbortOnRTE
+			history_record[counter][13]=request_id_in; AbortOnRTE
+			history_record[counter][14]=request_id_out; AbortOnRTE
 			
 			counter+=1
 			if(counter>=EMCONTROLLER_MAX_RECORD_LEN)
 				counter=0
 			endif
+			
+			NVAR usrcmdsta=:user_cmd_status; AbortOnRTE
+			NVAR usrcmdsta2=:dfr:user_cmd_status; AbortOnRTE
+			usrcmdsta=usrcmdsta2; AbortOnRTE
+			
+			NVAR respcount=:response_count; AbortOnRTE
+			NVAR respcount2=:dfr:response_count; AbortOnRTE
+			respcount=respcount2; AbortOnRTE
 		endif
 	catch
 		Variable err=GetRTError(1)

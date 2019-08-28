@@ -43,6 +43,7 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 				print "'status.reset(); status.request_enable=status.MAV' was not sent properly. retCnt:", retCnt
 			endif
 			nextround_flag=1
+			//print "read complete for keithley, going on next round."
 		else
 			dfr_flag=0
 		endif
@@ -71,15 +72,16 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 			snt_cmd=outbox[slot]; AbortOnRTE
 			
 			ThreadGroupPutDF 0, :dfr; AbortOnRTE
-			print "data message sent to background function with instance and slot as:", inst, slt
+			//print "data message sent to background function with instance and slot as:", inst, slt
 		endif
 		
 		if(nextround_flag==1)
 			//initiate the next cycle
 			//print "Keithley rtfunc next round initiated..."
 			String cmdStr=param[slot]; AbortOnRTE
-			Variable req_update=0
+			Variable req_update=QDL_REQUEST_WRITE
 			if(strlen(cmdStr)>0)
+				//print "cmd "+cmdStr+" received by rtfunc."
 				if(cmpstr("__STOP__", cmdStr)==0)
 					cmdStr=""
 					param[slot]=cmdStr
@@ -88,22 +90,19 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 					Variable readFlag=str2num(cmdStr[0])				
 					String cmdStr2=cmdStr[1,inf]
 					cmdStr=cmdStr2
-					print "new user command sent: ", cmdStr
-					print "readFlag set to: ", readFlag
-					req_update=QDL_REQUEST_WRITE
+					//print "new user command sent: ", cmdStr
+					//print "readFlag set to: ", readFlag
+					
 					if(readFlag!=0)
 						req_update = req_update | QDL_REQUEST_READ
 					endif
+					
 					cmdStr2=""
-					param[slot]=cmdStr2
+					param[slot]=cmdStr2					
 				endif
-			else
-				cmdStr=""; AbortOnRTE
-				param[slot]=cmdStr; AbortOnRTE
-				req_update=QDL_REQUEST_WRITE; AbortOnRTE //blank write only. no real actions, just keep rtfunc getting called
-			endif			
+			endif
 			outbox[slot]=cmdStr; AbortOnRTE
-			cmdStr=""; AbortOnRTE		
+			cmdStr=""; AbortOnRTE
 			inbox[slot]=cmdStr; AbortOnRTE
 			request[slot]=req_update; AbortOnRTE
 		endif
@@ -142,9 +141,10 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 					break
 				case 1: //normal requests
 					if(request[slot_in]==0)
-						tmpstr=""
+						tmpstr="status.reset(); status.request_enable=status.MAV"
 						outbox[slot_in] = tmpstr
 						request[slot_in] = QDL_REQUEST_WRITE
+						print "initialized keithley by resetting status.request_enable=status.MAV"
 					endif
 					break
 				case -1: //force reset
@@ -158,14 +158,15 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 					break
 				endswitch
 			else
-				Variable /G root:V_KeithleyActiveFlag=0
+				Variable /G root:V_KeithleyActiveFlag=1
 				print "root:V_KeithleyActiveFlag created. Setting this to 0 stops probing, set to 1 starts probing, set to -1 force stopping."
 			endif
 			
-			SVAR extra_cmd=root:S_KeithleyCMD
-			NVAR extra_cmd_readflag=root:V_KeithleyCMDReadFlag
+			SVAR extra_cmd=root:S_KeithleyCMD //cmd that needs to be sent
+			NVAR extra_cmd_readflag=root:V_KeithleyCMDReadFlag //does cmd expect to receive response from keithley
+			NVAR extra_cmd_update=root:V_KeithleyCMDUpdateFlag //flag will be set when response is received
 			
-			if(SVAR_Exists(extra_cmd) && NVAR_Exists(extra_cmd_readflag))
+			if(SVAR_Exists(extra_cmd) && NVAR_Exists(extra_cmd_readflag) && NVAR_Exists(extra_cmd_update))
 				if(strlen(extra_cmd)>0 && request[slot_in]!=0)
 					if(extra_cmd_readflag!=0)
 						tmpstr="1"+extra_cmd
@@ -173,15 +174,19 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 						tmpstr="0"+extra_cmd
 					endif
 					param[slot_in]=tmpstr
+					//print "parameter sets to "+tmpstr+" for rtfunc to read."
 					extra_cmd=""
 					extra_cmd_readflag=0
+					extra_cmd_update=0
 				endif
 			else
 				String /G root:S_KeithleyCMD=""
 				Variable /G root:V_KeithleyCMDReadFlag=0
+				Variable /G root:V_KeithleyCMDUpdateFlag=0
 				print "root:S_KeithleyCMD and root:V_KeithleyCMDReadFlag created. send user commands to this string."				
 			endif
 		elseif(DataFolderRefStatus(dfr)==3) //Do not delete data folder as it will be handled at higher level
+			//print "dfr received by bgfunc of keithley"
 			String privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
 			DFREF privateDFR=$privateDF
 			if(DataFolderRefStatus(privateDFR)!=1)
@@ -228,7 +233,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			NVAR request_status2=dfr:request_status; AbortOnRTE
 			request_status=request_status2
 
-			print "sent command: ", sent_cmd
+			//print "sent command: ", sent_cmd
 			print "received_message: ", received_message
 			
 //			WAVE history_record=:history_record
