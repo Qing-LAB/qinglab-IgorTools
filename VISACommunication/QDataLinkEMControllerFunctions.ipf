@@ -5,6 +5,10 @@
 //////////////////////////////////////////////////////////////////////////////
 //Please use the following as a template to define user functions
 //////////////////////////////////////////////////////////////////////////////
+Constant EMC_USRCMD_STATUS_MSGSENT			=0x01
+Constant EMC_USRCMD_STATUS_RESPONSERECEIVED	=0x02
+Constant EMC_USRCMD_STATUS_NEW				=0x10
+Constant EMC_USRCMD_STATUS_OLD				=0x20
 
 //DO NOT MODIFY OR DELETE, NEEDED by EMController Module
 ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
@@ -16,37 +20,40 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 	
 	//all optional parameters will be properly defined, by design, from the caller in the worker thread
 	try
-		NVAR usercmdStatus=:USER_CMD_STATUS
-		NVAR responseCount=:RESPONSE_COUNT
-		if(!NVAR_Exists(usercmdstatus) || !NVAR_Exists(responseCount))
-			Variable /G USER_CMD_STATUS=0
-			Variable /G RESPONSE_COUNT=0
-			NVAR usercmdStatus=:USER_CMD_STATUS
-			NVAR responseCount=:RESPONSE_COUNT
+		NVAR LAST_USER_CMD_STATUS=:LAST_USER_CMD_STATUS
+		NVAR RESPONSE_COUNT_SINCE=:RESPONSE_COUNT_SINCE
+		if(!NVAR_Exists(LAST_USER_CMD_STATUS) || !NVAR_Exists(RESPONSE_COUNT_SINCE))
+			Variable /G LAST_USER_CMD_STATUS=0
+			Variable /G RESPONSE_COUNT_SINCE=0
+			print "LAST_USER_CMD_STATUS and RESPONSE_COUNT_SINCE created for thread worker."
+			NVAR RESPONSE_COUNT_SINCE=:RESPONSE_COUNT_SINCE
+			NVAR LAST_USER_CMD_STATUS=:LAST_USER_CMD_STATUS
 		endif
 		
 		if(request[slot] & QDL_REQUEST_WRITE_COMPLETE)
-			//print "command sent: ", outbox[slot]
-			//request[slot]=request[slot] & (~QDL_REQUEST_WRITE_COMPLETE)
-			if(usercmdStatus==1)
-				usercmdStatus=2
-				responseCount=0
+			if(LAST_USER_CMD_STATUS & EMC_USRCMD_STATUS_NEW)
+				LAST_USER_CMD_STATUS = (LAST_USER_CMD_STATUS & (~ EMC_USRCMD_STATUS_NEW)) | EMC_USRCMD_STATUS_MSGSENT
+				RESPONSE_COUNT_SINCE = 0
 			endif
 		endif
 		
 		if(request[slot] & QDL_REQUEST_READ_COMPLETE)
-			//reading task is done
-			//print "READ COMPLETE is done."
 			dfr_flag=1
+			if(LAST_USER_CMD_STATUS & EMC_USRCMD_STATUS_MSGSENT)
+				if(!(LAST_USER_CMD_STATUS & EMC_USRCMD_STATUS_RESPONSERECEIVED))
+					LAST_USER_CMD_STATUS = LAST_USER_CMD_STATUS | EMC_USRCMD_STATUS_RESPONSERECEIVED
+					RESPONSE_COUNT_SINCE = 0
+				endif
+			endif
 		else
 			dfr_flag=0
 		endif
 		
 		if(dfr_flag==1)
 			msg=inbox[slot]
-			//print "message received: ", msg
-			//print "request status: ", request[slot]
-			if(strlen(msg)>0)					
+
+			if(strlen(msg)>0)	
+				RESPONSE_COUNT_SINCE+=1
 				//need to send message back to background post-process function
 				NewDataFolder :dfr; AbortOnRTE
 				Variable /G :dfr:instance; AbortOnRTE
@@ -74,14 +81,14 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 				Variable /G :dfr:data_timestamp; AbortOnRTE
 				Variable /G :dfr:status_timestamp; AbortOnRTE
 				Variable /G :dfr:error_log_num; AbortOnRTE
-				Variable /G :dfr:user_cmd_status; AbortOnRTE
-				Variable /G :dfr:response_count; AbortOnRTE
+				Variable /G :dfr:last_usrcmd_status; AbortOnRTE
+				Variable /G :dfr:response_count_since; AbortOnRTE
 				
-				NVAR ucs=:dfr:user_cmd_status; AbortOnRTE
-				ucs=usercmdStatus
-				NVAR rc=:dfr:response_count; AbortOnRTE
-				rc=responseCount
-				
+				NVAR lus=:dfr:last_usrcmd_status; AbortOnRTE
+				lus=LAST_USER_CMD_STATUS
+				NVAR rcs=:dfr:response_count_since; AbortOnRTE
+				rcs=RESPONSE_COUNT_SINCE
+
 				NVAR inst=:dfr:instance; AbortOnRTE
 				inst=cp.instance; AbortOnRTE
 				NVAR slt=:dfr:slot; AbortOnRTE
@@ -224,9 +231,7 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 				WaveClear in_chn; AbortOnRTE
 				WaveClear out_chn; AbortOnRTE				
 				ThreadGroupPutDF 0, :dfr; AbortOnRTE
-				//print "dfr put in queue to postprocess background function."
-			//else
-				//print "Length of message is zero."
+
 			endif
 			
 			//initiate the next read cycle
@@ -239,19 +244,18 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 				if(cmpstr("__STOP__", cmdStr)==0)
 					cmdStr=""
 					req_update=0
-					usercmdStatus=0
-					responseCount=0
+					LAST_USER_CMD_STATUS =0
+					RESPONSE_COUNT_SINCE =0
 				else
 					cmdStr=ReplaceStringByKey("REQUEST_ID", cmdStr, idstr, ":", ";"); AbortOnRTE
 					cmdStr=ReplaceStringByKey("GET_DATA", cmdStr, "", ":", ";"); AbortOnRTE
 					cmdStr=ReplaceStringByKey("GET_SYSTEM_STATUS", cmdStr, "", ":", ";"); AbortOnRTE
-					print "new user command sent: ", cmdStr
-					usercmdStatus=1
-					responseCount=0
+					//print "new user command sent: ", cmdStr
+					LAST_USER_CMD_STATUS = EMC_USRCMD_STATUS_NEW
 				endif
 			else
 				cmdStr="REQUEST_ID:"+idstr+";GET_DATA;GET_SYSTEM_STATUS;"; AbortOnRTE
-				responseCount+=1
+				LAST_USER_CMD_STATUS = LAST_USER_CMD_STATUS | EMC_USRCMD_STATUS_OLD
 			endif
 			
 			outbox[slot]=cmdStr; AbortOnRTE
@@ -361,8 +365,8 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 				Variable /G data_timestamp; AbortOnRTE
 				Variable /G status_timestamp; AbortOnRTE
 				Variable /G error_log_num; AbortOnRTE
-				Variable /G user_cmd_status; AbortOnRTE
-				Variable /G response_count; AbortOnRTE
+				Variable /G last_usrcmd_status; AbortOnRTE
+				Variable /G response_count_since; AbortOnRTE
 				
 				Variable /G record_counter=0; AbortOnRTE
 				Make /D/N=(EMCONTROLLER_MAX_RECORD_LEN, 15) history_record=NaN
@@ -406,10 +410,6 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			NVAR request_id_in=:request_id_in; AbortOnRTE
 			NVAR request_id_in2=dfr:request_id_in; AbortOnRTE
 			request_id_in=request_id_in2
-			
-//			if(request_id_in!=request_id_out)
-//				print "warning: request id mismatch when checked at the background task."				
-//			endif
 			
 			WAVE input_chn=:input_chn; AbortOnRTE
 			WAVE input_chn2=dfr:input_chn; AbortOnRTE
@@ -500,14 +500,28 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			if(counter>=EMCONTROLLER_MAX_RECORD_LEN)
 				counter=0
 			endif
-			
-			NVAR usrcmdsta=:user_cmd_status; AbortOnRTE
-			NVAR usrcmdsta2=:dfr:user_cmd_status; AbortOnRTE
-			usrcmdsta=usrcmdsta2; AbortOnRTE
-			
-			NVAR respcount=:response_count; AbortOnRTE
-			NVAR respcount2=:dfr:response_count; AbortOnRTE
+
+			NVAR usrcmdsta=:last_usrcmd_status; AbortOnRTE
+			NVAR usrcmdsta2=dfr:last_usrcmd_status; AbortOnRTE
+			if(usrcmdsta==0) //the local status stored has been just reset
+				if(!(usrcmdsta2 & EMC_USRCMD_STATUS_OLD)) //the first response from controller after a new cmd was sent
+					usrcmdsta=usrcmdsta2; AbortOnRTE
+					print "EMController user cmd status first updated to :", usrcmdsta
+				endif //any other update with the OLD status bit means it is not related to the latest user cmd (since reset)
+			elseif(!(usrcmdsta & EMC_USRCMD_STATUS_OLD)) //local status has been updated since reset, but no OLD bit set yet
+				if(!(usrcmdsta2 & EMC_USRCMD_STATUS_OLD))//the update is not yet "OLD"
+					usrcmdsta=usrcmdsta2
+					print "EMController user cmd status updated to :", usrcmdsta
+				else //update is now "OLD", meaning there is no relevance to the user command.
+					usrcmdsta=usrcmdsta|EMC_USRCMD_STATUS_OLD
+					print "EMController OLD STATUS bit now set for user cmd status."
+				endif
+			endif
+						
+			NVAR respcount=:response_count_since; AbortOnRTE
+			NVAR respcount2=dfr:response_count_since; AbortOnRTE
 			respcount=respcount2; AbortOnRTE
+
 		endif
 	catch
 		Variable err=GetRTError(1)

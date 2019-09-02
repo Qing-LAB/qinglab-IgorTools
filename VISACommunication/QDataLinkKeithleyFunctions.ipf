@@ -5,6 +5,10 @@
 //////////////////////////////////////////////////////////////////////////////
 //Please use the following as a template to define user functions
 //////////////////////////////////////////////////////////////////////////////
+Constant KUSRCMD_STATUS_MESSAGESENT			=0x01
+Constant KUSRCMD_STATUS_RESPONSERECEIVED	=0x02
+Constant KUSRCMD_STATUS_NEW					=0x10
+Constant KUSRCMD_STATUS_OLD					=0x20
 
 //DO NOT MODIFY OR DELETE, NEEDED by Keithley2600 Module
 ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUCT QDLConnectionParam & cp, WAVE request, WAVE status, WAVE /T inbox, WAVE /T outbox, WAVE /T param, WAVE /T auxret])
@@ -18,8 +22,16 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 	
 	//all optional parameters will be properly defined, by design, from the caller in the worker thread
 	try
+		NVAR LAST_USERCMD_STATUS=:LAST_USERCMD_STATUS; AbortOnRTE
+		if(!NVAR_Exists(LAST_USERCMD_STATUS))
+			Variable /G :LAST_USERCMD_STATUS; AbortOnRTE
+			NVAR LAST_USERCMD_STATUS=:LAST_USERCMD_STATUS; AbortOnRTE
+		endif
+		
 		if(request[slot] & QDL_REQUEST_WRITE_COMPLETE)
-			//request[slot]=request[slot] & (~QDL_REQUEST_WRITE_COMPLETE)
+			if(LAST_USERCMD_STATUS & KUSRCMD_STATUS_NEW)
+				LAST_USERCMD_STATUS = (LAST_USERCMD_STATUS & (~KUSRCMD_STATUS_NEW)) | KUSRCMD_STATUS_MESSAGESENT
+			endif	
 			if(strlen(outbox[slot])==0) //blank write operation, goto next round directly
 				nextround_flag=1
 			elseif((request[slot] & QDL_REQUEST_READ)==0) //actual writing done and not expecting response
@@ -43,7 +55,11 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 				print "'status.reset(); status.request_enable=status.MAV' was not sent properly. retCnt:", retCnt
 			endif
 			nextround_flag=1
-			//print "read complete for keithley, going on next round."
+			if(!(LAST_USERCMD_STATUS & KUSRCMD_STATUS_OLD) && (LAST_USERCMD_STATUS & KUSRCMD_STATUS_MESSAGESENT))
+				if(!(LAST_USERCMD_STATUS & KUSRCMD_STATUS_RESPONSERECEIVED))
+					LAST_USERCMD_STATUS = LAST_USERCMD_STATUS | KUSRCMD_STATUS_RESPONSERECEIVED
+				endif
+			endif
 		else
 			dfr_flag=0
 		endif
@@ -59,6 +75,7 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 			String /G :dfr:sent_cmd; AbortOnRTE
 			String /G :dfr:received_message=""; AbortOnRTE
 			Variable /G :dfr:request_status; AbortOnRTE
+			Variable /G :dfr:last_usercmd_status; AbortOnRTE
 			
 			NVAR inst=:dfr:instance; AbortOnRTE
 			inst=cp.instance; AbortOnRTE
@@ -70,9 +87,10 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 			req_stat=request[slot]; AbortOnRTE
 			SVAR snt_cmd=:dfr:sent_cmd; AbortOnRTE
 			snt_cmd=outbox[slot]; AbortOnRTE
+			NVAR last_status=:dfr:last_usercmd_status; AbortOnRTE
+			last_status=LAST_USERCMD_STATUS
 			
 			ThreadGroupPutDF 0, :dfr; AbortOnRTE
-			//print "data message sent to background function with instance and slot as:", inst, slt
 		endif
 		
 		if(nextround_flag==1)
@@ -86,13 +104,12 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 					cmdStr=""
 					param[slot]=cmdStr
 					req_update=0
+					LAST_USERCMD_STATUS=0
 				else
 					Variable readFlag=str2num(cmdStr[0])				
 					String cmdStr2=cmdStr[1,inf]
 					cmdStr=cmdStr2
-					//print "new user command sent: ", cmdStr
-					//print "readFlag set to: ", readFlag
-					
+					LAST_USERCMD_STATUS = KUSRCMD_STATUS_NEW
 					if(readFlag!=0)
 						req_update = req_update | QDL_REQUEST_READ
 					endif
@@ -100,6 +117,8 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 					cmdStr2=""
 					param[slot]=cmdStr2					
 				endif
+			else
+				LAST_USERCMD_STATUS=LAST_USERCMD_STATUS | KUSRCMD_STATUS_OLD
 			endif
 			outbox[slot]=cmdStr; AbortOnRTE
 			cmdStr=""; AbortOnRTE
@@ -127,6 +146,48 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 		WAVE /T param=$WBPkgGetName(PkgPath, WBPkgDFWave, "auxparam_all"); AbortOnRTE
 		WAVE request=$WBPkgGetName(PkgPath, WBPkgDFWave, "request_record"); AbortOnRTE
 		
+		String privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
+		DFREF privateDFR=$privateDF
+		if(DataFolderRefStatus(privateDFR)!=1)
+			print "prepare privateDF for Keithley2600:", privateDF
+			WBPrepPackagePrivateDF(instanceDir, "Keithley2600", nosubdir=1); AbortOnRTE
+			privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
+			
+			SetDataFolder $privateDF; AbortOnRTE
+			
+			Variable /G instance; AbortOnRTE
+			Variable /G slot; AbortOnRTE
+			String /G sent_cmd; AbortOnRTE
+			String /G received_message=""; AbortOnRTE				
+			Variable /G request_status; AbortOnRTE
+			Variable /G smua_V; AbortOnRTE
+			Variable /G smua_I; AbortOnRTE
+			Variable /G smua_t; AbortOnRTE
+			Variable /G smub_V; AbortOnRTE
+			Variable /G smub_I; AbortOnRTE
+			Variable /G smub_t; AbortOnRTE
+			Variable /G record_counter=0; AbortOnRTE
+			Variable /G last_usercmd_status=0; AbortOnRTE
+			Make /D/N=(Keithley2600_MAX_RECORD_LEN, 6) history_record=NaN; AbortOnRTE
+		else
+			SetDataFolder $privateDF; AbortOnRTE
+		endif
+		
+		NVAR instance=:instance; AbortOnRTE
+		NVAR slot=:slot; AbortOnRTE
+		SVAR sent_cmd=:sent_cmd; AbortOnRTE
+		SVAR received_message=:received_message; AbortOnRTE
+		NVAR request_status=:request_status; AbortOnRTE
+		WAVE history_record=:history_record; AbortOnRTE
+		NVAR counter=:record_counter; AbortOnRTE
+		NVAR last_status=:last_usercmd_status; AbortOnRTE
+		NVAR smua_V=:smua_V; AbortOnRTE
+		NVAR smua_I=:smua_I; AbortOnRTE
+		NVAR smua_t=:smua_t; AbortOnRTE
+		NVAR smub_V=:smub_V; AbortOnRTE
+		NVAR smub_I=:smub_I; AbortOnRTE
+		NVAR smub_t=:smub_t; AbortOnRTE
+			
 		String tmpstr=""
 		if(dfr_received==0)
 			//no dfr received
@@ -173,6 +234,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 					else
 						tmpstr="0"+extra_cmd
 					endif
+					last_status=0
 					param[slot_in]=tmpstr
 					//print "parameter sets to "+tmpstr+" for rtfunc to read."
 					extra_cmd=""
@@ -187,71 +249,57 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			endif
 		elseif(DataFolderRefStatus(dfr)==3) //Do not delete data folder as it will be handled at higher level
 			//print "dfr received by bgfunc of keithley"
-			String privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
-			DFREF privateDFR=$privateDF
-			if(DataFolderRefStatus(privateDFR)!=1)
-				print "prepare privateDF for Keithley2600:", privateDF
-				WBPrepPackagePrivateDF(instanceDir, "Keithley2600", nosubdir=1); AbortOnRTE
-				privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
-				
-				SetDataFolder $privateDF; AbortOnRTE
-				
-				Variable /G instance; AbortOnRTE
-				Variable /G slot; AbortOnRTE
-				String /G sent_cmd; AbortOnRTE
-				String /G received_message=""; AbortOnRTE				
-				Variable /G request_status; AbortOnRTE
-				Variable /G smua_V; AbortOnRTE
-				Variable /G smua_I; AbortOnRTE
-				Variable /G smua_t; AbortOnRTE
-				Variable /G smub_V; AbortOnRTE
-				Variable /G smub_I; AbortOnRTE
-				Variable /G smub_t; AbortOnRTE
-				Variable /G record_counter=0; AbortOnRTE
-				Make /D/N=(Keithley2600_MAX_RECORD_LEN, 6) history_record=NaN
-			else
-				SetDataFolder $privateDF
-			endif
 			
-			NVAR instance=:instance; AbortOnRTE
 			NVAR instance2=dfr:instance; AbortOnRTE
 			instance=instance2
 			
-			NVAR slot=:slot; AbortOnRTE
 			NVAR slot2=dfr:slot; AbortOnRTE
 			slot=slot2
 			
-			SVAR sent_cmd=:sent_cmd; AbortOnRTE
 			SVAR sent_cmd2=dfr:sent_cmd; AbortOnRTE
 			sent_cmd=sent_cmd2
 			
-			SVAR received_message=:received_message; AbortOnRTE
 			SVAR received_message2=dfr:received_message; AbortOnRTE
 			received_message=received_message2
 			
-			NVAR request_status=:request_status; AbortOnRTE
 			NVAR request_status2=dfr:request_status; AbortOnRTE
 			request_status=request_status2
+			
+			sscanf StringByKey("SMUA_I", received_message), "%f", smua_I
+			sscanf StringByKey("SMUA_V", received_message), "%f", smua_V
+			sscanf StringByKey("SMUA_t", received_message), "%f", smua_t
+			
+			sscanf StringByKey("SMUB_I", received_message), "%f", smub_I
+			sscanf StringByKey("SMUB_V", received_message), "%f", smub_V
+			sscanf StringByKey("SMUB_t", received_message), "%f", smub_t
+			
+			history_record[counter][0]=smua_I
+			history_record[counter][1]=smua_V
+			history_record[counter][2]=smua_t
+			history_record[counter][3]=smub_I
+			history_record[counter][4]=smub_V
+			history_record[counter][5]=smub_t
 
-			//print "sent command: ", sent_cmd
-			print "received_message: ", received_message
+			counter+=1
+			if(counter>=Keithley2600_MAX_RECORD_LEN)
+				counter=0
+			endif
 			
-//			WAVE history_record=:history_record
-//			NVAR counter=:record_counter
-//			history_record[counter][0,3]=input_chn[q]
-//			history_record[counter][4,7]=output_chn[q-4]
-//			history_record[counter][8]=data_timestamp
-//			history_record[counter][9]=pid_setpoint
-//			history_record[counter][10]=pid_scale_factor
-//			history_record[counter][11]=pid_offset_factor
-//			history_record[counter][12]=cpu_load_total
-//			history_record[counter][13]=request_id_in
-//			history_record[counter][14]=request_id_out
-			
-//			counter+=1
-//			if(counter>=Keithley2600_MAX_RECORD_LEN)
-//				counter=0
-//			endif
+			NVAR last_status2=dfr:last_usercmd_status; AbortOnRTE
+			if(last_status==0) //the local status stored has been just reset
+				if(!(last_status2 & KUSRCMD_STATUS_OLD)) //the first response from keithley after a new cmd was sent
+					last_status=last_status2; AbortOnRTE
+					//print "keithley user cmd status first updated to :", last_status
+				endif //any other update with the OLD status bit means it is not related to the latest user cmd (since reset)
+			elseif(!(last_status & KUSRCMD_STATUS_OLD)) //local status has been updated since reset, but no OLD bit set yet
+				if(!(last_status2 & KUSRCMD_STATUS_OLD))//the update is not yet "OLD"
+					last_status=last_status2
+					//print "keithley user cmd status updated to :", last_status
+				else //update is now "OLD", meaning there is no relevance to the user command.
+					last_status=last_status | KUSRCMD_STATUS_OLD
+					//print "Keithley OLD STATUS bit now set for user cmd status."
+				endif
+			endif			
 		endif
 	catch
 		Variable err=GetRTError(1)

@@ -8,6 +8,8 @@ Menu "QDataLink"
 	Submenu "Keithley2600"
 		"Connect to Keithley 2600", Keithley2600ConnectionINIT()
 		"Setup SMUs", KeithleyConfigSMUs("SMUA;SMUB", "", SaveConfigStr="root:S_KeithleySMUConfig")
+		"Initialize SMUs", KeithleyInit()
+		"Reset Keithley", KeithleyReset()
 	end
 end
 
@@ -133,7 +135,7 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 		String smu_condition=""
 		smu_condition=StringByKey(smuName, configStr, "@", "#", 0)
 		
-		script+="loadscript "+k2600_initscriptNamePrefix+smuName+"\n"
+		script+="loadscript "+k2600_initscriptNamePrefix+smuName+"\r"
 		script+=smuName+".reset()\r"
 	
 		try
@@ -323,11 +325,13 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 		endtry
 	
 		Variable frequency=1000+500*smu
-		script+="beeper.beep(0.2, "+num2istr(frequency)+")\n"
-		script+="endscript\n"
+		script+="beeper.beep(0.2, "+num2istr(frequency)+")\r"
+		script+="endscript\r"
 	endfor
 	
-	script+="loadscript IgorKeithleyInit_all()\n"
+	script+="loadscript IgorKeithleyInit_all()\r"
+	script+="smua.reset()\r"
+	script+="smub.reset()\r"
 	script+="reset()\r"
 	script+="IgorKeithleyInit_smua()\r"
 	script+="IgorKeithleyInit_smub()\r"
@@ -336,13 +340,10 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 	script+="display.settext(\"SMUs Initialized\")\r"
 	script+="status.reset()\r"
 	script+="status.request_enable=status.MAV\r"
-	script+="print(\"Keithley initialized.\")\n"
-	script+="endscript\n"
+	script+="print(\"Keithley initialized.\")\r"
+	script+="endscript\r"
 	
-//	script+="function delay_ms(deltat) t0=timer.measure.t() while(timer.measure.t()-t0<deltat/1000) do end end\r\r"
-
-	script+="function reset_all() smua.reset() smub.reset() reset() end\n"
-	script+="IgorKeithleyInit_all()\n"
+	script+="IgorKeithleyInit_all()"
 	
 	Notebook $nbName, text="Keithley Script Generated ["+date()+", "+time()+"]\r\r\r"
 	Notebook $nbName, text="KEITHLEY INIT SCRIPT BEGIN\r\r"
@@ -1043,18 +1044,58 @@ Function KeithleyInit()
 		SVAR cmd_out=root:S_KeithleyCMD
 		NVAR cmd_responseflag=root:V_KeithleyCMDReadFlag
 		
-		cmd_out=ReplaceString("\r", initscript, "; ")
+		cmd_out=ReplaceString("\r", initscript, "\n")
 		cmd_responseflag=1
 	endif
 End
 	
-Function KeithleyShutdown(Variable slot, Variable timeout_ms)
-	//QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, timeout=inf) 
-	String cmd="reset()"
-	QDataLinkCore#QDLQuery(slot, cmd, 0, timeout=inf)
-	cmd="reset_all()"
-	QDataLinkCore#QDLQuery(slot, cmd, 0, timeout=inf)
-	EMLog("KeithleyShutdown sent reset() and reset_all()")
+Function KeithleyReset()
+	String cmd="smua.reset()\nsmub.reset()\nreset()\nstatus.reset()\nstatus.request_enable=status.MAV\nprint(\"Keithley has been reset.\")"
+	SVAR cmd_out=root:S_KeithleyCMD
+	NVAR cmd_responseflag=root:V_KeithleyCMDReadFlag
+	cmd_out=cmd
+	cmd_responseflag=1
+End
+
+Function /T KeithleyGetPrivateFolderName()
+	SVAR configStr=root:S_KeithleyPortConfig
+	if(!SVAR_Exists(configStr))
+		return ""
+	endif
+	Variable instance=str2num(StringByKey("INSTANCE", configStr))
+	if(instance>=0)
+		String fullPath=WBSetupPackageDir(QDLPackageName, instance=instance)
+		return WBPkgGetName(fullPath, WBPkgDFDF, "Keithley2600")
+	else
+		return ""
+	endif
+End
+
+Function /T KeithleyGetPrivateFlagName()
+	return KeithleyGetPrivateFolderName()+"last_usercmd_status"
+End
+
+
+Function KeithleyResetCMDStatusFlag()
+	NVAR flag=$(KeithleyGetPrivateFlagName())
+	if(NVAR_Exists(flag))
+		flag=0
+		return 0
+	endif
+	return -1
+End
+
+//Constant KUSRCMD_STATUS_OLD				=0x20
+Function KeithleyCheckCMDStatusFlag()
+	NVAR flag=$(KeithleyGetPrivateFlagName())
+	if(NVAR_Exists(flag))
+		if(flag!=0)
+			return 1
+		else
+			return 0
+		endif
+	endif
+	return -1
 End
 
 Function KeithleySMUMeasure(Variable slot, Variable smua_out, Variable smub_out, Variable initial_take, WAVE output, Variable timeout_ms, Variable count)
