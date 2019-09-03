@@ -265,24 +265,32 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			NVAR request_status2=dfr:request_status; AbortOnRTE
 			request_status=request_status2
 			
-			sscanf StringByKey("SMUA_I", received_message), "%f", smua_I
-			sscanf StringByKey("SMUA_V", received_message), "%f", smua_V
-			sscanf StringByKey("SMUA_t", received_message), "%f", smua_t
+			//print "Keithley returned message: "+received_message
+			Variable data_updateflag=str2num(StringByKey("DATA_UPDATE", received_message))
 			
-			sscanf StringByKey("SMUB_I", received_message), "%f", smub_I
-			sscanf StringByKey("SMUB_V", received_message), "%f", smub_V
-			sscanf StringByKey("SMUB_t", received_message), "%f", smub_t
-			
-			history_record[counter][0]=smua_I
-			history_record[counter][1]=smua_V
-			history_record[counter][2]=smua_t
-			history_record[counter][3]=smub_I
-			history_record[counter][4]=smub_V
-			history_record[counter][5]=smub_t
+			if(data_updateflag==1)
+				sscanf StringByKey("SMUA_I", received_message), "%f", smua_I
+				sscanf StringByKey("SMUA_V", received_message), "%f", smua_V
+				sscanf StringByKey("SMUA_t", received_message), "%f", smua_t
+				
+				sscanf StringByKey("SMUB_I", received_message), "%f", smub_I
+				sscanf StringByKey("SMUB_V", received_message), "%f", smub_V
+				sscanf StringByKey("SMUB_t", received_message), "%f", smub_t
+				
+				//print /D smua_I,smua_V,smua_t
+				//print /D smub_I,smub_V,smub_t
+				
+				history_record[counter][0]=smua_I
+				history_record[counter][1]=smua_V
+				history_record[counter][2]=smua_t
+				history_record[counter][3]=smub_I
+				history_record[counter][4]=smub_V
+				history_record[counter][5]=smub_t
 
-			counter+=1
-			if(counter>=Keithley2600_MAX_RECORD_LEN)
-				counter=0
+				counter+=1
+				if(counter>=Keithley2600_MAX_RECORD_LEN)
+					counter=0
+				endif
 			endif
 			
 			NVAR last_status2=dfr:last_usercmd_status; AbortOnRTE

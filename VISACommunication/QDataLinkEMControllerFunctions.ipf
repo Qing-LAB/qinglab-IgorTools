@@ -506,15 +506,15 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 			if(usrcmdsta==0) //the local status stored has been just reset
 				if(!(usrcmdsta2 & EMC_USRCMD_STATUS_OLD)) //the first response from controller after a new cmd was sent
 					usrcmdsta=usrcmdsta2; AbortOnRTE
-					print "EMController user cmd status first updated to :", usrcmdsta
+					//print "EMController user cmd status first updated to :", usrcmdsta
 				endif //any other update with the OLD status bit means it is not related to the latest user cmd (since reset)
 			elseif(!(usrcmdsta & EMC_USRCMD_STATUS_OLD)) //local status has been updated since reset, but no OLD bit set yet
 				if(!(usrcmdsta2 & EMC_USRCMD_STATUS_OLD))//the update is not yet "OLD"
 					usrcmdsta=usrcmdsta2
-					print "EMController user cmd status updated to :", usrcmdsta
+					//print "EMController user cmd status updated to :", usrcmdsta
 				else //update is now "OLD", meaning there is no relevance to the user command.
 					usrcmdsta=usrcmdsta|EMC_USRCMD_STATUS_OLD
-					print "EMController OLD STATUS bit now set for user cmd status."
+					//print "EMController OLD STATUS bit now set for user cmd status."
 				endif
 			endif
 						

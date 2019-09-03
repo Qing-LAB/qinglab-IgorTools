@@ -1098,52 +1098,113 @@ Function KeithleyCheckCMDStatusFlag()
 	return -1
 End
 
-Function KeithleySMUMeasure(Variable slot, Variable smua_out, Variable smub_out, Variable initial_take, WAVE output, Variable timeout_ms, Variable count)
+Function KeithleyGetLastSMUReading(WAVE w)
+	NVAR i0=$(KeithleyGetPrivateFolderName()+"smua_I")
+	NVAR v0=$(KeithleyGetPrivateFolderName()+"smua_V")
+	NVAR t0=$(KeithleyGetPrivateFolderName()+"smua_t")
+	NVAR i1=$(KeithleyGetPrivateFolderName()+"smub_I")
+	NVAR v1=$(KeithleyGetPrivateFolderName()+"smub_V")
+	NVAR t1=$(KeithleyGetPrivateFolderName()+"smub_t")
 	
-	String cmd=""
-	String line=""
-	if(initial_take==1)
-		cmd="timer.reset() format.data=format.ASCII format.asciiprecision=10 "
+	if(NVAR_Exists(i0) && NVAR_Exists(v0) && NVAR_Exists(t0) && NVAR_Exists(i1) && NVAR_Exists(v1) && NVAR_Exists(t1) && DimSize(w, 0)>=6)
+		w[0]=i0
+		w[1]=v0
+		w[2]=t0
+		w[3]=i1
+		w[4]=v1
+		w[5]=t1
+	endif
+End
+
+Function KeithleySMUMeasure(String & cmd, Variable smua_srctype, Variable smua_src, Variable smub_srctype, Variable smub_src, Variable initial_take, Variable record_counter, WAVE kwave)
+	Variable retVal=-1
+	Variable status=str2num(StringByKey("SOURCE_MEASURE_STATUS", cmd))
+	if(numtype(status)!=0)
+		status=0
 	endif
 	
-	sprintf line, "beeper.beep(0.2,1000) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") smua.source.leveli=%.10e ", round(count), smua_out
-	cmd+=line
-	if(initial_take==1)
-		cmd+="smua.source.output=1 "
-	endif
-	
-	cmd+="i0,v0=smua.measure.iv() t0=timer.measure.t() "
-	sprintf line, "smub.source.leveli=%.10e ", smub_out
-	cmd+=line
-	if(initial_take==1)
-		cmd+="smub.source.output=1 "
-	endif
-	
-	cmd+="i1,v1=smub.measure.iv() t1=timer.measure.t() printnumber(i0,v0,t0,i1,v1,t1) "
-	cmd+="display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
-		
-	Variable repeat=1
-	do
-		EMLog("KeithleySMUMeasure count#"+num2istr(round(count))+" TRY#"+num2istr(repeat)+", command sent to Keithley: "+cmd)
-		String response=QDataLinkCore#QDLQuery(slot, cmd, 1, timeout=inf)
-		EMLog("responce from Keithley: "+response)
-		if(strlen(response)==0)
-			EMLog("keithley did not respond in time. Will retry", r=65535)
-			//QDataLinkCore#QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf)
+	if(status==0)
+		String smu_cmd=""
+		String line=""
+		if(initial_take==1)
+			smu_cmd="timer.reset() format.data=format.ASCII format.asciiprecision=10 "
 		endif
-		repeat+=1
-	while(repeat<=5 && strlen(response)==0)
-	
-//	QDLQuery(slot, KeithleyClearStatusCmd, 0, clear_device=1, timeout=inf) 
-	
-	Variable i, dim=DimSize(output, 0)
-	String sval=""
-	Variable val
-	for(i=0; i<dim && i<6; i+=1)
-		sval=StringFromList(i, response, ",")
-		sscanf sval, "%f", val
-		output[i]=val
-	endfor
+		
+		sprintf line, "beeper.beep(0.2,1000) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") ", record_counter
+		smu_cmd+=line
+			
+		switch(smua_srctype)
+		case 1: //V-source
+			sprintf line, "smua.source.levelv=%.10e ", smua_src
+			break
+		case 2: //I-source
+			sprintf line, "smua.source.leveli=%.10e ", smua_src
+			break
+		default:
+			line=""
+			break
+		endswitch
+		
+		String smua_meas_str=""
+		
+		if(numtype(smua_src)==0 && strlen(line)>0)
+			if(initial_take==1)
+				line+="smua.source.output=1 "
+			endif
+			smu_cmd+=line
+			smua_meas_str="i0,v0=smua.measure.iv() t0=timer.measure.t() "
+		else
+			smua_meas_str="i0=\"NaN\" v0=\"NaN\" t0=\"NaN\" "
+		endif
+		
+		switch(smub_srctype)
+		case 1://V-source
+			sprintf line, "smub.source.levelv=%.10e ", smub_src
+			break
+		case 2://I-source
+			sprintf line, "smub.source.leveli=%.10e ", smub_src
+			break
+		default:
+			line=""
+			break
+		endswitch
+		
+		String smub_meas_str=""
+		
+		if(numtype(smub_src)==0 && strlen(line)>0)
+			if(initial_take==1)
+				line+="smub.source.output=1 "
+			endif
+			smu_cmd+=line
+			smub_meas_str="i1,v1=smub.measure.iv() t1=timer.measure.t() "
+		else
+			smub_meas_str="i1=\"NaN\" v1=\"NaN\" t1=\"NaN\" "
+		endif
+		
+		smu_cmd+=smua_meas_str
+		smu_cmd+=smub_meas_str
+		
+		smu_cmd+="print(\"DATA_UPDATE:1;SMUA_I:\",i0,\";SMUA_V:\",v0,\";SMUA_t:\",t0,\";SMUB_I:\",i1,\";SMUB_V:\",v1,\";SMUB_t:\",t1) "
+		smu_cmd+="display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
+		
+		//print smu_cmd
+		SVAR Ecmd=root:S_KeithleyCMD
+		NVAR Eresp=root:V_KeithleyCMDReadFlag
+		
+		if(SVAR_Exists(Ecmd))
+			Ecmd=smu_cmd
+			Eresp=1
+		endif
+		status=1
+	elseif(status==1)
+		if(KeithleyCheckCMDStatusFlag()==1)
+			KeithleyGetLastSMUReading(kwave)
+			status=2
+			retVal=0
+		endif
+	endif
+	cmd=ReplaceStringByKey("SOURCE_MEASURE_STATUS", cmd, num2istr(status))
+	return retVal
 End
 
 

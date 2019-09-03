@@ -514,7 +514,7 @@ Function EMControllerWaitForUserAction(String msg, String globalVarName, Variabl
 	
 	if(i>=0 && i<ItemsInList(wlist))
 		//window is present, not closed
-		print "User has not responded to the last same message yet."
+		//print "User has not responded to the last same message yet."
 		SetWindow $wname, userdata(MESSAGE)=msg
 		SetWindow $wname, userdata(GLOBALVARNAME)=globalVarName
 		SetWindow $wname, userdata(FINALVALUE)=num2istr(finalValue)
@@ -647,8 +647,78 @@ Function EMShutdown()
 	return 0
 End
 
-StrConstant PID_POSITIVE_GAIN_SETTING="0.35,0.30,0.03,1,1,0"
-StrConstant PID_NEGATIVE_GAIN_SETTING="0.35,0.30,0.03,1,-1,0"
+Function EMSetPIDGains(String &cmd, Variable p, Variable i, Variable d, Variable f, Variable s, Variable o)
+	Variable retVal=-1
+	Variable status=str2num(StringByKey("PID_GAIN_STATUS", cmd))
+	if(numtype(status)!=0)
+		status=0
+	endif
+	
+	DFREF olddfr=GetDataFolderDFR()	
+	try
+		SetDataFolder $EMControllerGetPrivateFolderName()
+		NVAR pid_scale_factor=:pid_scale_factor
+				
+		Variable new_polarity=1
+		String new_polarity_str="POSITIVE"
+		
+		if(s<0)
+			new_polarity=-1
+			new_polarity_str="NEGATIVE"
+		endif
+		
+		Variable old_polarity=1
+		if(pid_scale_factor<0)
+			old_polarity=-1
+		endif
+		
+		String msg_out=""
+		
+		switch(status)
+		case 0: //initial call, check polarity first
+			if(new_polarity!=old_polarity)
+				//polarity is not correct
+				if(EMCheckCMDStatusFlag()!=1)
+					//print "need to switch polarity."
+					EMControllerWaitForUserAction("Please switch the polarity\nto "+new_polarity_str, EMControllerGetPrivateFlagName(), EMC_USRCMD_STATUS_OLD)
+				else
+					//print "User has confirmed changing the physical switch to polarity ["+new_polarity_str+"]"
+					EMResetCMDStatusFlag()
+					status=1
+				endif
+			else
+				status=1 //polarity is already correct.
+			endif
+			break
+		case 1: //update gain settings
+			sprintf msg_out, "SET_PID_GAIN:%f,%f,%f,%f,%f,%f;", p, i, d, f, s, o
+			SVAR Ecmd=root:S_EMControllerCMD
+			if(SVAR_Exists(Ecmd))
+				Ecmd=msg_out
+			endif
+			print "PID Gain parameters set as: "+msg_out
+			status=2
+			break			
+		case 2: //checking if last command have been received
+			if(EMCheckCMDStatusFlag()==1)
+				print "PID Gain setting command has been received."
+				status=3
+				retVal=0
+			endif
+			break
+		default:
+			break
+		endswitch
+	catch
+		Variable err=GetRTError(1)
+		print "EMSetPIDGains encountered RTError: "+GetErrMessage(err)
+	endtry
+	
+	SetDataFolder olddfr
+	
+	cmd=ReplaceStringByKey("PID_GAIN_STATUS", cmd, num2istr(status))
+	return retVal
+End
 
 Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, Variable timeout_ticks, Variable strict_zero)
 	Variable retVal=-1
@@ -705,10 +775,10 @@ Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, V
 			if(polarity*new_setpoint<0)
 				//polarity is not correct
 				if(EMCheckCMDStatusFlag()!=1)
-					print "current scale factor for setpoint is:"+num2str(pid_scale_factor)+", inconsistent with polarity of requested setpoint:"+num2str(new_setpoint)+". Asking user to switch."
+					//print "current scale factor for setpoint is:"+num2str(pid_scale_factor)+", inconsistent with polarity of requested setpoint:"+num2str(new_setpoint)+". Asking user to switch."
 					EMControllerWaitForUserAction("Please switch the polarity\nto "+polarity_str, EMControllerGetPrivateFlagName(), EMC_USRCMD_STATUS_OLD)
 				else
-					print "User has confirmed changing the physical switch to polarity ["+polarity_str+"]. now will update polarity status together with setpoint."
+					//print "User has confirmed changing the physical switch to polarity ["+polarity_str+"]. now will update polarity status together with setpoint."
 					EMResetCMDStatusFlag()
 					status=1
 				endif
