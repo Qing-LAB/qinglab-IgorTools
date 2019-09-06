@@ -1,9 +1,18 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+#pragma ModuleName=MeasurementExecutor
 #include "EMController"
-#include "keithley2600"
+#include "Keithley2600"
 
-Function bgfunc_ExecInstructions(s)
+Menu "QDataLink"
+	Submenu "MeasurementExecutor"
+		"Create instructions", /Q, print "Not implemented yet."
+		"Start Execution", /Q, CtrlNamedBackground MEBackgroudTask, burst=0, dialogsOK=1,period=1,proc=MEBgTaskExecInstructions,start
+		"Stop Execution", /Q, CtrlNamedBackground MEBackgroundTask,stop
+	End
+End
+
+Function MEBgTaskExecInstructions(s)
 	STRUCT WMBackgroundStruct & s
 	
 	WAVE /T instructions=root:W_INSTRUCTIONS
@@ -43,6 +52,11 @@ Function bgfunc_ExecInstructions(s)
 		record_counter=rcounter				
 		done_flag=str2num(StringByKey("DONE_STATUS", cmd))
 		break
+	case "USERFUNC":
+		ExecuteUserFunc(cmd, results, counter, records, rcounter)
+		record_counter=rcounter
+		done_flag=str2num(StringByKey("DONE_STATUS", cmd))
+		break
 	default:
 		break
 	endswitch
@@ -56,6 +70,10 @@ Function bgfunc_ExecInstructions(s)
 	
 	//print "task returning zero"
 	return 0
+End
+
+Function ExecuteUserFunc(String & cmd, WAVE /T results, Variable counter, WAVE records, Variable & rcounter)
+	//not implemented yet.
 End
 
 Function ExecuteKeithleyCmd(String & cmd, WAVE /T results, Variable counter, WAVE records, Variable & record_counter)
