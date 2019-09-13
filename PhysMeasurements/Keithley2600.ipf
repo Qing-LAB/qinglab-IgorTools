@@ -995,30 +995,6 @@ Function KeithleyGetInitScript(String nbName, String & initScript)
 	endtry
 End
 
-StrConstant EMLogBookName="EMLogBook"
-
-Function EMLog(String msg, [Variable r, Variable g, Variable b, Variable notimestamp])
-	if(ParamIsDefault(r))
-		r=0
-	endif
-	if(ParamIsDefault(g))
-		g=0
-	endif
-	if(ParamIsDefault(b))
-		b=0
-	endif
-	
-	String wname=EMLogBookName
-	if(WinType(wname)!=5)
-		NewNotebook /N=$wname /F=1 /K=3 /OPTS=4
-	endif
-	Notebook $wname, selection={endOfFile, endOfFile}, findText={"",1}
-	if(ParamIsDefault(notimestamp) || notimestamp==0)
-		Notebook $wname, textRGB=(0, 0, 65535), text="["+date()+"] ["+time()+"]\r\n"
-	endif
-	Notebook $wname, textRGB=(r, g, b), text=msg+"\r\n"
-End
-
 Function KeithleyInit()
 
 	String initscript=""
@@ -1087,6 +1063,9 @@ End
 
 //Constant KUSRCMD_STATUS_OLD				=0x20
 Function KeithleyCheckCMDStatusFlag()
+#ifdef DEBUG_MEASUREMENTEXECUTOR
+	return 1
+#else
 	NVAR flag=$(KeithleyGetPrivateFlagName())
 	if(NVAR_Exists(flag))
 		if(flag!=0)
@@ -1096,6 +1075,7 @@ Function KeithleyCheckCMDStatusFlag()
 		endif
 	endif
 	return -1
+#endif
 End
 
 Function KeithleyGetLastSMUReading(WAVE w)

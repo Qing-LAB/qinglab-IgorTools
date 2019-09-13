@@ -598,6 +598,9 @@ End
 Constant EMC_USRCMD_STATUS_OLD				=0x20
 
 Function EMCheckCMDStatusFlag()
+#ifdef DEBUG_MEASUREMENTEXECUTOR
+	return 1
+#else
 	NVAR flag=$(EMControllerGetPrivateFlagName())
 	if(NVAR_Exists(flag))
 		if(flag & EMC_USRCMD_STATUS_OLD)
@@ -607,6 +610,7 @@ Function EMCheckCMDStatusFlag()
 		endif
 	endif
 	return -1
+#endif
 End
 
 Function EMScanInit(Variable PID_INPUT_CHN, Variable PID_OUTPUT_CHN)
@@ -720,6 +724,9 @@ Function EMSetPIDGains(String &cmd, Variable p, Variable i, Variable d, Variable
 	return retVal
 End
 
+Constant EM_POSITIVE_ZERO=1e-6
+Constant EM_NEGATIVE_ZERO=-1e-6
+
 Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, Variable timeout_ticks, Variable strict_zero)
 	Variable retVal=-1
 	Variable status=str2num(StringByKey("SETPOINT_STATUS", cmd))
@@ -730,8 +737,8 @@ Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, V
 	DFREF olddfr=GetDataFolderDFR()	
 	try
 		SetDataFolder $EMControllerGetPrivateFolderName()
-		NVAR current_setpoint=:pid_setpoint
 		
+		NVAR current_setpoint=:pid_setpoint
 		WAVE input_chn=:input_chn
 		NVAR chn_num=:pid_input_chn
 		NVAR pid_gain_P=:pid_gain_P
@@ -749,7 +756,7 @@ Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, V
 		
 		if(new_setpoint==0)
 			if(strict_zero!=1)
-				new_setpoint=polarity*error_range
+				new_setpoint=polarity*EM_POSITIVE_ZERO
 			endif
 		endif
 		
@@ -769,6 +776,14 @@ Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, V
 		endif
 		
 		String msg_out=""
+		
+		//when the same setpoint is issued, no new command will be sent, but only to check
+		//the current input channel value to see if it is within error range.
+		if((status==0) && (new_setpoint==current_setpoint) && (polarity*new_setpoint>=0)) //the same setpoint was sent again
+			cmd=ReplaceStringByKey("SETPOINT_CHECK_START_TIME", cmd, num2istr(ticks))
+			EMResetCMDStatusFlag()
+			status=3
+		endif
 		
 		switch(status)
 		case 0: //initial call, check polarity first
