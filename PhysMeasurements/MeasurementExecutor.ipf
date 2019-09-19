@@ -9,8 +9,8 @@ Constant MeasuremenExecutorBgTaskPeriod = 6 //in ticks
 Menu "QDataLink"
 	Submenu "MeasurementExecutor"
 		"Create instructions", /Q, print "Not implemented yet."
-		"Start Execution", /Q, 
-		"Stop Execution", /Q, CtrlNamedBackground MEBackgroundTask,stop
+		"Start Execution", /Q, MEStartTask()
+		"Stop Execution", /Q, MEStopTask()
 	End
 End
 
