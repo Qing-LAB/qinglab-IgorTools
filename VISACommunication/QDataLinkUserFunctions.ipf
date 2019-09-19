@@ -91,7 +91,7 @@ Function qdl_example_postprocess_bgfunc(Variable instance_in, Variable slot_in, 
 	catch
 		Variable err=GetRTError(1)
 		if(err!=0)
-			print "EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err)
+			qdl_log("EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err), 65535, 0, 0, 0)
 		endif
 	endtry
 	

@@ -4,6 +4,7 @@
 
 StrConstant QDLPackageName="QDataLink"
 StrConstant QDL_BACKGROUND_TASK_NAME="QDataLink_Background_Task"
+StrConstant QDLLogBookName="QDL_LOG"
 
 Constant QDL_MAX_CONNECTIONS=5
 Constant QDL_DEFAULT_TIMEOUT=10000 //10 sec

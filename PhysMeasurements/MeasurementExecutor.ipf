@@ -9,9 +9,30 @@ Constant MeasuremenExecutorBgTaskPeriod = 6 //in ticks
 Menu "QDataLink"
 	Submenu "MeasurementExecutor"
 		"Create instructions", /Q, print "Not implemented yet."
-		"Start Execution", /Q, CtrlNamedBackground MEBackgroudTask, burst=0, dialogsOK=1,period=MeasuremenExecutorBgTaskPeriod,proc=MEBgTaskExecInstructions,start
+		"Start Execution", /Q, 
 		"Stop Execution", /Q, CtrlNamedBackground MEBackgroundTask,stop
 	End
+End
+
+Function MEStartTask()
+	WAVE /T w=root:W_INSTRUCTIONS
+	if(WaveExists(w))
+		w[0]="1"
+	endif
+	CtrlNamedBackground MEBackgroudTask, burst=0, dialogsOK=1,period=MeasuremenExecutorBgTaskPeriod,proc=MEBgTaskExecInstructions,start
+End
+
+Function MEStopTask()
+	WAVE /T w=root:W_INSTRUCTIONS
+	if(WaveExists(w))
+		Variable c=str2num(w[0])
+		if(c>0)
+			w[0]=num2istr(-c)
+		else
+			w[0]="-1"
+		endif
+	endif
+	CtrlNamedBackground MEBackgroundTask, stop=1
 End
 
 Function MEBgTaskExecInstructions(s)
@@ -24,16 +45,22 @@ Function MEBgTaskExecInstructions(s)
 	Variable rcounter=record_counter
 	
 	if(WaveExists(instructions)!=1 || DimSize(instructions, 0)<2)
-		print "root:W_INSTRUCTION does not seem to be valid."
+		QDLLog("root:W_INSTRUCTION does not seem to be valid.")
 		return -1
 	endif
 	Variable counter=str2num(instructions[0]) //this one stores the next instruction for execution
-	if(numtype(counter)!=0 || counter<1)
+	
+	if(numtype(counter)!=0 || counter==0)
 		counter=1
 	endif
 	
+	if(counter<0)
+		QDLLog("Counter of the instructions has been reset. Execution of W_INSTRUCTIONS has stopped.")
+		return -1
+	endif
+	
 	if(counter>=DimSize(instructions, 0) || strlen(instructions[counter])==0)
-		print "all instructions have been executed."
+		QDLLog("All instructions have been executed.")
 		return 1
 	endif
 	
@@ -117,6 +144,8 @@ Function MEExtFunc_StandardScan(Variable call_count, WAVE /T results, Variable c
 			point_info=ReplaceStringByKey("EMSETPOINT", point_info, num2str(EMSetpoint))
 			point_info=ReplaceStringByKey("SMUA_SRC", point_info, num2str(KSMUASrc))
 			point_info=ReplaceStringByKey("SMUB_SRC", point_info, num2str(KSMUBSrc))
+			EMScanInit(1, 1)
+			KeithleyInit()
 			break
 		case 1: //setting done
 			break

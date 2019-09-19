@@ -25,7 +25,7 @@ ThreadSafe Function EMcontroller_rtfunc(Variable inittest, [Variable slot, STRUC
 		if(!NVAR_Exists(LAST_USER_CMD_STATUS) || !NVAR_Exists(RESPONSE_COUNT_SINCE))
 			Variable /G LAST_USER_CMD_STATUS=0
 			Variable /G RESPONSE_COUNT_SINCE=0
-			print "LAST_USER_CMD_STATUS and RESPONSE_COUNT_SINCE created for thread worker."
+			//print "LAST_USER_CMD_STATUS and RESPONSE_COUNT_SINCE created for thread worker."
 			NVAR RESPONSE_COUNT_SINCE=:RESPONSE_COUNT_SINCE
 			NVAR LAST_USER_CMD_STATUS=:LAST_USER_CMD_STATUS
 		endif
@@ -316,7 +316,7 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 				endswitch
 			else
 				Variable /G root:V_EMControllerActiveFlag=1
-				print "root:V_EMControllerActiveFlag created. Setting this to 0 stops probing, set to 1 starts probing, set to -1 force stopping."
+				qdl_log("root:V_EMControllerActiveFlag created. Setting this to 0 stops probing, set to 1 starts probing, set to -1 force stopping.", 0, 0, 0, 0)
 			endif
 			
 			SVAR extra_cmd=root:S_EMControllerCMD			
@@ -328,13 +328,13 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 				endif
 			else
 				String /G root:S_EMControllerCMD=""
-				print "root:S_EMControllerCMD created. send user commands to this string."
+				qdl_log("root:S_EMControllerCMD created. send user commands to this string.", 0, 0, 0, 0)
 			endif
 		elseif(DataFolderRefStatus(dfr)==3) //Do not delete data folder as it will be handled at higher level
 			String privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "EMController"); AbortOnRTE
 			DFREF privateDFR=$privateDF
 			if(DataFolderRefStatus(privateDFR)!=1)
-				print "prepare privateDF for EMController:", privateDF
+				qdl_log("prepare privateDF for EMController: "+privateDF, 0, 0, 0, 0)
 				WBPrepPackagePrivateDF(instanceDir, "EMController", nosubdir=1); AbortOnRTE
 				privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "EMController"); AbortOnRTE
 				
@@ -526,7 +526,7 @@ Function EMController_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 	catch
 		Variable err=GetRTError(1)
 		if(err!=0)
-			print "EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err)
+			qdl_log("EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err), 65535, 0, 0, 0)
 		endif
 	endtry
 	

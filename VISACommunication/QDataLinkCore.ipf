@@ -172,6 +172,44 @@ Function QDLMenuHandler(variable idx)
 	endif
 End
 
+Function qdl_log(String msg, Variable r, Variable g, Variable b, Variable notimestamp)
+	String wname=QDLLogBookName
+	if(WinType(wname)!=5)
+		NewNotebook /N=$wname /F=1 /K=3 /OPTS=12
+		SetWindow $wname, userdata(LASTMESSAGE)=""
+		SetWindow $wname, userdata(LASTMESSAGE_REPEAT)="0"
+	endif
+	String lastmsg=GetUserData(wname, "", "LASTMESSAGE")
+	Variable repeat=str2num(GetUserData(wname, "", "LASTMESSAGE_REPEAT"))
+	String additional_str=""
+	Variable repeated_msg=0
+	if(cmpstr(msg,lastmsg)==0)
+		repeated_msg=1
+		repeat+=1
+		additional_str="****Message repeated****\r\n"
+	endif
+	if(!repeated_msg)
+		if(repeat>=1) //new message coming, last message was repeated
+			additional_str="****Last message repeated "+num2istr(repeat+1)+" times.****\r\n"
+		endif
+		repeat=0
+		SetWindow $wname, userdata(LASTMESSAGE)=msg
+	endif
+	SetWindow $wname, userdata(LASTMESSAGE_REPEAT)=num2istr(repeat)
+	Notebook $wname, selection={endOfFile, endOfFile}, findText={"",1}
+	
+	if(repeat<2)
+		if(strlen(additional_str)>0)
+			Notebook $wname, textRGB=(65535, 0, 0), text=additional_str
+		endif
+		if(notimestamp==0)
+			Notebook $wname, textRGB=(0, 0, 65535), text="["+date()+"] ["+time()+"]\r\n"
+		endif
+		Notebook $wname, textRGB=(r, g, b), text=msg+"\r\n"
+	endif
+End
+
+
 Function /T QDLQueryPanel(Variable instance)
 	String name, notes, connection, param_str
 	
@@ -313,6 +351,10 @@ Function QDLInit(Variable & initRM)
 			initRM=DefaultRM
 		endif
 		
+		if(init_flag==1)
+			qdl_log("Initializing QDataLink...", 0, 32768, 0, 0)
+		endif
+		
 		String threadGroupStr=WBPkgGetName(fullPkgPath, WBPkgDFVar, QDLWorkerThreadGroupID)
 		NVAR threadGroupID=$threadGroupStr
 		if(!NVAR_Exists(threadGroupID))
@@ -325,10 +367,10 @@ Function QDLInit(Variable & initRM)
 				AbortOnValue err!=0, -1
 			catch
 				if(err==QDL_RTERROR_THREAD_NOT_INITIALIZED)
-					print "QDataLink thread workers not ready, will initialized now..."
+					qdl_log("QDataLink thread workers not ready, will initialized now...", 0, 0, 0, 0)
 					threadGroupID=-1
 				else
-					print "Unexpected error ["+num2istr(err)+"] happened. Thread workers not changed."
+					qdl_log("Unexpected error ["+num2istr(err)+"] happened. Thread workers not changed.", 0, 0, 0, 0)
 				endif
 			endtry
 		endif
@@ -346,12 +388,13 @@ Function QDLInit(Variable & initRM)
 		endif
 		
 		if(init_flag==1)
+			DoWindow /HIDE=0 /F $QDLLogBookName
 			//param_names=""
 			qdl_clear_active_slot(inf)
 			Variable RM		
 			status=viOpenDefaultRM(RM)
 			if(status==VI_SUCCESS)
-				print "["+date()+"] ["+time()+"] VISA default resource manager initialized."
+				qdl_log("VISA default resource manager initialized.", 0, 0, 0, 0)
 				initRM=RM
 				defaultRM=RM
 			else
@@ -370,17 +413,17 @@ Function QDLInit(Variable & initRM)
 			i=ThreadGroupwait(threadGroupID, 1000)
 			for(i=0; i<QDL_MAX_CONNECTIONS; i+=1)
 				if(ThreadReturnValue(threadGroupID, i)!=0)
-					print "Thread worker "+num2istr(i)+" did not pass initial test run!"
+					qdl_log("Thread worker "+num2istr(i)+" did not pass initial test run!", 0, 0, 0, 0)
 					break
 				endif
 			endfor
 			if(i<QDL_MAX_CONNECTIONS)
-				print "Problem exists when creating thread group for QDataLink."
+				qdl_log("Problem exists when creating thread group for QDataLink.", 0, 0, 0, 0)
 				Variable ret_release=ThreadGroupRelease(threadGroupID); AbortOnRTE
-				print "Releasing thread group returned "+num2istr(ret_release)
+				qdl_log("Releasing thread group returned "+num2istr(ret_release), 0, 0, 0, 0)
 				threadGroupID=-1
 			endif
-			print "["+date()+"] ["+time()+"] "+num2istr(QDL_MAX_CONNECTIONS)+" worker threads for QDataLink created with group ID "+num2istr(threadGroupID)
+			qdl_log(num2istr(QDL_MAX_CONNECTIONS)+" worker threads for QDataLink created with group ID "+num2istr(threadGroupID), 0, 0, 0, 0)
 			WAVE thread_record=$WBPkgGetName(fullPkgPath, WBPkgDFWave, "thread_record"); AbortOnRTE
 			thread_record=-1
 		endif
@@ -393,6 +436,7 @@ Function QDLInit(Variable & initRM)
 		err=GetRTError(1)
 		print "Error initializing QDataLink package: "+GeterrMessage(err)
 	endtry
+	
 	return RM
 End
 
@@ -737,7 +781,7 @@ Function qdl_background_task(s)
 				flag=0
 				break
 			case 1: //regular global data folder, should not happen
-				print "QDataLink background task received a global datafolder ref. This should not happen..."
+				qdl_log("QDataLink background task received a global datafolder ref. This should not happen...", 65535, 0, 0, 0)
 				break
 			case 3: //free datafolder ref
 				//print "dfr received. dfr status: ", DataFolderRefstatus(dfr)
@@ -781,7 +825,7 @@ Function qdl_background_task(s)
 			catch
 				err=GetRTError(1)
 				if(err!=0)
-					print "QDataLink background function encountered an error when calling user function:"+GetErrMessage(err)
+					qdl_log("QDataLink background function encountered an error when calling user function:"+GetErrMessage(err), 65535, 0, 0, 0)
 				endif
 			endtry
 		endfor
@@ -789,7 +833,7 @@ Function qdl_background_task(s)
 	catch
 		err=GetRTError(1)
 		if(err!=0)
-			print "QDataLink background function encountered an error:"+GetErrMessage(err)
+			qdl_log("QDataLink background function encountered an error:"+GetErrMessage(err), 65535, 0, 0, 0)
 		endif
 	endtry
 	
@@ -1041,7 +1085,7 @@ Function qdl_release_active_slot(Variable slot, Variable timeout_ms)
 						endif
 					while(flag>0)
 					if(flag==0)
-						print "Thread worker for slot "+num2istr(slot)+" stopped gracefully."
+						qdl_log("Thread worker for slot "+num2istr(slot)+" stopped gracefully.", 0, 0, 0, 0)
 					endif
 				elseif(thread_record[threadIDX]==QDL_THREAD_STATE_RESERVED)
 					thread_record[threadIDX]=QDL_THREAD_STATE_FREE
@@ -1136,14 +1180,13 @@ ThreadSafe Function qdl_update_rtcallback_func(String funcname, WAVE /T funcname
 		catch
 			Variable err=GetRTError(1)
 			if(ParamIsDefault(quiet) || quiet==0)
-				print "User defined real-time callback function failed init test for slot "+num2istr(slot)
-				print "No user defined real-time will be called."
+				print "User defined real-time callback function failed init test for slot "+num2istr(slot)+". No user defined real-time will be called."
 			endif
 			FUNCREF qdl_rtfunc_prototype ref=qdl_rtfunc_prototype
 		endtry
 	endif
 	
-	print "NAME tag from funcref is: ", update_funcname
+//	print "NAME tag from funcref is: ", update_funcname
 	if(strlen(update_funcname)<=0)
 		update_funcname="qdl_rtfunc_prototype"
 	endif

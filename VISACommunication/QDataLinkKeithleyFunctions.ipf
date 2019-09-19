@@ -149,7 +149,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 		String privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
 		DFREF privateDFR=$privateDF
 		if(DataFolderRefStatus(privateDFR)!=1)
-			print "prepare privateDF for Keithley2600:", privateDF
+			qdl_log("prepare privateDF for Keithley2600: "+privateDF, 0, 0, 0, 0)
 			WBPrepPackagePrivateDF(instanceDir, "Keithley2600", nosubdir=1); AbortOnRTE
 			privateDF=WBPkgGetName(instanceDir, WBPkgDFDF, "Keithley2600"); AbortOnRTE
 			
@@ -205,7 +205,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 						tmpstr="status.reset(); status.request_enable=status.MAV"
 						outbox[slot_in] = tmpstr
 						request[slot_in] = QDL_REQUEST_WRITE
-						print "initialized keithley by resetting status.request_enable=status.MAV"
+						qdl_log("initialized keithley by resetting status.request_enable=status.MAV", 0, 0, 0, 0)
 					endif
 					break
 				case -1: //force reset
@@ -220,7 +220,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 				endswitch
 			else
 				Variable /G root:V_KeithleyActiveFlag=1
-				print "root:V_KeithleyActiveFlag created. Setting this to 0 stops probing, set to 1 starts probing, set to -1 force stopping."
+				qdl_log("root:V_KeithleyActiveFlag created. Setting this to 0 stops probing, set to 1 starts probing, set to -1 force stopping.", 0, 0, 0, 0)
 			endif
 			
 			SVAR extra_cmd=root:S_KeithleyCMD //cmd that needs to be sent
@@ -245,7 +245,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 				String /G root:S_KeithleyCMD=""
 				Variable /G root:V_KeithleyCMDReadFlag=0
 				Variable /G root:V_KeithleyCMDUpdateFlag=0
-				print "root:S_KeithleyCMD and root:V_KeithleyCMDReadFlag created. send user commands to this string."				
+				qdl_log("root:S_KeithleyCMD and root:V_KeithleyCMDReadFlag created. send user commands to this string.", 0, 0, 0, 0)
 			endif
 		elseif(DataFolderRefStatus(dfr)==3) //Do not delete data folder as it will be handled at higher level
 			//print "dfr received by bgfunc of keithley"
@@ -312,7 +312,7 @@ Function Keithley2600_postprocess_bgfunc(Variable instance_in, Variable slot_in,
 	catch
 		Variable err=GetRTError(1)
 		if(err!=0)
-			print "EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err)
+			qdl_log("EMController_postprocess_bgfunc encountered an error for slot "+num2istr(slot_in)+": "+GetErrMessage(err), 65535, 0, 0, 0)
 		endif
 	endtry
 	
