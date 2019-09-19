@@ -813,12 +813,12 @@ Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, V
 			if(SVAR_Exists(Ecmd))
 				Ecmd=msg_out
 			endif
-			print "Setpoint parameters set as: "+msg_out
+			QDLLOG("Setpoint parameters set as: "+msg_out)
 			status=2
 			break			
 		case 2: //checking if last command have been received
 			if(EMCheckCMDStatusFlag()==1)
-				print "EMSetpoint command has been received."
+				QDLLOG("EMSetpoint command has been received.")
 				status=3
 				cmd=ReplaceStringByKey("SETPOINT_CHECK_START_TIME", cmd, num2istr(ticks))
 			endif
@@ -827,7 +827,11 @@ Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, V
 			Variable starttime=str2num(StringByKey("SETPOINT_CHECK_START_TIME", cmd))
 			Variable currenttime=ticks
 			if(currenttime-starttime>=timeout_ticks || abs(input_chn[chn_num]-new_setpoint)<=error_range)
-				print "Within "+num2istr(currenttime-starttime)+" ticks, EMSetpoint found the input as "+num2str(input_chn[chn_num])+" after setting the setpoint:"+num2str(new_setpoint)+" and error range:"+num2str(error_range)
+				Variable r=0, g=32768, b=0
+				if(currenttime-starttime>=timeout_ticks)
+					r=65535; g=0; b=0
+				endif
+				QDLLOG("Within "+num2istr(currenttime-starttime)+" ticks, EMSetpoint found the input as "+num2str(input_chn[chn_num])+" after setting the setpoint:"+num2str(new_setpoint)+" and error range:"+num2str(error_range), r=r, g=g, b=b)
 				status=4
 				retVal=0
 			endif

@@ -118,7 +118,7 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 	String dfr=WBSetupPackageDir(k2600PackageName, instance=instance, existence=1)
 	
 	nbName=UniqueName(nbName, 10, 0)
-	NewNotebook /F=1 /K=3 /N=$nbName; AbortOnRTE
+	NewNotebook /F=1 /K=1 /N=$nbName; AbortOnRTE
 	String script=""
 			
 	Variable smu, number_of_smu
@@ -1012,7 +1012,6 @@ Function KeithleyInit()
 	
 	Variable slot=str2num(StringByKey("SLOT", portStr))
 	if(slot>=0)
-	
 		String nbName="KeithleyINITScript"
 		KeithleyGenerateInitScript(configStr, nbName)	
 		KeithleyGetInitScript(nbName, initscript)
@@ -1022,6 +1021,7 @@ Function KeithleyInit()
 		
 		cmd_out=ReplaceString("\r", initscript, "\n")
 		cmd_responseflag=1
+		QDLLog("Keithley InitScript sent as:\r\n\t\t\t\t\t"+ReplaceString("\r", initscript, "\r\t\t\t\t\t"))
 	endif
 End
 	

@@ -176,6 +176,7 @@ Function qdl_log(String msg, Variable r, Variable g, Variable b, Variable notime
 	String wname=QDLLogBookName
 	if(WinType(wname)!=5)
 		NewNotebook /N=$wname /F=1 /K=3 /OPTS=12
+		Notebook $wname, margins={0,0,2000}
 		SetWindow $wname, userdata(LASTMESSAGE)=""
 		SetWindow $wname, userdata(LASTMESSAGE_REPEAT)="0"
 	endif
@@ -203,7 +204,7 @@ Function qdl_log(String msg, Variable r, Variable g, Variable b, Variable notime
 			Notebook $wname, textRGB=(65535, 0, 0), text=additional_str
 		endif
 		if(notimestamp==0)
-			Notebook $wname, textRGB=(0, 0, 65535), text="["+date()+"] ["+time()+"]\r\n"
+			Notebook $wname, textRGB=(0, 0, 65535), text="["+date()+"] ["+time()+"]\t"
 		endif
 		Notebook $wname, textRGB=(r, g, b), text=msg+"\r\n"
 	endif

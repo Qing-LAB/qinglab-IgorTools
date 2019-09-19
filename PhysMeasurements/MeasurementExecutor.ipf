@@ -92,7 +92,7 @@ Function MEBgTaskExecInstructions(s)
 	
 	instructions[counter]=cmd
 
-	if(done_flag>1)
+	if(done_flag==2)
 		counter+=1
 	endif
 	instructions[0]=num2istr(counter)
@@ -159,7 +159,7 @@ Function MEExtFunc_StandardScan(Variable call_count, WAVE /T results, Variable c
 		point_info=ReplaceStringByKey("DONE_STATUS", point_info, num2istr(status))
 		results[rcounter]=point_info
 	else
-		print "Wave "+srcWaveName+" not valid for automatic sourcing."
+		QDLLog("Wave "+srcWaveName+" not valid for automatic sourcing.")
 	endif
 End
 
@@ -184,7 +184,7 @@ Function MEExecuteExtFunc(String & cmd, WAVE /T results, Variable counter, WAVE 
 				cmd=ReplaceStringByKey("DONE_STATUS", cmd, "1")
 			endif
 		else
-			print "User function "+funcname+" is not valid. No ext function called."
+			QDLLOG("User function "+funcname+" is not valid. No ext function called.")
 			cmd=ReplaceStringByKey("DONE_STATUS", cmd, "2")
 		endif
 		cmd=ReplaceStringByKey("EXTFUNC_CALL_COUNT", cmd, num2istr(extfunc_call_count))
@@ -203,11 +203,14 @@ Function MEExecuteKeithleyCmd(String & cmd, WAVE /T results, Variable counter, W
 			KeithleyResetCmdStatusFlag()
 			cmd=ReplaceStringByKey("RESET_STATUS", cmd, "1")
 			reset_status=1
-			//print "Keithley new cmd status reset."
+			//QDLLOG("Keithley new cmd status reset.")
 		endif
 		
 		Variable done_flag=str2num(StringByKey("DONE_STATUS", cmd))
-		if(numtype(done_flag)!=0 || done_flag==0)
+		if(numtype(done_flag)!=0)
+			done_flag=0
+		endif
+		if(done_flag!=2)
 			String exec=StringByKey("EXEC", cmd)
 			Variable smua_src=str2num(StringByKey("SMUA_SRC", cmd))
 			Variable smub_src=str2num(StringByKey("SMUB_SRC", cmd))
@@ -225,16 +228,21 @@ Function MEExecuteKeithleyCmd(String & cmd, WAVE /T results, Variable counter, W
 			
 			strswitch(exec)
 			case "INIT":
-				KeithleyInit()
-				done_flag=1
-				print "KeithleyInit() called."
+				if(done_flag==0)
+					KeithleyInit()
+					done_flag=1
+					QDLLOG("KeithleyInit() called.")
+				endif
 				break
 			case "RESET":
-				KeithleyReset()
-				done_flag=1
-				print "KeithleyReset() called."
+				if(done_flag==0)
+					KeithleyReset()
+					done_flag=1
+					QDLLOG("KeithleyReset() called.")
+				endif
 				break
 			case "SOURCE&MEASURE":
+				done_flag=3 //KeithleySMUMeasure function will check status by itself
 				if(KeithleySMUMeasure(cmd, smua_srctype, smua_src, smub_srctype, smub_src, initial_take, record_counter, ktmp)==0)
 					Variable pid_input, pid_output, pid_setpoint
 					EMControllerReadPIDChannels(pid_input, pid_output, pid_setpoint)
@@ -247,6 +255,9 @@ Function MEExecuteKeithleyCmd(String & cmd, WAVE /T results, Variable counter, W
 					records[record_counter][6,11]=ktmp[q-6]; AbortOnRTE //all keithley readings
 					record_counter+=1; AbortOnRTE
 					done_flag=2; AbortOnRTE
+					String logstr=""
+					sprintf logstr, "[%d] record: PID_input [%6f], SMUA_I[%6g], SMUA_V[%6g], SMUB_I[%6g], SMUB_V[%6g]", counter, pid_input, ktmp[0], ktmp[1], ktmp[3], ktmp[4]
+					QDLLog(logstr)
 				endif
 				break
 			default:
@@ -258,9 +269,12 @@ Function MEExecuteKeithleyCmd(String & cmd, WAVE /T results, Variable counter, W
 		if(done_flag==1)
 			if(KeithleyCheckCMDStatusFlag()==1)
 				done_flag=2
-				print "EXEC STATUS INDICATES KEITHLEY HAS TAKE ACTION. WILL CONTINUE TO NEXT INSTRUCTION."
 			endif
 		endif
+		if(done_flag==2)
+			QDLLOG("["+num2istr(counter)+"] KEITHLEY has taken action. Continue to next instruction...", g=32768)
+		endif
+		
 		cmd=ReplaceStringByKey("DONE_STATUS", cmd, num2istr(done_flag))
 	catch
 		Variable err=GetRTError(1)
@@ -277,7 +291,7 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 			EMResetCMDStatusFlag()
 			cmd=ReplaceStringByKey("RESET_STATUS", cmd, "1")
 			reset_status=1
-			//print "EMController new cmd status reset."
+			//QDLLOG("EMController new cmd status reset.")
 		endif
 		
 		Variable done_flag=str2num(StringByKey("DONE_STATUS", cmd))
@@ -291,12 +305,12 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 				sscanf param, "%d,%d", input_chn, output_chn
 				EMScanInit(input_chn, output_chn)
 				done_flag=1
-				print "EMScanInit() called.", input_chn, output_chn
+				QDLLOG("EMScanInit() called. PID INPUT CHN:"+num2istr(input_chn)+". PID OUTPUT CHN:"+num2istr(output_chn))
 				break
 			case "SHUTDOWN":
 				EMShutdown()
 				done_flag=1
-				print "EMShutdown() called."
+				QDLLOG( "EMShutdown() called.")
 				break
 			case "SETPOINT":
 				Variable new_setpoint=nan
@@ -314,7 +328,7 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 						done_flag=2
 					endif
 				else
-					print "ERROR in PARAM of SETPOINT.", new_setpoint, error_range, timeout_ticks
+					QDLLOG("ERROR in PARAM of SETPOINT. New setpoint:"+num2str(new_setpoint)+", error range:"+num2str(error_range)+", timeout (ticks):"+num2str(timeout_ticks), r=65535)
 					done_flag=2
 				endif
 				break
@@ -326,12 +340,14 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 						done_flag=2
 					endif
 				else
-					print "ERROR in PARAM of PID_GAINS:", p,i,d,f,s,o
+					String logstr=""
+					sprintf logstr, "ERROR in PARAM of PID_GAINS. P:%f, I:%f, D:%f, FILTER:%f, ScaleFactor:%f, OffsetFactor:%f", p,i,d,f,s,o
+					QDLLOG(logstr, r=65535)
 					done_flag=2
 				endif
 				break
 			default:
-				print "UNKNOWN EXEC CMD FOR EMCONTROLLER:", exec
+				QDLLOG("UNKNOWN EXEC CMD FOR EMCONTROLLER:"+exec)
 				done_flag=2
 				break
 			endswitch
@@ -340,9 +356,12 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 		if(done_flag==1)
 			if(EMCheckCMDStatusFlag()==1)
 				done_flag=2
-				print "EXEC STATUS INDICATES EMCONTROLLER HAS TAKE ACTION. WILL CONTINUE TO NEXT INSTRUCTION."
 			endif
 		endif
+		if(done_flag==2)
+			QDLLOG("["+num2istr(counter)+"] EMCONTROLLER has taken action. Continuing to next instruction...", g=32768)
+		endif
+		
 		cmd=ReplaceStringByKey("DONE_STATUS", cmd, num2istr(done_flag))
 	catch
 		Variable err=GetRTError(1)
