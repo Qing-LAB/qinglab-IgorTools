@@ -144,7 +144,8 @@ Function MEExtFunc_StandardScan(Variable call_count, WAVE /T results, Variable c
 			point_info=ReplaceStringByKey("EMSETPOINT", point_info, num2str(EMSetpoint))
 			point_info=ReplaceStringByKey("SMUA_SRC", point_info, num2str(KSMUASrc))
 			point_info=ReplaceStringByKey("SMUB_SRC", point_info, num2str(KSMUBSrc))
-			EMScanInit(1, 1)
+			variable done_flag=0
+			EMScanInit(1, 1, done_flag)
 			KeithleyInit()
 			break
 		case 1: //setting done
@@ -295,7 +296,10 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 		endif
 		
 		Variable done_flag=str2num(StringByKey("DONE_STATUS", cmd))
-		if(numtype(done_flag)!=0 || done_flag==0)
+		if(numtype(done_flag)!=0)
+			done_flag=0
+		endif
+		if(done_flag!=2)
 			String exec=StringByKey("EXEC", cmd)
 			String param=StringByKey("PARAM", cmd)
 			
@@ -303,13 +307,11 @@ Function MEExecuteEMControllerCmd(String & cmd, WAVE /T results, Variable counte
 			case "INIT":
 				Variable input_chn, output_chn
 				sscanf param, "%d,%d", input_chn, output_chn
-				EMScanInit(input_chn, output_chn)
-				done_flag=1
+				EMScanInit(input_chn, output_chn, done_flag)
 				QDLLOG("EMScanInit() called. PID INPUT CHN:"+num2istr(input_chn)+". PID OUTPUT CHN:"+num2istr(output_chn))
 				break
 			case "SHUTDOWN":
-				EMShutdown()
-				done_flag=1
+				EMShutdown(done_flag)
 				QDLLOG( "EMShutdown() called.")
 				break
 			case "SETPOINT":

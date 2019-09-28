@@ -1595,13 +1595,18 @@ Function itc_rtgraph_init(left, top, right, bottom)
 	String selchn_list2="\"_none_;"+chnname
 	Variable i
 	for(i=1; i<DimSize(selectedchn, 0); i+=1)
-		selchn_list1+=";"+chnlist[selectedchn[i]]
-		selchn_list2+=";"+chnlist[selectedchn[i]]
+		if(selectedchn[i]<8)
+			selchn_list1+=";"+chnlist[selectedchn[i]]
+			selchn_list2+=";"+chnlist[selectedchn[i]]
+		else
+			selchn_list1+=";"+"DIGITAL_IN"
+			selchn_list2+=";"+"DIGITAL_IN"
+		endif
 	endfor
 	selchn_list1+="\""
 	selchn_list2+="\""
 
-	NewPanel /EXT=0 /HOST=ITCPanel /N=rtgraphpanel /W=(0, 0, 160, 0) /K=2
+	NewPanel /EXT=0 /HOST=ITCPanel /N=rtgraphpanel /W=(0, 0, 150, 0) /K=2
 	PopupMenu rtgraph_trace1name win=ITCPanel#rtgraphpanel,title="Trace1 Channel",value=#selchn_list1,mode=1,size={150,20},userdata(tracename)="1",proc=rtgraph_popproc_trace
 	PopupMenu rtgraph_trace1color win=ITCPanel#rtgraphpanel,title="Trace1 Color",popColor=(65280,0,0),value="*COLORPOP*",size={150,20},proc=rtgraph_popproc_tracecolor
 	SetVariable rtgraph_miny1 win=ITCPanel#rtgraphpanel,title="MinY1",value=_NUM:-10,size={120,20},limits={-inf, inf, 0},userdata(tracename)="1",disable=2,proc=rtgraph_svproc_setyaxis

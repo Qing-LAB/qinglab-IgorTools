@@ -2,6 +2,10 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #include "QDataLink"
 
+
+Constant EM_POSITIVE_ZERO=1e-4
+Constant EM_NEGATIVE_ZERO=-1e-4
+
 Menu "QDataLink"
 	Submenu "EMController"
 		"Connect to EMController", EMControllerConnectionINIT()
@@ -613,40 +617,50 @@ Function EMCheckCMDStatusFlag()
 #endif
 End
 
-Function EMScanInit(Variable PID_INPUT_CHN, Variable PID_OUTPUT_CHN)
-	NVAR EMFlag=root:V_EMControllerActiveFlag
-	EMFlag=1
-	
-	String cmd=""
-	cmd+="SET_FPGA_STATE:1;"
-	cmd+="SET_OUTPUT:0,0,0,0;"
-	cmd+="SET_PID_SETPOINT:0;"
-	cmd+="SET_PID_RANGE:10,0;"
-	cmd+="SET_PID_GAIN:0.35,0.30,0.03,1,1,0;"
-	cmd+="SET_9219_CONVERSION_TIME:2;"//fast mode
-	cmd+="SET_9219_VOLTAGE_RANGE:0,1,4,4;" //60V for chn0, 15V for chn1, 0.125V for chn3 and chn4
-	cmd+="RESET_PID;"
-	cmd+="SET_PID_INPUT_CHN:"+num2istr(PID_INPUT_CHN)+";SET_PID_OUTPUT_CHN:"+num2istr(PID_OUTPUT_CHN)+";SET_OUTPUT:10,0,0,0;"
-	
-	SVAR Ecmd=root:S_EMControllerCMD
-	if(SVAR_Exists(Ecmd))
-		Ecmd=cmd
+Function EMScanInit(Variable PID_INPUT_CHN, Variable PID_OUTPUT_CHN, Variable & done_flag)
+	if(done_flag==0)
+		NVAR EMFlag=root:V_EMControllerActiveFlag
+		EMFlag=1
+		
+		String cmd=""
+		cmd+="SET_FPGA_STATE:1;"
+		cmd+="SET_OUTPUT:0,0,0,0;"
+		cmd+="SET_PID_SETPOINT:"+num2str(EM_POSITIVE_ZERO)+";"
+		cmd+="SET_PID_RANGE:10,0;"
+		cmd+="SET_PID_GAIN:0.35,0.30,0.03,1,1,0;"
+		cmd+="SET_9219_CONVERSION_TIME:2;"//fast mode
+		cmd+="SET_9219_VOLTAGE_RANGE:0,1,4,4;" //60V for chn0, 15V for chn1, 0.125V for chn3 and chn4
+		cmd+="RESET_PID;"
+		cmd+="SET_PID_INPUT_CHN:"+num2istr(PID_INPUT_CHN)+";SET_PID_OUTPUT_CHN:"+num2istr(PID_OUTPUT_CHN)+";SET_OUTPUT:10,0,0,0;"
+		
+		SVAR Ecmd=root:S_EMControllerCMD
+		if(SVAR_Exists(Ecmd))
+			Ecmd=cmd
+		endif
+		done_flag=3
+	elseif(done_flag==3)
+		done_flag=1
 	endif
 	return 0
 End
 
-Function EMShutdown()
-	String cmd=""
+Function EMShutdown(Variable & done_flag)
+	if(done_flag==0)
+		String cmd=""
+			
+		cmd+="SET_FPGA_STATE:0;"
+		cmd+="SET_OUTPUT:0,0,0,0;"
+		cmd+="SET_PID_SETPOINT:0;SET_PID_GAIN:0,0,0,0,1,0;"
+		cmd+="SET_PID_INPUT_CHN:4;SET_PID_OUTPUT_CHN:4;"
+		cmd+="RESET_PID;"	
 		
-	cmd+="SET_FPGA_STATE:0;"
-	cmd+="SET_OUTPUT:0,0,0,0;"
-	cmd+="SET_PID_SETPOINT:0;SET_PID_GAIN:0,0,0,0,1,0;"
-	cmd+="SET_PID_INPUT_CHN:4;SET_PID_OUTPUT_CHN:4;"
-	cmd+="RESET_PID;"	
-	
-	SVAR Ecmd=root:S_EMControllerCMD
-	if(SVAR_Exists(Ecmd))
-		Ecmd=cmd
+		SVAR Ecmd=root:S_EMControllerCMD
+		if(SVAR_Exists(Ecmd))
+			Ecmd=cmd
+		endif
+		done_flag=3
+	elseif(done_flag==3)
+		done_flag=1
 	endif
 	return 0
 End
@@ -723,9 +737,6 @@ Function EMSetPIDGains(String &cmd, Variable p, Variable i, Variable d, Variable
 	cmd=ReplaceStringByKey("PID_GAIN_STATUS", cmd, num2istr(status))
 	return retVal
 End
-
-Constant EM_POSITIVE_ZERO=1e-6
-Constant EM_NEGATIVE_ZERO=-1e-6
 
 Function EMSetpoint(String & cmd, Variable new_setpoint, Variable error_range, Variable timeout_ticks, Variable strict_zero)
 	Variable retVal=-1
