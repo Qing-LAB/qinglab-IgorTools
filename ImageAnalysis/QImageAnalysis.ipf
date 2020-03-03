@@ -34,7 +34,7 @@ Function ipLoadFile()
 	endswitch
 End
 
-Function ipAddROIByAxis(String graphName, String xaxisname, String yaxisname, Wave trace, [Variable r, Variable g, Variable b, Variable alpha])
+Function ipAddROIByAxis(String graphName, String xaxisname, String yaxisname, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker])
 	String xaxtype=StringByKey("AXTYPE", AxisInfo(graphName, xaxisname))
 	String yaxtype=StringByKey("AXTYPE", AxisInfo(graphName, yaxisname))
 	String wname=NameOfWave(trace)
@@ -42,19 +42,35 @@ Function ipAddROIByAxis(String graphName, String xaxisname, String yaxisname, Wa
 	if(cmpstr(xaxtype, "bottom")==0)
 		if(cmpstr(yaxtype, "left")==0)
 			AppendToGraph /W=$(graphName) /B=$xaxisname /L=$yaxisname trace[][1] vs trace[][0]
-			ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=43, rgb($wname)=(r,g,b, alpha)
+			if(show_marker>0)
+				ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=((show_marker & 0xFF00)>>8), msize($wname)=((show_marker&0xF0)>>4), mrkThick($wname)=(show_marker & 0x0F), rgb($wname)=(r, g, b, alpha)
+			else
+				ModifyGraph /W=$(graphName) mode($wname)=0, rgb($wname)=(r, g, b, alpha)
+			endif
 		elseif(cmpstr(yaxtype, "right")==0)
 			AppendToGraph /W=$(graphName) /B=$xaxisname /R=$yaxisname trace[][1] vs trace[][0]
-			ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=43, rgb($wname)=(r,g,b, alpha)
+			if(show_marker>0)
+				ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=((show_marker & 0xFF0)>>8), msize($wname)=((show_marker&0xF0)>>4), mrkThick($wname)=(show_marker & 0x0F), rgb($wname)=(r, g, b, alpha)
+			else
+				ModifyGraph /W=$(graphName) mode($wname)=0, rgb($wname)=(r, g, b, alpha)
+			endif
 		else
 		endif
 	elseif(cmpstr(xaxtype, "top")==0)
 		if(cmpstr(yaxtype, "left")==0)
 			AppendToGraph /W=$(graphName) /T=$xaxisname /L=$yaxisname trace[][1] vs trace[][0]
-			ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=43, rgb($wname)=(r,g,b, alpha)
+			if(show_marker>0)
+				ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=((show_marker & 0xFF00)>>8), msize($wname)=((show_marker&0xF0)>>4), mrkThick($wname)=(show_marker & 0x0F), rgb($wname)=(r, g, b, alpha)
+			else
+				ModifyGraph /W=$(graphName) mode($wname)=0, rgb($wname)=(r, g, b, alpha)
+			endif
 		elseif(cmpstr(yaxtype, "right")==0)
 			AppendToGraph /W=$(graphName) /T=$xaxisname /R=$yaxisname trace[][1] vs trace[][0]
-			ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=43, rgb($wname)=(r,g,b, alpha)
+			if(show_marker>0)
+				ModifyGraph /W=$(graphName) mode($wname)=4, marker($wname)=((show_marker & 0xFF00)>>8), msize($wname)=((show_marker&0xF0)>>4), mrkThick($wname)=(show_marker & 0x0F), rgb($wname)=(r, g, b, alpha)
+			else
+				ModifyGraph /W=$(graphName) mode($wname)=0, rgb($wname)=(r, g, b, alpha)
+			endif
 		else
 		endif
 	else
@@ -192,6 +208,8 @@ Function ipHookFunction(s)
 	
 	String roi_cur_traceName=""
 	String roi_allName=""
+	
+	Variable update_graph_window=0
 	
 	switch(s.eventCode)
 		case 4:
@@ -344,12 +362,12 @@ Function ipHookFunction(s)
 						Wave roi_cur_trace=$roi_cur_traceName
 						Wave roi_all=$roi_allName
 						if(WhichListItem(roicurtrName, trList)<0 && WaveExists(roi_cur_trace))
-							ipAddROIByAxis(s.winname, xaxisname, yaxisname, roi_cur_trace, r=65535, g=0, b=0, alpha=32768)
+							ipAddROIByAxis(s.winname, xaxisname, yaxisname, roi_cur_trace, r=0, g=32768, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
 						else
 							ModifyGraph /W=$(s.winname) offset($PossiblyQuoteName(roicurtrName))={0,0}
 						endif
 						if(WhichListItem(roialltrName, trList)<0 && WaveExists(roi_all))
-							ipAddROIByAxis(s.winname, xaxisname, yaxisname, roi_all, r=0, g=65535, b=0, alpha=32768)
+							ipAddROIByAxis(s.winname, xaxisname, yaxisname, roi_all, r=32768, g=0, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
 						else
 							ModifyGraph /W=$(s.winname) offset($PossiblyQuoteName(roialltrName))={0,0}
 						endif
@@ -391,7 +409,8 @@ Function ipHookFunction(s)
 						SetAxis /W=$(s.winName) $yaxisname, ymin, ymax
 						SetAxis /W=$(s.winName) $xaxisname, xmin, xmax
 					endif
-				else //just the wheel
+					hookResult = 1
+				elseif(s.eventMod & 0x8) //Ctrl or Cmd key is down
 					if(WaveExists(imgw) && WaveExists(framew))
 						if(s.wheelDy<0)
 							frameidx+=1
@@ -405,19 +424,17 @@ Function ipHookFunction(s)
 						if(frameidx>=DimSize(imgw, 2))
 							frameidx=0
 						endif
-						framew[][]=imgw[p][q][frameidx]
-						ipUpdateEdgeTraces(frameidx, s.winName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
-						SetWindow $(s.winName), userdata(FRAMEIDX)=num2istr(frameidx)
-						sprintf frameidxstr, "frame:%d", frameidx
-						SetVariable frame_idx win=$panelName, value=_STR:(frameidxstr)
+						
+						update_graph_window=1
+						
 					endif
+					hookResult = 1
 				endif
-				hookResult = 1
+				
 			endif			
 			break
 		
 		case 11:	// Keyboard event
-
 			if(WaveExists(framew) && WaveExists(imgw))
 				switch(s.specialKeyCode)
 				case 100: //left arrow
@@ -451,15 +468,20 @@ Function ipHookFunction(s)
 					frameidx=0
 				endif
 				
-				framew[][]=imgw[p][q][frameidx]
-				ipUpdateEdgeTraces(frameidx, s.winName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
-				SetWindow $(s.winName), userdata(FRAMEIDX)=num2istr(frameidx)
-				sprintf frameidxstr, "frame:%d", frameidx
-				SetVariable frame_idx win=$panelName, value=_STR:(frameidxstr)
+				update_graph_window=1
+			
 			endif
 			
 			break
 	endswitch
+	
+	if(update_graph_window==1)
+		framew[][]=imgw[p][q][frameidx]
+		ipUpdateEdgeTraces(frameidx, s.winName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
+		SetWindow $(s.winName), userdata(FRAMEIDX)=num2istr(frameidx)
+		sprintf frameidxstr, "frame:%d", frameidx
+		SetVariable frame_idx win=$panelName, value=_STR:(frameidxstr)
+	endif
 	
 	return hookResult		// If non-zero, we handled event and Igor will ignore it.
 
@@ -571,6 +593,19 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 			String frameName=GetUserData(graphname, "", "FRAMENAME")
 			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
 			
+			Variable threshold=-1
+			Variable minArea=100
+			Variable dialation_iteration=2
+			Variable erosion_iteration=2
+			PROMPT threshold, "Threshold for image analysis (-1 means automatic iteration)"
+			PROMPT minArea, "Minimal area for edge identification"
+			PROMPT dialation_iteration, "Iterations for dialation (for inner boundary)"
+			PROMPT erosion_iteration, "Iterations for erosion (for outer boundary)"
+			DoPrompt "Parameters for analysis", threshold, dialation_iteration, erosion_iteration, minArea
+			if(V_flag!=0)
+				break
+			endif
+						
 			Variable nloops=DimSize($imageName, 2)
 		
 			Variable useIgorDraw=0	// set true to force Igor's own draw method rather than native
@@ -592,7 +627,7 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 			Variable t0= ticks,i
 			for(i=0;i<nloops;i+=1)
 				SetVariable frame_idx, win=myProgress, value=_STR:("processing frame:"+num2istr(i))
-				ipImageProcEdgeDetection(graphname, imageName, frameName, i)
+				ipImageProcEdgeDetection(graphname, imageName, frameName, i, threshold, dialation_iteration, erosion_iteration, minArea)
 				if(WinType("myProgress")!=7)
 					break
 				else
@@ -611,7 +646,7 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 	return 0
 End
 
-Function ipImageProcEdgeDetection(String graphName, String imageName, String frameName, Variable frameidx)
+Function ipImageProcEdgeDetection(String graphName, String imageName, String frameName, Variable frameidx, Variable threshold, Variable dialation_iteration, variable erosion_iteration, Variable minArea)
 //	String sidePanelName=GetUserData(graphname, "", "SIDEIMAGEPANEL")
 //	if(strlen(sidePanelName)==0 || WinType(sidePanelName)!=7)
 //		NewPanel /HOST=$graphname /EXT=0 /W=(0,0,300,300) /N=$(graphname+"_SIDEIMAGEPANEL")
@@ -645,36 +680,30 @@ Function ipImageProcEdgeDetection(String graphName, String imageName, String fra
 		NewDataFolder /O/S $(num2istr(frameidx))
 		DFREF homedfr=GetDataFolderDFR()
 
-		ImageThreshold /Q/M=1/i frame
+		if(threshold>0)
+			ImageThreshold /Q/M=0/T=(threshold)/i frame
+		else
+			ImageThreshold /Q/M=1/i frame
+		endif
+		
 		ImageMorphology /E=6 Opening homedfr:M_ImageThresh
-
 		ImageMorphology /E=4 Closing homedfr:M_ImageMorph
 		ImageMorphology /E=5 Opening homedfr:M_ImageMorph
 
 		ImageAnalyzeParticles /Q/D=$frameName /W/E/A=100 stats homedfr:M_ImageMorph
 		
 		NewDataFolder /O/S outerEdge
-		ImageMorphology /E=4 /I=3 Erosion homedfr:M_ImageMorph
+		ImageMorphology /E=4 /I=(erosion_iteration) Erosion homedfr:M_ImageMorph
 		ImageAnalyzeParticles /Q/D=$frameName /W/E/A=100 stats :M_ImageMorph
 		
 		SetDataFOlder ::
 		NewDataFolder /O/S innerEdge
 		
-		ImageMorphology /E=4 /I=3 Dilation homedfr:M_ImageMorph
+		ImageMorphology /E=4 /I=(dialation_iteration) Dilation homedfr:M_ImageMorph
 		ImageAnalyzeParticles /Q/D=$frameName /W/E/A=100 stats :M_ImageMorph
 	catch
 	endtry	
 	SetDataFolder savedDF
-		
-//	String imglist=ImageNameList(graphName, ";")
-//	String edgeimgname=PossiblyQuoteName(NameOfWave(edgeFrame))
-//	if(WhichListItem(edgeimgname, imglist)<0)
-//		String frameimginfo=ImageInfo(graphName, StringFromList(ItemsInList(frameName, ":")-1, frameName, ":"), 0)
-//		String xaxisname=StringByKey("XAXIS", frameimginfo)
-//		String yaxisname=StringByKey("YAXIS", frameimginfo)
-//		ipAddImageByAxis(graphName, xaxisname, yaxisname, edgeFrame)
-//		ModifyImage /W=$graphName $NameOfWave(edgeFrame) explicit=1,eval={255,65535,65535,65535,0},eval={0,0,65535,0,32768}
-//	endif
 End
 
 Function ipEnableHook(String imgWinName)	
@@ -743,11 +772,5 @@ Function /S ipLoadTIFFImageStack(String filename)
 	endif
 End
 
-Function WMAnalyzeParticles(inWave)
-	Wave inWave
-	
-	ImageThreshold /M=1 inWave
-	Wave M_ImageThresh
-	ImageAnalyzeParticles/D=inWave /W/E/A=400 stats M_ImageThresh
+Function ipGetFrameData(Variable frameidx)
 End
-	
