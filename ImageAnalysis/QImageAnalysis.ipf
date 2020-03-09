@@ -34,7 +34,7 @@ Function ipLoadFile()
 	endswitch
 End
 
-Function ipAddROIByAxis(String graphName, String xaxisname, String yaxisname, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker])
+Function ipGraphPanelAddROIByAxis(String graphName, String xaxisname, String yaxisname, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker])
 	String xaxtype=StringByKey("AXTYPE", AxisInfo(graphName, xaxisname))
 	String yaxtype=StringByKey("AXTYPE", AxisInfo(graphName, yaxisname))
 	String wname=NameOfWave(trace)
@@ -77,7 +77,7 @@ Function ipAddROIByAxis(String graphName, String xaxisname, String yaxisname, Wa
 	endif
 End
 
-Function ipAddImageByAxis(String graphName, String xaxisname, String yaxisname, Wave image)
+Function ipGraphPanelAddImageByAxis(String graphName, String xaxisname, String yaxisname, Wave image)
 	String xaxtype=StringByKey("AXTYPE", AxisInfo(graphName, xaxisname))
 	String yaxtype=StringByKey("AXTYPE", AxisInfo(graphName, yaxisname))
 	String wname=NameOfWave(image)
@@ -144,17 +144,17 @@ Function ipUpdateEdgeTraces(frameidx, graphName, analysisDF, edgeName, outerEdge
 		
 		Wave e=$edgeName; AbortOnRTE
 		if(WhichListItem(edgeTraceName, trList)<0 && WaveExists(e))
-			ipAddROIByAxis(graphName, xaxisname, yaxisname, e, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
+			ipGraphPanelAddROIByAxis(graphName, xaxisname, yaxisname, e, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
 		endif
 		
 		Wave e=$inneredgeName; AbortOnRTE
 		if(WhichListItem(innerEdgeTraceName, trList)<0 && WaveExists(e))
-			ipAddROIByAxis(graphName, xaxisname, yaxisname, e, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
+			ipGraphPanelAddROIByAxis(graphName, xaxisname, yaxisname, e, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
 		endif
 		
 		Wave e=$outeredgeName; AbortOnRTE
 		if(WhichListItem(outerEdgeTraceName, trList)<0 && WaveExists(e))
-			ipAddROIByAxis(graphName, xaxisname, yaxisname, e, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
+			ipGraphPanelAddROIByAxis(graphName, xaxisname, yaxisname, e, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
 		endif
 	catch
 		Variable err=GetRTError(0)
@@ -182,9 +182,9 @@ Function ipHookFunction(s)
 	activetrace=GetUserData(s.winName, "", "ACTIVETRACE")
 	String analysisDF
 	analysisDF=GetUserData(s.winName, "", "ANALYSISDF")
-	String edgeName=ipGetDerivedWaveName(frameName, ".edge")
-	String outerEdgeName=ipGetDerivedWaveName(frameName, ".outerEdge")
-	String innerEdgeName=ipGetDerivedWaveName(frameName, ".innerEdge")
+	String edgeName=ipImageProcGetDerivedWaveName(frameName, ".edge")
+	String outerEdgeName=ipImageProcGetDerivedWaveName(frameName, ".outerEdge")
+	String innerEdgeName=ipImageProcGetDerivedWaveName(frameName, ".innerEdge")
 	
 	Variable frameidx=str2num(GetUserData(s.winName, "", "FRAMEIDX"))
 	Variable yaxispolarity=str2num(GetUserData(s.winName, "", "YAXISPOLARITY"))
@@ -306,8 +306,8 @@ Function ipHookFunction(s)
 					endif
 					
 					if(new_roi==1)
-						roi_cur_traceName=ipGetDerivedWaveName(imageName, ".roi0")
-						roi_allName=ipGetDerivedWaveName(imageName, ".roi")
+						roi_cur_traceName=ipImageProcGetDerivedWaveName(imageName, ".roi0")
+						roi_allName=ipImageProcGetDerivedWaveName(imageName, ".roi")
 											
 						if(roi_status!=1)
 							roi_status=1
@@ -362,12 +362,12 @@ Function ipHookFunction(s)
 						Wave roi_cur_trace=$roi_cur_traceName
 						Wave roi_all=$roi_allName
 						if(WhichListItem(roicurtrName, trList)<0 && WaveExists(roi_cur_trace))
-							ipAddROIByAxis(s.winname, xaxisname, yaxisname, roi_cur_trace, r=0, g=32768, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
+							ipGraphPanelAddROIByAxis(s.winname, xaxisname, yaxisname, roi_cur_trace, r=0, g=32768, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
 						else
 							ModifyGraph /W=$(s.winname) offset($PossiblyQuoteName(roicurtrName))={0,0}
 						endif
 						if(WhichListItem(roialltrName, trList)<0 && WaveExists(roi_all))
-							ipAddROIByAxis(s.winname, xaxisname, yaxisname, roi_all, r=32768, g=0, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
+							ipGraphPanelAddROIByAxis(s.winname, xaxisname, yaxisname, roi_all, r=32768, g=0, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
 						else
 							ModifyGraph /W=$(s.winname) offset($PossiblyQuoteName(roialltrName))={0,0}
 						endif
@@ -447,7 +447,7 @@ Function ipHookFunction(s)
 					break
 				case 204:
 					if(roi_status==1)
-						roi_cur_traceName=ipGetDerivedWaveName(imageName, ".roi0")
+						roi_cur_traceName=ipImageProcGetDerivedWaveName(imageName, ".roi0")
 						Make /N=(1, 2) /O /D $roi_cur_traceName
 						Wave roi_cur_trace=$roi_cur_traceName
 						roi_cur_trace[0][0]=NaN
@@ -515,7 +515,7 @@ Function /S ipGetFullWaveName(String wname)
 	return quotedFullName
 End
 
-Function /S ipGetDerivedWaveName(String wname, String suffix)
+Function /S ipImageProcGetDerivedWaveName(String wname, String suffix)
 	Variable i
 	String newwname=RemoveListItem(ItemsInList(wname, ":")-1, wname, ":")
 	newwname=RemoveEnding(newwname, ":")
@@ -537,10 +537,10 @@ Function ipPanelBtnClearROI(ba) : ButtonControl
 			String graphname=ba.win
 			graphname=StringFromList(0, graphname, "#")
 			String imageName=GetUserData(graphname, "", "IMAGENAME")
-			String roi_cur_traceName=ipGetDerivedWaveName(imageName, ".roi0")
-			String roi_allName=ipGetDerivedWaveName(imageName, ".roi")
+			String roi_cur_traceName=ipImageProcGetDerivedWaveName(imageName, ".roi0")
+			String roi_allName=ipImageProcGetDerivedWaveName(imageName, ".roi")
 			
-			ipClearROI(graphname, roi_cur_traceName, roi_allName)
+			ipGraphPanelClearROI(graphname, roi_cur_traceName, roi_allName)
 			break
 		case -1: // control being killed
 			break
@@ -549,7 +549,7 @@ Function ipPanelBtnClearROI(ba) : ButtonControl
 	return 0
 End
 
-Function ipClearROI(String graphname, String roi_cur_traceName, String roi_allName)
+Function ipGraphPanelClearROI(String graphname, String roi_cur_traceName, String roi_allName)
 	String trList=TraceNameList(graphname, ";", 1)
 	String roicurtrName=StringFromList(ItemsInList(roi_cur_traceName, ":")-1, roi_cur_traceName, ":")
 	String roialltrName=StringFromList(ItemsInList(roi_allName, ":")-1, roi_allName, ":")
@@ -657,7 +657,7 @@ Function ipImageProcEdgeDetection(String graphName, String imageName, String fra
 //	endif
 	Wave image=$imageName
 	Wave frame=$frameName
-	String analysisFolder=ipGetDerivedWaveName(imageName, ".DF")
+	String analysisFolder=ipImageProcGetDerivedWaveName(imageName, ".DF")
 		
 	if(WaveExists(image) && WaveExists(frame) && frameidx>=0 && frameidx<DimSize(image, 2))
 	else
@@ -731,7 +731,7 @@ Function ipDisplayImage(String wname)
 	Wave w=$wname
 	if(WaveExists(w))
 		wname=ipGetFullWaveName(wname)
-		String frameName=ipGetDerivedWaveName(wname, ".f")
+		String frameName=ipImageProcGetDerivedWaveName(wname, ".f")
 		Wave frame=$frameName
 		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $frameName
 		Wave frame=$frameName
@@ -770,7 +770,4 @@ Function /S ipLoadTIFFImageStack(String filename)
 	else
 		return ""
 	endif
-End
-
-Function ipGetFrameData(Variable frameidx)
 End
