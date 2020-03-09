@@ -271,6 +271,8 @@ Function ipHookFunction(s)
 	frameName=GetUserData(s.winName, "", "FRAMENAME")
 	imageName=GetUserData(s.winName, "", "IMAGENAME")
 	activetrace=GetUserData(s.winName, "", "ACTIVETRACE")
+	Variable panelVisible=str2num(GetUserData(s.winName, "", "PANELVISIBLE"))
+	
 	String analysisDF
 	analysisDF=GetUserData(s.winName, "", "ANALYSISDF")
 	String edgeName=ipGetDerivedWaveName(frameName, ".edge")
@@ -303,6 +305,11 @@ Function ipHookFunction(s)
 	Variable update_graph_window=0
 	
 	switch(s.eventCode)
+		case 3:
+			if((s.eventMod & 0xA)!=0)
+				hookResult=1
+			endif
+			break
 		case 4:
 		case 5:
 			Variable imgx, imgy, tracex, tracey
@@ -354,7 +361,7 @@ Function ipHookFunction(s)
 			traceInfoStr=TraceFromPixel(s.mouseLoc.h, s.mouseLoc.v, "")
 			traceName=StringByKey("TRACE", traceInfoStr)
 			traceHitStr=StringByKey("HITPOINT", traceInfoStr)
-			if(strlen(traceName)==0)
+			if(strlen(traceName)==0 && s.eventCode!=5)
 				traceName=activetrace
 			endif
 			
@@ -380,12 +387,15 @@ Function ipHookFunction(s)
 			SetVariable xy_cord win=$panelName, value=_STR:(cordstr)
 			SetVariable z_value win=$panelName, value=_STR:(valstr)
 			
-			if(s.eventCode==5) //mouse clicked
+			if(s.eventCode==5 || (s.eventMod & 0x01) !=0) //mouse clicked
 		 		if(strlen(traceName)>0) //the current trace at the pixel is set as active trace
 		 			SetWindow $(s.winname), userdata(ACTIVETRACE)=traceName
+		 		elseif(s.eventCode==5)
+		 			SetWindow $(s.winname), userdata(ACTIVETRACE)=""
 		 		endif
 		 		
 		 		if((s.eventMod & 0xA)!=0)//ctrl or shift is held down
+		 			
 					ControlInfo /W=$(panelName) new_roi
 					Variable new_roi=V_value
 					ControlInfo /W=$(panelName) enclose_roi
@@ -565,6 +575,18 @@ Function ipHookFunction(s)
 					endif
 					hookResult = 1	// We handled keystroke
 					break
+				case 202: //Tab key pressed
+					if(panelVisible==1) //panel is visible now
+						panelVisible=0
+						SetWindow $(panelName), hide=1
+					else
+						panelVisible=1
+						SetWindow $(panelName), hide=0, needupdate=1
+						DoWindow /F $(s.winname)
+					endif
+					SetWindow $(s.winname), userData(PANELVISIBLE)=num2istr(panelVisible)
+					hookResult = 1
+					break
 				default:
 					break
 				endswitch
@@ -588,6 +610,8 @@ Function ipHookFunction(s)
 	endif
 	if(strlen(traceName)>0)
 		frameidxstr+="TR["+traceName+"]"
+	else
+		frameidxstr+="TR[NoActive]"
 	endif
 	SetVariable frame_idx win=$panelName, value=_STR:(frameidxstr)
 	
@@ -651,10 +675,11 @@ Function ipPanelBtnClearROI(ba) : ButtonControl
 			String graphname=ba.win
 			graphname=StringFromList(0, graphname, "#")
 			String imageName=GetUserData(graphname, "", "IMAGENAME")
+			String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
 			String roi_cur_traceName=ipGetDerivedWaveName(imageName, ".roi0")
 			String roi_allName=ipGetDerivedWaveName(imageName, ".roi")
 			
-			ipClearROI(graphname, roi_cur_traceName, roi_allName)
+			ipClearROI(graphname, imageName, analysisDF, roi_cur_traceName, roi_allName)
 			break
 		case -1: // control being killed
 			break
@@ -663,7 +688,7 @@ Function ipPanelBtnClearROI(ba) : ButtonControl
 	return 0
 End
 
-Function ipClearROI(String graphname, String roi_cur_traceName, String roi_allName)
+Function ipClearROI(String graphname, String imageName, String analysisDF, String roi_cur_traceName, String roi_allName)
 	String trList=TraceNameList(graphname, ";", 1)
 	String roicurtrName=StringFromList(ItemsInList(roi_cur_traceName, ":")-1, roi_cur_traceName, ":")
 	String roialltrName=StringFromList(ItemsInList(roi_allName, ":")-1, roi_allName, ":")
@@ -680,9 +705,39 @@ Function ipClearROI(String graphname, String roi_cur_traceName, String roi_allNa
 	endif
 	Make /O /N=(1,2) $roi_allName=NaN
 	
+	Variable idx, err
+	DFREF savedDF=GetDataFolderDFR()
+	
+	try
+		SetDataFolder $(analysisDF); AbortOnRTE
+		idx=DimSize($imageName, 2)-1; AbortOnRTE
+		for(; idx>=0; idx-=1)
+			try
+				SetDataFolder :$(num2istr(idx)); AbortOnRTE
+				if(DataFolderExists("ROI"))
+					SetDataFolder :ROI; AbortOnRTE
+					KillWaves /A/Z; AbortOnRTE
+					SetDataFolder :: ; AbortOnRTE
+					KillDataFolder /Z :ROI ; AbortOnRTE
+					if(V_flag!=0)
+						print "Cannot cleanly kill ROI folder for frame ", idx
+						print "This could lead to mis-operations in analysis."
+					endif
+				endif
+			catch
+				err=GetRTError(1)
+				SetDataFolder $(analysisDF); AbortOnRTE
+			endtry
+		endfor
+	catch
+		err=GetRTError(1)
+	endtry	
+	SetDataFolder savedDF
+	
 	SetWindow $(graphName), userdata(ROITRACE)=""
 	SetWindow $(graphName), userdata(ROISTATUS)="0"
 	SetWindow $(graphName), userdata(PICKSTATUS)="0"
+	print "ROIs all cleaned for graph window:", graphname, ", and image:", imageName
 End
 
 Function MySpinHook(s)
@@ -699,6 +754,20 @@ Function MySpinHook(s)
 	return 0
 End
 
+
+STRUCTURE ipImageProcParam
+	Variable threshold
+	Variable minArea
+	Variable dialation_iteration
+	Variable erosion_iteration
+	Variable allow_subset
+	Variable startFrame
+	Variable endFrame
+	Variable filterMatrixSize
+	Variable filterIteration
+	Variable useROI
+	Variable useConstantROI
+ENDSTRUCTURE
 
 Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
@@ -740,27 +809,66 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 			Variable allow_subset=1
 			Variable startFrame=frameidx
 			Variable endFrame=frameidx
+			Variable filterMatrixSize=3
+			Variable filterIteration=1
+			Variable useROI=1
+			Variable useConstantROI=1
 			
+			PROMPT filterMatrixSize, "Gaussian filter matrix size"
+			PROMPT filterIteration, "Gaussian filter iteration"
 			PROMPT threshold, "Threshold for image analysis (-1 means automatic iteration)"
 			PROMPT minArea, "Minimal area for edge identification"
 			PROMPT dialation_iteration, "Iterations for dialation (for inner boundary)"
 			PROMPT erosion_iteration, "Iterations for erosion (for outer boundary)"
 			PROMPT allow_subset, "Allow subset masks (masks that are contained entirely inside another one)", popup, "No;Yes;"
+			PROMPT useROI, "Use ROI for local edge detection and/or tracking selected individual objects", popup, "No;Yes;"
 			PROMPT startFrame, "Starting from frame:"
 			PROMPT endFrame, "End at frame:"
-			DoPrompt "Parameters for analysis", threshold, dialation_iteration, erosion_iteration, minArea, allow_subset, startframe, endframe
+
+			DoPrompt "Parameters for analysis", filterMatrixSize, filterIteration, threshold, dialation_iteration, erosion_iteration, minArea, allow_subset, useROI, startframe, endframe
 			if(V_flag!=0)
 				break
 			endif
-			
+						
 			if(allow_subset==1) //No is selected
 				allow_subset=0
+			else //Yes is selected
+				allow_subset=1
 			endif
+			
+			if(useROI==1)//No is selected
+				useROI=0
+			else //Yes is selected
+				useROI=1
+			endif
+			
+			if(useROI)
+				DoAlert 1, "Use constant ROI for all frames or use regions identified in previous frame to guide the next frame?"
+				if(V_flag==1)
+					useConstantROI=1
+				else
+					useConstantROI=0
+				endif
+			endif
+			
+			STRUCT ipImageProcParam param
+			param.threshold=threshold
+			param.minArea=minArea
+			param.dialation_iteration=dialation_iteration
+			param.erosion_iteration=erosion_iteration
+			param.allow_subset=allow_subset
+			param.startFrame=startFrame
+			param.endFrame=endFrame
+			param.filterMatrixSize=filterMatrixSize
+			param.filterIteration=filterIteration
+			param.useROI=useROI
+			param.useConstantROI=useConstantROI
+
 			
 			String /G $(analysisFolder+":ParticleAnalysisSettings")
 			SVAR analysissetting=$(analysisFolder+":ParticleAnalysisSettings")
 			
-			sprintf analysissetting, "Threshold:%.1f;MinArea:%.1f;DialationIteration:%d;ErosionIteration:%d", threshold, minArea, dialation_iteration, erosion_iteration
+			sprintf analysissetting, "GaussianFilterMatrixSize:%d;GaussianFilterIteration:%d;Threshold:%.1f;MinArea:%.1f;DialationIteration:%d;ErosionIteration:%d", filterMatrixSize, filterIteration, threshold, minArea, dialation_iteration, erosion_iteration
 			
 			Variable nloops=DimSize($imageName, 2)
 		
@@ -789,8 +897,7 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 			endif
 			for(i=startFrame;i<=endFrame;i+=1)
 				SetVariable frame_idx, win=myProgress, value=_STR:("processing frame:"+num2istr(i))
-				ipImageProcEdgeDetection(graphname, analysisFolder, imageName, frameName, i, threshold, \
-												dialation_iteration, erosion_iteration, minArea, allow_subset)
+				ipImageProcEdgeDetection(graphname, analysisFolder, imageName, frameName, frameidx, i, param)
 				if(WinType("myProgress")!=7)
 					break
 				else
@@ -887,14 +994,14 @@ Function ipFindParticleBoundaryInfoByXY(Variable x, Variable y, Wave W_info, Var
 		Wave ymin=:W_ymin
 		
 		Variable i=0
-		Variable obj_idx, boundary_start, boundary_end, boundary_centerx, boundary_centery, boundary_area, boundary_perimeter
+		Variable obj_idx, boundary_start, boundary_end, boundary_spotx, boundary_spoty, boundary_area, boundary_perimeter
 		
 		obj_idx=ipFindBoundaryIndexBySpot(x, y, xmin, xmax, ymin, ymax) //find the corresponding inner boundary
 			
 		if(obj_idx>=0) //a valid boundary is found
 			
-			boundary_centerx=spotx[obj_idx]; AbortOnRTE
-			boundary_centery=spoty[obj_idx]; AbortOnRTE
+			boundary_spotx=spotx[obj_idx]; AbortOnRTE
+			boundary_spoty=spoty[obj_idx]; AbortOnRTE
 			
 			Wave obj_area=:W_ImageObjArea; AbortOnRTE
 			Wave obj_perimeter=:W_ImageObjPerimeter; AbortOnRTE
@@ -910,12 +1017,11 @@ Function ipFindParticleBoundaryInfoByXY(Variable x, Variable y, Wave W_info, Var
 			
 			W_info[infoRowIdx][infoColumnIdx+0]=obj_idx; AbortOnRTE
 			
-			W_info[infoRowIdx][infoColumnIdx+1]=boundary_centerx; AbortOnRTE
-			W_info[infoRowIdx][infoColumnIdx+2]=boundary_centery; AbortOnRTE
+			W_info[infoRowIdx][infoColumnIdx+1]=boundary_spotx; AbortOnRTE
+			W_info[infoRowIdx][infoColumnIdx+2]=boundary_spoty; AbortOnRTE
 			
 			W_info[infoRowIdx][infoColumnIdx+3]=boundary_start; AbortOnRTE
 			W_info[infoRowIdx][infoColumnIdx+4]=boundary_end; AbortOnRTE
-			
 			
 			W_info[infoRowIdx][infoColumnIdx+5]=boundary_area; AbortOnRTE
 			W_info[infoRowIdx][infoColumnIdx+6]=boundary_perimeter; AbortOnRTE
@@ -1043,10 +1149,129 @@ Function ipPickCells(String imageName, Variable frameidx, String roiName, String
 	SetDataFolder savedDF
 End
 
+Function ipImageProcGetNextBoundary(Wave boundary, Variable & startidx, Variable & endidx)
+	Variable maxidx=DimSize(boundary, 0); AbortOnRTE
+	
+	Variable i
+	
+	for(i=startidx; i<maxidx; i+=1)
+		if(NumType(boundary[i][0])==0)
+			break //find the first number
+		endif
+	endfor
+	startidx=i
+	endidx=startidx
+	for(; i<maxidx; i+=1)
+		if(NumType(boundary[i][0])!=0)
+			break //find the next NaN or Inf
+		endif
+	endfor
+	endidx=i-1
+	if(endidx>=maxidx)
+		endidx=startidx
+	endif
+	if(startidx>=maxidx)
+		return 0
+	else
+		return endidx-startidx+1
+	endif
+End
+
+Function ipImageProcUpdateROIRegions(Variable firstFrame, Variable currentFrame, String analysisFolder, String imageName, STRUCT ipImageProcParam & param)
+	Wave imgw=$imageName
+	Variable maxFrame
+	
+	if(WaveExists(imgw))
+		maxFrame=DimSize(imgw, 2)-1
+	else
+		return -1
+	endif
+	
+	if(firstFrame<0 || firstFrame>maxFrame || currentFrame<firstFrame || currentFrame>maxFrame)
+		return -1
+	endif
+	
+	Variable retVal=-1
+	DFREF savedDF=GetDataFolderDFR()
+	
+	try
+		SetDataFolder $analysisFolder; AbortOnRTE
+		NewDataFolder /O/S :$(num2istr(currentFrame)); AbortOnRTE
+		
+		if(firstFrame==currentFrame || param.useConstantROI==1) //first frame will use globally/manually defined ROI
+			Wave roiwave=$ipGetDerivedWaveName(imageName, ".roi"); AbortOnRTE
+			if(WaveExists(roiwave))
+				//we need to find the ROIs with more than one points which will define the "regions"
+				//single point ROIs will be used just to mark the objects that has its center close to that spot for tracking
+				NewDataFolder /O/S :ROI ; AbortOnRTE
+				Make /O /D /N=(1, 2) W_RegionROIIndex=NaN
+				Make /O /D /N=(1, 2) W_RegionROIBoundary=NaN
+				Make /O /D /N=(1, 2) W_PointROI=NaN
+				
+				Variable startidx=0, endidx=0
+				Variable len=0
+				Variable cnt_regionIdx=0
+				Variable cnt_regionStart=0
+				Variable cnt_point=0
+				Variable i
+				
+				do
+					len=ipImageProcGetNextBoundary(roiwave, startidx, endidx); AbortOnRTE
+					
+					if(len>0)
+						if(len==1)
+							//single point ROI
+							if(cnt_point!=0)
+								InsertPoints /M=0 DimSize(W_PointROI, 0), 1, W_pointROI; AbortOnRTE
+							endif
+							W_pointROI[cnt_point][0]=roiwave[startidx][0]; AbortOnRTE
+							W_pointROI[cnt_point][1]=roiwave[startidx][1]; AbortOnRTE
+							cnt_point+=1
+						else
+							if(cnt_regionIdx!=0)//following insertion will need to have NaN space saved
+								InsertPoints /M=0 DimSize(W_RegionROIIndex, 0), 1, W_RegionROIIndex; AbortOnRTE
+								InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), len+1, W_RegionROIBoundary; AbortOnRTE
+							else //first insertion has the first element as blank
+								InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), len, W_RegionROIBoundary; AbortOnRTE
+							endif
+							W_RegionROIIndex[cnt_regionIdx][0]=cnt_regionStart; AbortOnRTE //boundary start point
+							for(i=0; i<len && cnt_regionStart<DimSize(W_RegionROIBoundary, 0); cnt_regionStart+=1, i+=1)
+								W_RegionROIBoundary[cnt_regionStart][0]=roiwave[startidx+i][0]; AbortOnRTE
+								W_RegionROIBoundary[cnt_regionStart][1]=roiwave[startidx+i][1]; AbortOnRTE
+							endfor
+							W_RegionROIBoundary[cnt_regionStart][]=NaN; AbortOnRTE
+							W_RegionROIIndex[cnt_regionIdx][1]=cnt_regionStart-1; AbortOnRTE //boundary end point
+							cnt_regionStart+=1
+							cnt_regionIdx+=1
+						endif
+						
+						//find the next region/point
+						startidx=endidx+1
+						endidx=startidx
+					endif
+				
+				while(len>0)
+								
+				retVal=0
+			endif
+		else //following frames will used previous tracked particle's edge region to get new ROI defined
+			try
+				
+			catch
+			endtry
+		endif
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	
+	SetDataFolder savedDF
+	
+	return retVal
+End
+
 Function ipImageProcEdgeDetection(String graphName, String analysisFolder, String imageName, 
-											String frameName, Variable frameidx, Variable threshold, 
-											Variable dialation_iteration, variable erosion_iteration, 
-											Variable minArea, Variable allow_subset)
+											String frameName, Variable firstFrame, Variable frameidx, 
+											STRUCT ipImageProcParam & param)
 	Wave image=$imageName
 	Wave frame=$frameName
 	
@@ -1075,11 +1300,14 @@ Function ipImageProcEdgeDetection(String graphName, String analysisFolder, Strin
 		DFREF homedfr=GetDataFolderDFR()
 		
 		MatrixFilter /N=3 /P=3 gauss frame
-		//ImageHistModification /O frame
-		//MatrixFilter /N=3 /P=3 gauss frame
-
-		if(threshold>0)
-			ImageThreshold /Q/M=0/T=(threshold)/i frame
+		
+		if(param.useROI==1)
+			ipImageProcUpdateROIRegions(firstFrame, frameidx, analysisFolder, imageName, param)
+			//ipImageProcGenerateROIMasks()
+		endif
+		
+		if(param.threshold>0)
+			ImageThreshold /Q/M=0/T=(param.threshold)/i frame
 		else
 			ImageThreshold /Q/M=1/i frame
 		endif
@@ -1088,30 +1316,30 @@ Function ipImageProcEdgeDetection(String graphName, String analysisFolder, Strin
 		ImageMorphology /E=4 Closing homedfr:M_ImageMorph
 		ImageMorphology /E=5 Opening homedfr:M_ImageMorph
 
-		if(allow_subset==0)
-			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(minArea)/FILL stats homedfr:M_ImageMorph
+		if(param.allow_subset==0)
+			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(param.minArea)/FILL stats homedfr:M_ImageMorph
 		else
-			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(minArea) stats homedfr:M_ImageMorph
+			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(param.minArea) stats homedfr:M_ImageMorph
 		endif
 		
 		NewDataFolder /O/S outerEdge
-		ImageMorphology /E=4 /I=(erosion_iteration) Erosion homedfr:M_ImageMorph
+		ImageMorphology /E=4 /I=(param.erosion_iteration) Erosion homedfr:M_ImageMorph
 		
-		if(allow_subset==0)
-			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(minArea)/FILL stats :M_ImageMorph
+		if(param.allow_subset==0)
+			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
 		else
-			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(minArea) stats :M_ImageMorph
+			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(param.minArea) stats :M_ImageMorph
 		endif
 		
 		SetDataFOlder ::
 		NewDataFolder /O/S innerEdge
 		
-		ImageMorphology /E=4 /I=(dialation_iteration) Dilation homedfr:M_ImageMorph
+		ImageMorphology /E=4 /I=(param.dialation_iteration) Dilation homedfr:M_ImageMorph
 		
-		if(allow_subset==0)
-			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(minArea)/FILL stats :M_ImageMorph
+		if(param.allow_subset==0)
+			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
 		else
-			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(minArea) stats :M_ImageMorph
+			ImageAnalyzeParticles /Q/D=$frameName /W/E/A=(param.minArea) stats :M_ImageMorph
 		endif
 	catch
 		Variable err=GetRTError(0)
@@ -1193,7 +1421,4 @@ Function /S ipLoadTIFFImageStack(String filename)
 	else
 		return ""
 	endif
-End
-
-Function ipGetFrameData(Variable frameidx)
 End
