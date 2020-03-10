@@ -1,7 +1,8 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
-Function ipLoadFile()
+Function ipLoadFile() //Load image file
+//This will try to identify the type of image file and use proper function to load it
 	Variable refNum=0
 	String fileFilters = "Image Movies (*.tif, *.gif):.tif,.gif;"
 	String message="Please select the image to load"
@@ -145,7 +146,7 @@ Function ipFillSelectedBoundaryOnly(Wave edgeFill, Wave rawEdgeX, Wave rawEdgeY,
 	endtry
 End
 
-Function ipUpdateEdgeTraces(frameidx, graphName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
+Function ipGraphPanelRedrawBoundary(frameidx, graphName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
 	Variable frameidx
 	String graphName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname
 	Variable i, j
@@ -229,7 +230,7 @@ Function ipUpdateEdgeTraces(frameidx, graphName, analysisDF, edgeName, outerEdge
 	SetDataFolder savedDF
 End
 
-Function ipUpdateROITraces(String graphName, String roi_cur_traceName, String roi_allName, String xaxisname, String yaxisname)
+Function ipGraphPanelRedrawROI(String graphName, String roi_cur_traceName, String roi_allName, String xaxisname, String yaxisname)
 	//check if the ROI traces are added to the graph already
 	String trList=TraceNameList(graphName, ";", 1)
 	String roicurtrName=StringFromList(ItemsInList(roi_cur_traceName, ":")-1, roi_cur_traceName, ":")
@@ -244,13 +245,13 @@ Function ipUpdateROITraces(String graphName, String roi_cur_traceName, String ro
 
 	//current ROI definitionis always shown
 	if(WhichListItem(roicurtrName, trList)<0 && WaveExists(roi_cur_trace))
-		ipAddROIByAxis(graphName, xaxisname, yaxisname, roi_cur_trace, r=0, g=32768, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
+		ipGraphPanelAddROIByAxis(graphName, xaxisname, yaxisname, roi_cur_trace, r=0, g=32768, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
 	else
 		ModifyGraph /W=$(graphName) offset($PossiblyQuoteName(roicurtrName))={0,0}
 	endif
 	if(show_roi) //existing record of ROI is shown only when checkbox is true
 		if(WhichListItem(roialltrName, trList)<0 && WaveExists(roi_all))
-			ipAddROIByAxis(graphName, xaxisname, yaxisname, roi_all, r=32768, g=0, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
+			ipGraphPanelAddROIByAxis(graphName, xaxisname, yaxisname, roi_all, r=32768, g=0, b=0, alpha=32768, show_marker=((43<<8)+(5<<4)+2))
 		else
 			ModifyGraph /W=$(graphName) offset($PossiblyQuoteName(roialltrName))={0,0}
 		endif
@@ -635,8 +636,8 @@ Function ipHookFunction(s)
 
 	if(update_graph_window==1)
 		framew[][]=imgw[p][q][frameidx]
-		ipUpdateEdgeTraces(frameidx, s.winName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
-		ipUpdateROITraces(s.winname, roi_cur_traceName, roi_allName, xaxisname, yaxisname)
+		ipGraphPanelRedrawBoundary(frameidx, s.winName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
+		ipGraphPanelRedrawROI(s.winname, roi_cur_traceName, roi_allName, xaxisname, yaxisname)
 	endif
 
 	return hookResult		// If non-zero, we handled event and Igor will ignore it.
@@ -684,7 +685,7 @@ Function /S ipImageProcGetDerivedWaveName(String wname, String suffix)
 	return newwname
 End
 
-Function ipPanelBtnClearROI(ba) : ButtonControl
+Function ipGraphPanelBtnClearAllROI(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -788,7 +789,7 @@ STRUCTURE ipImageProcParam
 	Variable useConstantROI
 ENDSTRUCTURE
 
-Function ipPanelBtnEdgeDetect(ba) : ButtonControl
+Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -799,7 +800,7 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 			String imageName=GetUserData(graphname, "", "IMAGENAME")
 			String frameName=GetUserData(graphname, "", "FRAMENAME")
 			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
-			String analysisFolder=ipGetDerivedWaveName(imageName, ".DF")
+			String analysisFolder=ipImageProcGetDerivedWaveName(imageName, ".DF")
 			Variable proceed=0
 
 			if(DataFolderExists(analysisFolder))
@@ -935,7 +936,7 @@ Function ipPanelBtnEdgeDetect(ba) : ButtonControl
 End
 
 
-Function ipPanelBtnPickCells(ba) : ButtonControl
+Function ipGraphPanelBtnPickCells(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -946,10 +947,10 @@ Function ipPanelBtnPickCells(ba) : ButtonControl
 			String imageName=GetUserData(graphname, "", "IMAGENAME")
 			String frameName=GetUserData(graphname, "", "FRAMENAME")
 			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
-			String analysisFolder=ipGetDerivedWaveName(imageName, ".DF")
+			String analysisFolder=ipImageProcGetDerivedWaveName(imageName, ".DF")
 			String roiName=GetUserData(graphName, "", "ROITRACE")
 
-			ipPickCells(imageName, frameidx, roiName, analysisFolder, -1)
+			ipImageProcPickCells(imageName, frameidx, roiName, analysisFolder, -1)
 			SetWindow $graphname, userdata(PICKSTATUS)="1"
 
 			break
@@ -1057,7 +1058,7 @@ Function ipFindParticleBoundaryInfoByXY(Variable x, Variable y, Wave W_info, Var
 	return retVal
 End
 
-Function ipPickCells(String imageName, Variable frameidx, String roiName, String analysisFolder, Variable prevFrame)
+Function ipImageProcPickCells(String imageName, Variable frameidx, String roiName, String analysisFolder, Variable prevFrame)
 
 	DFREF savedDF=GetDataFolderDFR()
 
@@ -1168,7 +1169,7 @@ Function ipPickCells(String imageName, Variable frameidx, String roiName, String
 	SetDataFolder savedDF
 End
 
-Function ipImageProcGetNextBoundary(Wave boundary, Variable & startidx, Variable & endidx)
+Function ipImageProcGetNextBoundaryGroup(Wave boundary, Variable & startidx, Variable & endidx)
 	Variable maxidx=DimSize(boundary, 0); AbortOnRTE
 
 	Variable i
@@ -1197,6 +1198,7 @@ Function ipImageProcGetNextBoundary(Wave boundary, Variable & startidx, Variable
 End
 
 Function ipImageProcUpdateROIRegions(Variable firstFrame, Variable currentFrame, String analysisFolder, String imageName, STRUCT ipImageProcParam & param)
+//
 	Wave imgw=$imageName
 	Variable maxFrame
 
@@ -1218,7 +1220,7 @@ Function ipImageProcUpdateROIRegions(Variable firstFrame, Variable currentFrame,
 		NewDataFolder /O/S :$(num2istr(currentFrame)); AbortOnRTE
 
 		if(firstFrame==currentFrame || param.useConstantROI==1) //first frame will use globally/manually defined ROI
-			Wave roiwave=$ipGetDerivedWaveName(imageName, ".roi"); AbortOnRTE
+			Wave roiwave=$ipImageProcGetDerivedWaveName(imageName, ".roi"); AbortOnRTE
 			if(WaveExists(roiwave))
 				//we need to find the ROIs with more than one points which will define the "regions"
 				//single point ROIs will be used just to mark the objects that has its center close to that spot for tracking
@@ -1235,7 +1237,7 @@ Function ipImageProcUpdateROIRegions(Variable firstFrame, Variable currentFrame,
 				Variable i
 
 				do
-					len=ipImageProcGetNextBoundary(roiwave, startidx, endidx); AbortOnRTE
+					len=ipImageProcGetNextBoundaryGroup(roiwave, startidx, endidx); AbortOnRTE
 
 					if(len>0)
 						if(len==1)
@@ -1386,9 +1388,9 @@ Function ipEnableHook(String imgWinName)
 
 	CheckBox new_roi, win=$panelName, pos={0, 70}, bodywidth=50, title="NewROI"
 	CheckBox enclose_roi, win=$panelName, pos={50, 70}, bodywidth=50, title="Enclosed"
-	Button clear_roi, win=$panelName, pos={0, 90}, size={100, 20}, title="ClearROI",proc=ipPanelBtnClearROI
-	Button imgproc_edge, win=$panelName, pos={0, 110}, size={100,20}, title="DetectEdge",proc=ipPanelBtnEdgeDetect
-	Button imgproc_selcell, win=$panelName, pos={0, 130}, size={100,20}, title="PickCells", proc=ipPanelBtnPickCells
+	Button clear_roi, win=$panelName, pos={0, 90}, size={100, 20}, title="ClearROI",proc=ipGraphPanelBtnClearAllROI
+	Button imgproc_edge, win=$panelName, pos={0, 110}, size={100,20}, title="DetectEdge",proc=ipGraphPanelBtnEdgeDetect
+	Button imgproc_selcell, win=$panelName, pos={0, 130}, size={100,20}, title="PickCells", proc=ipGraphPanelBtnPickCells
 
 	CheckBox show_ROI, win=$panelName, pos={110,70}, bodywidth=50, title="ShowROI"
 	CheckBox display_edges, win=$panelName, pos={110, 90}, bodywidth=50, title="ShowEdge"
@@ -1420,7 +1422,9 @@ Function ipDisplayImage(String wname)
 	endif
 End
 
-Function /S ipLoadTIFFImageStack(String filename)
+Function /S ipLoadTIFFImageStack(String filename) //Load TIFF file
+//This functino will load TIFF file, and store in a a single wave
+//All frames in the TIFF will be loaded
 	Variable start_idx=0
 	Variable total_images=-1
 	String wname="", path="", extension=""
