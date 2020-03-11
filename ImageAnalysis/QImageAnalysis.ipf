@@ -87,7 +87,7 @@ Function ipEnableHook(String graphname)
 	NewDataFolder /O $analysisDF
 	SetWindow $graphname userdata(ANALYSISDF)=analysisDF
 	SetWindow $graphname userdata(ROIAVAILABLE)="0"
-	baseName=analysisDF+":"+ipGetBaseName(baseName)
+	baseName=analysisDF+":"+ipGetShortNameOnly(baseName)
 	SetWindow $graphname userdata(BASENAME)=baseName
 	
 	String cordstr="x: , y:"
@@ -109,7 +109,7 @@ Function ipEnableHook(String graphname)
 	CheckBox show_line, win=$panelName, pos={135,70}, bodywidth=50, title="Line",proc=ipGraphPanelCbRedraw
 	CheckBox show_tag, win=$panelName, pos={170,70}, bodywidth=50, title="Tag",proc=ipGraphPanelCbRedraw
 	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="Show user ROI",proc=ipGraphPanelCbRedraw
-	Checkbox show_boundary, win=$panelName, pos={105,110}, bodywidth=50, title="Show boundary",proc=ipGraphPanelCbRedraw
+	Checkbox show_edges, win=$panelName, pos={105,110}, bodywidth=50, title="Show detected edges",proc=ipGraphPanelCbRedraw
 
 	SetWindow $graphname hook(ipHook)=ipHookFunction
 End
@@ -183,7 +183,7 @@ Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Var
 	String wname=NameOfWave(trace)
 
 	String trList=TraceNameList(graphName, ";", 1)
-	String wbasename=ipGetBaseName(wname)
+	String wbasename=ipGetShortNameOnly(wname)
 	
 	if(!WaveExists(trace))
 		return -1
@@ -349,8 +349,12 @@ Function ipGraphPanelRedrawEdges(String graphName, Variable frameidx)
 	String baseName=GetUserData(graphName, "", "BASENAME")
 	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
 	String imgName=GetUserData(graphName, "", "IMAGENAME")
+	String panelName=GetUserData(graphName, "", "PANELNAME")
 	Wave imgw=$imgName
 	
+	ControlInfo /W=$panelName show_edges
+	Variable show_edges=V_value
+
 	if(!WaveExists(imgw))
 		return -1
 	endif
@@ -370,7 +374,7 @@ Function ipGraphPanelRedrawEdges(String graphName, Variable frameidx)
 		Wave inneredgeBoundary=$(homeDFstr+"innerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
 		Wave outeredgeBoundary=$(homeDFstr+"outerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
 
-		if(WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
+		if(show_edges && WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
 			Duplicate /O edgeBoundary, $edgeName
 			Duplicate /O inneredgeBoundary, $innerEdgeName
 			Duplicate /O outeredgeBoundary, $outerEdgeName
@@ -417,17 +421,17 @@ Function ipGraphPanelRedrawROI(String graphName)
 	//current user ROI definitionis always shown
 	if(strlen(roi_cur_traceName)>0)
 		ipGraphPanelAddROIByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4)
-		ModifyGraph /W=$(graphName) offset($ipGetBaseName(roi_cur_traceName))={0,0}
+		ModifyGraph /W=$(graphName) offset($ipGetShortNameOnly(roi_cur_traceName))={0,0}
 	endif
 	
 	if(show_userroi) //existing record of user ROI is shown only when checkbox is true
 		if(strlen(roi_allName)>0)
 			ipGraphPanelAddROIByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4)
-			ModifyGraph /W=$(graphName) offset($ipGetBaseName(roi_cur_traceName))={0,0}
+			ModifyGraph /W=$(graphName) offset($ipGetShortNameOnly(roi_cur_traceName))={0,0}
 		endif
 	else
 		if(strlen(roi_allName)>0)
-			RemoveFromGraph /W=$graphname /Z $ipGetBaseName(roi_allName)
+			RemoveFromGraph /W=$graphname /Z $ipGetShortNameOnly(roi_allName)
 		endif
 	endif
 	
@@ -446,10 +450,10 @@ Function ipGraphPanelRedrawROI(String graphName)
 			NewDataFolder /O/S :ROI; AbortOnRTE
 			
 			String dotwaveName=ipGenerateDerivedName(baseName, ".f.roi.dot"); AbortOnRTE
-			String dotwaveBaseName=ipGetBaseName(dotwaveName); AbortOnRTE
+			String dotwaveBaseName=ipGetShortNameOnly(dotwaveName); AbortOnRTE
 			
 			String linewaveName=ipGenerateDerivedName(baseName, ".f.roi.line"); AbortOnRTE
-			String linewaveBaseName=ipGetBaseName(linewaveName); AbortOnRTE
+			String linewaveBaseName=ipGetShortNameOnly(linewaveName); AbortOnRTE
 			
 			String tagwave=ipGenerateDerivedName(baseName, ".f.roi.tags"); AbortOnRTE
 			
@@ -925,7 +929,7 @@ Function /S ipGenerateDerivedName(String wname, String suffix)
 	return newwname
 End
 
-Function /S ipGetBaseName(String wname)
+Function /S ipGetShortNameOnly(String wname) //return name without folder/path involved, quoted if necessary
 	return PossiblyQuoteName(StringFromList(ItemsInList(wname, ":")-1, wname, ":"))
 End
 
@@ -1214,7 +1218,7 @@ Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				dynamicROITracking=dialation_iteration+erosion_iteration
 				PROMPT dynamicROITracking, "Iterations of expansion from previous objects' boundaries"
 				DoPrompt "Use dynamic ROI by tracking previously identified objects?", dynamicROITracking
-				if(V_flag==0)
+				if(V_flag==1)
 					dynamicROITracking=0
 				endif
 			endif
@@ -1553,6 +1557,23 @@ Function ipBoundaryGetNextGroup(Wave boundary, Variable & startidx, Variable & e
 	endif
 End
 
+Function ipBoundaryFindIndexByPoint(Variable x, Variable y, Wave W_info, Variable & startp, Variable &endp, Variable & centerx, Variable & centery)
+	startp=-1
+	endp=-1
+	centerx=NaN
+	centery=NaN
+	Variable i
+	
+	for(i=0; i<DimSize(W_info, 0); i+=1)
+		if(x>=W_info[i][2] && x<=W_info[i][3] && y>=W_info[i][4] && y<=W_info[i][5])
+			startp=W_info[i][0]
+			endp=W_info[i][1]
+			centerx=W_info[i][8]
+			centery=W_info[i][9]
+		endif
+	endfor
+End
+
 Function ipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Variable refFrame)
 //This function will update ROI records from refFrame's ROI datafolder
 //If the refFrame < 0, user ROI (defined by mouse clicks) will be used for update
@@ -1649,7 +1670,7 @@ Function ipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Var
 	return retVal
 End
 
-Function ipImageProcGenerateROIMaskFromBoundary(String graphName, Wave boundaryX, Wave boundaryY, String roimask_name, [Variable valueE, Variable valueI])
+Function ipImageProcGenerateROIMaskFromBoundary(String graphName, Wave boundaryX, Wave boundaryY, String roimask_name, [Variable valueE, Variable valueI, Variable erosion, Variable dilation])
 	if(ParamIsDefault(valueE)) // for background
 		valueE=1
 	endif
@@ -1658,7 +1679,7 @@ Function ipImageProcGenerateROIMaskFromBoundary(String graphName, Wave boundaryX
 	endif
 	
 	Wave roimask=$roimask_name
-	String roimaskbasename=ipGetBaseName(roimask_name)
+	String roimaskbasename=ipGetShortNameOnly(roimask_name)
 	ipGraphPanelAddImageByAxis(graphName, roimask)
 	
 	DrawAction /W=$graphName /L=ProgFront delete
@@ -1673,6 +1694,16 @@ Function ipImageProcGenerateROIMaskFromBoundary(String graphName, Wave boundaryX
 	Wave M_ROIMask=:M_ROIMask
 	Duplicate /O M_ROIMask, roimask
 	RemoveImage /W=$graphName /Z $roimaskbasename
+	
+	if(!ParamIsDefault(erosion) && erosion>0)
+		ImageMorphology /i=(erosion) /E=4 Erosion roimask
+		Duplicate /O :M_ImageMorph, roimask
+	endif
+	
+	if(!ParamIsDefault(dilation) && dilation>0)
+		ImageMorphology /i=(dilation) /E=4 Dilation roimask
+		Duplicate /O :M_ImageMorph, roimask
+	endif
 End
 
 Function ipImageProcGenerateROIMask(String graphName, DFREF ROIDF, Variable roi_idx, Variable frameidx, Wave frame, String roimask_name, Variable dynamicTracking)
@@ -1685,8 +1716,53 @@ Function ipImageProcGenerateROIMask(String graphName, DFREF ROIDF, Variable roi_
 		if(dynamicTracking>0)
 			Variable refFrameIdx=frameidx-1
 			if(refFrameIdx>=0)
-			
-				fallback=0
+				String refDF=GetUserData(graphName, "", "ANALYSISDF")+":"+PossiblyQuoteName(num2istr(refFrameIdx))+":"
+				String refPointROIName=refDF+"ROI:W_PointROI"
+				String refEdgeWaveName=refDF+"innerEdge:DetectedEdges:W_Boundary"
+				String refEdgeInfoWaveName=refDF+"innerEdge:DetectedEdges:W_Info"
+				
+				Wave refPointROI=$refPointROIName
+				Wave refEdgeWave=$refEdgeWaveName
+				Wave refEdgeInfoWave=$refEdgeInfoWaveName
+				
+				if(WaveExists(refPointROI) && WaveExists(refEdgeWave) && WaveExists(refEdgeInfoWave))
+					Variable maxidx=DimSize(refPointROI, 0)
+					if(roi_idx==0) //first call
+						Make /O /D /N=(DimSize(refPointROI, 0), 2) ROIDF:W_PointROI=NaN
+						Wave currentPointROI=ROIDF:W_PointROI
+					else
+						Wave currentPointROI=ROIDF:W_PointROI
+						if(DimSize(currentPointROI, 0)!=DimSize(refPointROI, 0) || DimSize(currentPointROI, 1)!=2)
+							print "error in dimensions of point ROIs for frame ", frameidx
+							return -1
+						endif
+					endif
+					
+					if(roi_idx>=maxidx)
+						return -1
+					endif
+					
+					for(nextidx=roi_idx; nextidx<maxidx; nextidx+=1)
+						Variable startp=-1, endp=-1, centerx=NaN, centery=NaN
+						if(NumType(refPointROI[nextidx][0])==0)
+							ipBoundaryFindIndexByPoint(refPointROI[nextidx][0], refPointROI[nextidx][1], refEdgeInfoWave, startp, endp, centerx, centery)
+							currentPointROI[nextidx][0]=centerx
+							currentPointROI[nextidx][1]=centery
+							if(startp>=0 && endp>=startp)
+								Make /O/D/N=(endp-startp+1) ROIDF:M_ROIX, ROIDF:M_ROIY
+								Wave M_ROIX=ROIDF:M_ROIX
+								Wave M_ROIY=ROIDF:M_ROIY
+								M_ROIX=refEdgeWave[startp+p][0]
+								M_ROIY=refEdgeWave[startp+p][1]
+								Make /O /N=(DimSize(frame, 0), DimSize(frame, 1)) /Y=0x48 $roimask_name=0
+								ipImageProcGenerateROIMaskFromBoundary(graphName, M_ROIX, M_ROIY, roimask_name, erosion=dynamicTracking)
+								nextidx+=1 //this part is done, go and wait for next call
+								break
+							endif
+						endif
+					endfor
+					fallback=0
+				endif
 			endif
 		endif
 		
@@ -1704,12 +1780,11 @@ Function ipImageProcGenerateROIMask(String graphName, DFREF ROIDF, Variable roi_
 				tmpx[]=W_region[startidx+p][0]
 				tmpy[]=W_region[startidx+p][1]
 				
-				ipImageProcGenerateROIMaskFromBoundary(graphName, tmpx, tmpy, roimask_name)
-				
+				ipImageProcGenerateROIMaskFromBoundary(graphName, tmpx, tmpy, roimask_name)				
 				nextidx=roi_idx+1
+			else
+				nextidx=-1
 			endif
-		else
-			nextidx=-1
 		endif
 	endif
 	
@@ -1763,6 +1838,10 @@ Function ipImageProcAddDetectedEdge(DFREF homedfr)
 		
 		Variable boundary_baseidx=0
 		Variable info_baseidx=0
+		
+		if(DimSize(W_newx, 0)==0)
+			return -1
+		endif
 		
 		if(!WaveExists(W_Boundary))
 			Make /D/O/N=(DimSize(W_newx, 0), 2) edgeDF:W_Boundary; AbortOnRTE
@@ -1838,6 +1917,7 @@ Function ipImageProcEdgeDetection(String graphName, STRUCT ipImageProcParam & pa
 	DFREF parentdfr=GetDataFolderDFR()
 	try
 		for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
+			SetWindow $graphName userdata(FRAMEIDX)=num2istr(frameidx)
 			SetDataFolder parentdfr
 			NewDataFolder /O/S $(num2istr(frameidx))
 			DFREF homedfr=GetDataFolderDFR()
@@ -1927,7 +2007,10 @@ Function ipImageProcEdgeDetection(String graphName, STRUCT ipImageProcParam & pa
 				
 				SetDataFolder :: //back to home directory for ROI reading in the next loop				
 			while(roi_counts>=0)
-			
+			if(!ParamIsDefault(progress))
+				ipGraphPanelRedrawAll(graphName)
+				DoUpdate
+			endif
 		endfor
 	catch
 		Variable err=GetRTError(0)
