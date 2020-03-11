@@ -81,12 +81,14 @@ Function ipEnableHook(String graphname)
 	String baseName=graphname
 	if(strlen(imgName)>0)
 		baseName=imgName
-	endif	
-	SetWindow $graphname userdata(BASENAME)=baseName
+	endif
 	
 	String analysisDF=ipGenerateDerivedName(baseName, ".DF")
+	NewDataFolder /O $analysisDF
 	SetWindow $graphname userdata(ANALYSISDF)=analysisDF
 	SetWindow $graphname userdata(ROIAVAILABLE)="0"
+	baseName=analysisDF+":"+ipGetBaseName(baseName)
+	SetWindow $graphname userdata(BASENAME)=baseName
 	
 	String cordstr="x: , y:"
 	String zval="val:"
@@ -138,8 +140,7 @@ Function ipDisplayImage(String wname)
 		String yaxisname=StringByKey("YAXIS", imginfo)
 		SetWindow $imgWinName userdata(IXAXISNAME)=xaxisname
 		SetWindow $imgWinName userdata(IYAXISNAME)=yaxisname
-		print xaxisname
-		print yaxisname
+		
 		ipEnableHook(imgWinName)
 	endif
 End
@@ -169,7 +170,7 @@ Function /S ipLoadTIFFImageStack(String filename) //Load TIFF file
 End
 
 
-Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker, Variable mode])
+Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker, Variable mode, Variable redundantOK])
 	String xaxisname=GetUserData(graphName, "", "ROI_XAXISNAME")
 	String yaxisname=GetUserData(graphName, "", "ROI_YAXISNAME")
 	
@@ -181,9 +182,18 @@ Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Var
 	String yaxtype=StringByKey("AXTYPE", AxisInfo(graphName, yaxisname))
 	String wname=NameOfWave(trace)
 
+	String trList=TraceNameList(graphName, ";", 1)
+	String wbasename=ipGetBaseName(wname)
+	
+	if(!WaveExists(trace))
+		return -1
+	endif
+	
 	if(cmpstr(xaxtype, "bottom")==0)
 		if(cmpstr(yaxtype, "left")==0)
-			AppendToGraph /W=$(graphName) /B=$xaxisname /L=$yaxisname trace[][1] vs trace[][0]
+			if(redundantOK==1 || WhichListItem(wbasename, trList)<0)
+				AppendToGraph /W=$(graphName) /B=$xaxisname /L=$yaxisname trace[][1] vs trace[][0]
+			endif
 			if(mode>0)
 				ModifyGraph /W=$(graphName) mode($wname)=(mode)
 			else
@@ -195,7 +205,9 @@ Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Var
 				ModifyGraph /W=$(graphName) rgb($wname)=(r, g, b, alpha)
 			endif
 		elseif(cmpstr(yaxtype, "right")==0)
-			AppendToGraph /W=$(graphName) /B=$xaxisname /R=$yaxisname trace[][1] vs trace[][0]
+			if(redundantOK==1 || WhichListItem(wbasename, trList)<0)
+				AppendToGraph /W=$(graphName) /B=$xaxisname /R=$yaxisname trace[][1] vs trace[][0]
+			endif
 			if(mode>0)
 				ModifyGraph /W=$(graphName) mode($wname)=(mode)
 			else
@@ -210,7 +222,9 @@ Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Var
 		endif
 	elseif(cmpstr(xaxtype, "top")==0)
 		if(cmpstr(yaxtype, "left")==0)
-			AppendToGraph /W=$(graphName) /T=$xaxisname /L=$yaxisname trace[][1] vs trace[][0]
+			if(redundantOK==1 || WhichListItem(wbasename, trList)<0)
+				AppendToGraph /W=$(graphName) /T=$xaxisname /L=$yaxisname trace[][1] vs trace[][0]
+			endif
 			if(mode>0)
 				ModifyGraph /W=$(graphName) mode($wname)=(mode)
 			else
@@ -222,7 +236,9 @@ Function ipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Var
 				ModifyGraph /W=$(graphName) rgb($wname)=(r, g, b, alpha)
 			endif
 		elseif(cmpstr(yaxtype, "right")==0)
-			AppendToGraph /W=$(graphName) /T=$xaxisname /R=$yaxisname trace[][1] vs trace[][0]
+			if(redundantOK==1 || WhichListItem(wbasename, trList)<0)
+				AppendToGraph /W=$(graphName) /T=$xaxisname /R=$yaxisname trace[][1] vs trace[][0]
+			endif
 			if(mode>0)
 				ModifyGraph /W=$(graphName) mode($wname)=(mode)
 			else
@@ -328,89 +344,59 @@ Function ipFillSelectedBoundaryOnly(Wave edgeFill, Wave rawEdgeX, Wave rawEdgeY,
 	endtry
 End
 
-//Function ipGraphPanelRedrawBoundary(frameidx, graphName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname)
-//	Variable frameidx
-//	String graphName, analysisDF, edgeName, outerEdgeName, innerEdgeName, xaxisname, yaxisname
-//	Variable i, j
-//
-//	DFREF savedDF=GetDataFolderDFR(); AbortOnRTE
-//	try
-//		String trList=TraceNameList(graphName, ";", 1)
-//		String edgeTraceName=StringFromList(ItemsInList(edgeName, ":")-1, edgeName, ":")
-//		String outerEdgeTraceName=StringFromList(ItemsInList(outerEdgeName, ":")-1, outerEdgeName, ":")
-//		String innerEdgeTraceName=StringFromList(ItemsInList(innerEdgeName, ":")-1, innerEdgeName, ":")
-//		Variable pickStatus=str2num(GetUserData(graphName, "", "PICKSTATUS"))
-//
-//		SetDataFolder $analysisDF; AbortOnRTE
-//		SetDataFolder $(num2istr(frameidx)); AbortOnRTE //getting into the datafolder for the frame
-//
-//		DFREF dfr=GetDataFolderDFR(); AbortOnRTE
-//		Wave edgex=dfr:W_BoundaryX; AbortOnRTE
-//		Wave edgey=dfr:W_BoundaryY; AbortOnRTE
-//		DFREF innerdfr=dfr:innerEdge; AbortOnRTE
-//		DFREF outerdfr=dfr:outerEdge; AbortOnRTE
-//		Wave inneredgex=innerdfr:W_BoundaryX; AbortOnRTE
-//		Wave inneredgey=innerdfr:W_BoundaryY; AbortOnRTE
-//		Wave outeredgex=outerdfr:W_BoundaryX; AbortOnRTE
-//		Wave outeredgey=outerdfr:W_BoundaryY; AbortOnRTE
-//		Wave pickedInfo=dfr:W_pickedInfo; AbortOnRTE
-//
-//		if(WaveExists(inneredgey) && WaveExists(inneredgex) && WaveExists(outeredgex) && WaveExists(outeredgey) && WaveExists(edgex) && WaveExists(edgey))
-//			Make /O /N=(DimSize(edgex, 0), 2) $edgeName=NaN; AbortOnRTE
-//			Make /O /N=(DimSize(inneredgex, 0), 2) $innerEdgeName=NaN; AbortOnRTE
-//			Make /O /N=(DimSize(outeredgex, 0), 2) $outerEdgeName=NaN; AbortOnRTE
-//
-//			if(pickStatus==1 && WaveExists(pickedInfo))
-//				Wave e=$edgeName; AbortOnRTE
-//				ipFillSelectedBoundaryOnly(e, edgex, edgey, pickedInfo, 1); AbortOnRTE
-//
-//				Wave e=$innerEdgeName; AbortOnRTE
-//				ipFillSelectedBoundaryOnly(e, inneredgex, inneredgey, pickedInfo, 0); AbortOnRTE
-//
-//				Wave e=$outeredgeName; AbortOnRTE
-//				ipFillSelectedBoundaryOnly(e, outeredgex, outeredgey, pickedInfo, 2); AbortOnRTE
-//			else
-//				Wave e=$edgeName; AbortOnRTE
-//				e[][0]=edgex[p]; AbortOnRTE
-//				e[][1]=edgey[p]; AbortOnRTE
-//
-//				Wave e=$innerEdgeName; AbortOnRTE
-//				e[][0]=inneredgex[p]; AbortOnRTE
-//				e[][1]=inneredgey[p]; AbortOnRTE
-//
-//				Wave e=$outeredgeName; AbortOnRTE
-//				e[][0]=outeredgex[p]; AbortOnRTE
-//				e[][1]=outeredgey[p]; AbortOnRTE
-//			endif
-//		endif
-//
-//		Wave e=$edgeName; AbortOnRTE
-//		if(WhichListItem(edgeTraceName, trList)<0 && WaveExists(e))
-//			ipGraphPanelAddROIByAxis(graphName, e, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
-//		endif
-//
-//		Wave e=$inneredgeName; AbortOnRTE
-//		if(WhichListItem(innerEdgeTraceName, trList)<0 && WaveExists(e))
-//			ipGraphPanelAddROIByAxis(graphName, e, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
-//		endif
-//
-//		Wave e=$outeredgeName; AbortOnRTE
-//		if(WhichListItem(outerEdgeTraceName, trList)<0 && WaveExists(e))
-//			ipGraphPanelAddROIByAxis(graphName, e, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
-//		endif
-//	catch
-//		Variable err=GetRTError(0)
-//		if(err!=0)
-//			//print "Error: ", GetErrMessage(err)
-//			err=GetRTError(1)
-//
-//			Make /O /N=(0, 2) $edgeName; AbortOnRTE
-//			Make /O /N=(0, 2) $innerEdgeName; AbortOnRTE
-//			Make /O /N=(0, 2) $outerEdgeName; AbortOnRTE
-//		endif
-//	endtry
-//	SetDataFolder savedDF
-//End
+Function ipGraphPanelRedrawEdges(String graphName, Variable frameidx)
+	Variable i, j
+	String baseName=GetUserData(graphName, "", "BASENAME")
+	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
+	String imgName=GetUserData(graphName, "", "IMAGENAME")
+	Wave imgw=$imgName
+	
+	if(!WaveExists(imgw))
+		return -1
+	endif
+
+	DFREF savedDF=GetDataFolderDFR()
+	try
+		NewDataFolder /O/S $analysisDF; AbortOnRTE
+		
+		String edgeName=ipGenerateDerivedName(baseName, ".edge"); AbortOnRTE
+		String outerEdgeName=ipGenerateDerivedName(baseName, ".outeredge"); AbortOnRTE
+		String innerEdgeName=ipGenerateDerivedName(baseName, ".inneredge"); AbortOnRTE
+		NewDataFolder /O/S $(num2istr(frameidx)); AbortOnRTE //getting into the datafolder for the frame
+
+		String homeDFstr=GetDataFolder(1); AbortOnRTE
+		
+		Wave edgeBoundary=$(homeDFstr+"DetectedEdges:W_Boundary"); AbortOnRTE
+		Wave inneredgeBoundary=$(homeDFstr+"innerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
+		Wave outeredgeBoundary=$(homeDFstr+"outerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
+
+		if(WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
+			Duplicate /O edgeBoundary, $edgeName
+			Duplicate /O inneredgeBoundary, $innerEdgeName
+			Duplicate /O outeredgeBoundary, $outerEdgeName
+		else
+			Make /O /N=(1, 2) $edgeName=NaN; AbortOnRTE
+			Make /O /N=(1, 2) $innerEdgeName=NaN; AbortOnRTE
+			Make /O /N=(1, 2) $outerEdgeName=NaN; AbortOnRTE
+		endif
+
+		ipGraphPanelAddROIByAxis(graphName, $outeredgeName, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
+		ipGraphPanelAddROIByAxis(graphName, $edgeName, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
+		ipGraphPanelAddROIByAxis(graphName, $inneredgeName, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
+
+	catch
+		Variable err=GetRTError(0)
+		if(err!=0)
+			//print "Error: ", GetErrMessage(err)
+			err=GetRTError(1)
+
+			Make /O /N=(0, 2) $edgeName; AbortOnRTE
+			Make /O /N=(0, 2) $innerEdgeName; AbortOnRTE
+			Make /O /N=(0, 2) $outerEdgeName; AbortOnRTE
+		endif
+	endtry
+	SetDataFolder savedDF
+End
 
 Function ipGraphPanelRedrawROI(String graphName)
 	//check if the ROI traces are added to the graph already
@@ -419,10 +405,6 @@ Function ipGraphPanelRedrawROI(String graphName)
 	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
 	Variable frameidx=str2num(GetUserData(graphName, "", "FRAMEIDX"))
 	String baseName=GetUserData(graphName, "", "BASENAME")
-	
-	String trList=TraceNameList(graphName, ";", 1)
-	String roicurtrName=StringFromList(ItemsInList(roi_cur_traceName, ":")-1, roi_cur_traceName, ":")
-	String roialltrName=StringFromList(ItemsInList(roi_allName, ":")-1, roi_allName, ":")
 	
 	String panelName=GetUserData(graphName, "", "PANELNAME")
 	
@@ -433,27 +415,19 @@ Function ipGraphPanelRedrawROI(String graphName)
 	Wave roi_all=$roi_allName
 
 	//current user ROI definitionis always shown
-	if(strlen(roicurtrName)>0)
-		if(WhichListItem(roicurtrName, trList)<0 && WaveExists(roi_cur_trace))
-			ipGraphPanelAddROIByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4)
-		else
-			ModifyGraph /W=$(graphName) offset($PossiblyQuoteName(roicurtrName))={0,0}
-		endif
+	if(strlen(roi_cur_traceName)>0)
+		ipGraphPanelAddROIByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4)
+		ModifyGraph /W=$(graphName) offset($ipGetBaseName(roi_cur_traceName))={0,0}
 	endif
 	
 	if(show_userroi) //existing record of user ROI is shown only when checkbox is true
 		if(strlen(roi_allName)>0)
-			if(WhichListItem(roialltrName, trList)<0 && WaveExists(roi_all))
-				ipGraphPanelAddROIByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4)
-			else
-				ModifyGraph /W=$(graphName) offset($PossiblyQuoteName(roialltrName))={0,0}
-			endif
+			ipGraphPanelAddROIByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4)
+			ModifyGraph /W=$(graphName) offset($ipGetBaseName(roi_cur_traceName))={0,0}
 		endif
 	else
 		if(strlen(roi_allName)>0)
-			if(WhichListItem(roialltrName, trList)>=0 && WaveExists(roi_all))
-				RemoveFromGraph /W=$graphname /Z $roialltrName
-			endif
+			RemoveFromGraph /W=$graphname /Z $ipGetBaseName(roi_allName)
 		endif
 	endif
 	
@@ -472,10 +446,10 @@ Function ipGraphPanelRedrawROI(String graphName)
 			NewDataFolder /O/S :ROI; AbortOnRTE
 			
 			String dotwaveName=ipGenerateDerivedName(baseName, ".f.roi.dot"); AbortOnRTE
-			String dotwaveBaseName=StringFromList(ItemsInList(dotwaveName, ":")-1, dotwaveName, ":"); AbortOnRTE
+			String dotwaveBaseName=ipGetBaseName(dotwaveName); AbortOnRTE
 			
 			String linewaveName=ipGenerateDerivedName(baseName, ".f.roi.line"); AbortOnRTE
-			String linewaveBaseName=StringFromList(ItemsInList(linewaveName, ":")-1, linewaveName, ":"); AbortOnRTE
+			String linewaveBaseName=ipGetBaseName(linewaveName); AbortOnRTE
 			
 			String tagwave=ipGenerateDerivedName(baseName, ".f.roi.tags"); AbortOnRTE
 			
@@ -489,11 +463,8 @@ Function ipGraphPanelRedrawROI(String graphName)
 			endif
 			Wave dotwave=$dotwaveName; AbortOnRTE
 			if(show_dot && WaveExists(dotwave))				
-				if(WhichListItem(dotwaveBaseName, trList)<0)
-					ipGraphPanelAddROIByAxis(graphName, dotwave, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
-				else
-					ModifyGraph /W=$(graphName) offset($PossiblyQuoteName(dotwaveBaseName))={0,0}
-				endif
+				ipGraphPanelAddROIByAxis(graphName, dotwave, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
+				ModifyGraph /W=$(graphName) offset($dotwaveBaseName)={0,0}
 			else
 				RemoveFromGraph /W=$graphname /Z $dotwaveBaseName; AbortOnRTE				
 			endif			
@@ -514,11 +485,8 @@ Function ipGraphPanelRedrawROI(String graphName)
 			Wave linewave=$linewaveName; AbortOnRTE
 			
 			if(show_line && WaveExists(linewave))				
-				if(WhichListItem(linewaveBaseName, trList)<0)
-					ipGraphPanelAddROIByAxis(graphName, linewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
-				else
-					ModifyGraph /W=$(graphName) offset($PossiblyQuoteName(linewaveBaseName))={0,0}
-				endif
+				ipGraphPanelAddROIByAxis(graphName, linewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
+				ModifyGraph /W=$(graphName) offset($linewaveBaseName)={0,0}
 			else
 				RemoveFromGraph /W=$graphname /Z $linewaveBaseName; AbortOnRTE
 			endif			
@@ -540,6 +508,7 @@ Function ipGraphPanelRedrawAll(String graphName)
 	endif
 	
 	ipGraphPanelRedrawROI(graphName)
+	ipGraphPanelRedrawEdges(graphName, frameidx)
 End
 
 Function ipHookFunction(s)
@@ -956,6 +925,10 @@ Function /S ipGenerateDerivedName(String wname, String suffix)
 	return newwname
 End
 
+Function /S ipGetBaseName(String wname)
+	return PossiblyQuoteName(StringFromList(ItemsInList(wname, ":")-1, wname, ":"))
+End
+
 Function ipGraphPanelBtnSaveROIToFrame(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
@@ -1153,6 +1126,7 @@ STRUCTURE ipImageProcParam
 	Variable filterMatrixSize
 	Variable filterIteration
 	Variable useROI
+	Variable dynamicROITracking
 	
 	String analysisDF
 	String imageName
@@ -1206,6 +1180,7 @@ Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 			Variable filterIteration=1
 			Variable useROI=1
 			Variable useConstantROI=1
+			Variable dynamicROITracking=0
 
 			PROMPT filterMatrixSize, "Gaussian filter matrix size"
 			PROMPT filterIteration, "Gaussian filter iteration"
@@ -1236,11 +1211,11 @@ Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 			endif
 
 			if(useROI)
-				DoAlert 1, "Use constant ROI for all frames or use regions identified in previous frame to guide the next frame?"
-				if(V_flag==1)
-					useConstantROI=1
-				else
-					useConstantROI=0
+				dynamicROITracking=dialation_iteration+erosion_iteration
+				PROMPT dynamicROITracking, "Iterations of expansion from previous objects' boundaries"
+				DoPrompt "Use dynamic ROI by tracking previously identified objects?", dynamicROITracking
+				if(V_flag==0)
+					dynamicROITracking=0
 				endif
 			endif
 
@@ -1255,6 +1230,7 @@ Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 			param.filterMatrixSize=filterMatrixSize
 			param.filterIteration=filterIteration
 			param.useROI=useROI
+			param.dynamicROITracking=dynamicROITracking
 			
 			param.analysisDF=analysisDF
 			param.imageName=imageName
@@ -1270,21 +1246,20 @@ Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 
 			Variable useIgorDraw=0	// set true to force Igor's own draw method rather than native
 
-			NewPanel/FLT /N=myProgress/W=(285,111,739,193)
-			SetVariable frame_idx, pos={25,10}, bodywidth=300, value=_STR:"", disable=2
-			ValDisplay valdisp0,pos={25,32},size={342,18},limits={0,100,0},barmisc={0,0}
+			NewPanel/FLT /N=myProgress/W=(0,0,250,100)
+			SetVariable frame_idx, pos={25,20}, bodywidth=150, value=_STR:"", disable=2
+			ValDisplay valdisp0,pos={25,40},size={150,20},limits={0,100,0},barmisc={0,0}
 			ValDisplay valdisp0,value= _NUM:0
-			ValDisplay valdisp0,mode= 4	// candy stripe
+			ValDisplay valdisp0,mode= 4 // candy stripe
 			if( useIgorDraw )
 				ValDisplay valdisp0,highColor=(0,65535,0)
 			endif
-			Button bStop,pos={375,32},size={50,20},title="Abort"
+			Button bStop,pos={180,40},size={50,20},title="Abort"
 			SetActiveSubwindow _endfloat_
 			DoUpdate/W=myProgress/E=1		// mark this as our progress window
 
 			SetWindow myProgress,hook(spinner)=MySpinHook
 
-			//Variable t0= ticks
 			if(startFrame<0)
 				startFrame=0
 			endif
@@ -1293,14 +1268,12 @@ Function ipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 			endif
 			
 			ipImageProcEdgeDetection(graphname, param, progress="myProgress")
-			//Variable timeperloop= (ticks-t0)/(60*nloops)
 			KillWindow /Z myProgress
-//			print "time per loop=",timeperloop
 			break
 		case -1: // control being killed
 			break
 	endswitch
-
+	
 	return 0
 End
 
@@ -1364,7 +1337,7 @@ Function ipBoundaryFindGroupByIndex(Wave boundaryX, Wave boundaryIndex, Variable
 	try
 		boundary_start=NaN
 		boundary_end=NaN
-		if(WaveExists(boundaryX) && WaveExists(boundaryIndex))
+		if(WaveExists(boundaryX) && WaveExists(boundaryIndex) && index>=0 && index<DimSize(boundaryIndex, 0))
 			boundary_start=boundaryIndex[index][0]; AbortOnRTE
 			if(DimSize(boundaryIndex, 1)==2)
 				boundary_end=boundaryIndex[index][1]; AbortOnRTE
@@ -1676,48 +1649,70 @@ Function ipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Var
 	return retVal
 End
 
-Function ipImageProcGenerateROIMask(String graphName, DFREF ROIDF, Variable roi_idx, Wave frame, String roimask_name)
+Function ipImageProcGenerateROIMaskFromBoundary(String graphName, Wave boundaryX, Wave boundaryY, String roimask_name, [Variable valueE, Variable valueI])
+	if(ParamIsDefault(valueE)) // for background
+		valueE=1
+	endif
+	if(ParamIsDefault(valueI)) // for identified region
+		valueI=0
+	endif
+	
+	Wave roimask=$roimask_name
+	String roimaskbasename=ipGetBaseName(roimask_name)
+	ipGraphPanelAddImageByAxis(graphName, roimask)
+	
+	DrawAction /W=$graphName /L=ProgFront delete
+	
+	SetDrawLayer /W=$graphName ProgFront
+	SetDrawEnv /W=$graphName linefgc= (65535,65535,0),fillpat= 0,xcoord= top,ycoord= left, save			
+	DrawPoly /W=$graphName boundaryX[0], boundaryY[0], 1, 1, boundaryX, boundaryY
+	ImageGenerateROIMask /E=(valueE) /I=(valueI) /W=$graphName $roimaskbasename
+	
+	DrawAction /W=$graphName /L=ProgFront delete
+	
+	Wave M_ROIMask=:M_ROIMask
+	Duplicate /O M_ROIMask, roimask
+	RemoveImage /W=$graphName /Z $roimaskbasename
+End
+
+Function ipImageProcGenerateROIMask(String graphName, DFREF ROIDF, Variable roi_idx, Variable frameidx, Wave frame, String roimask_name, Variable dynamicTracking)
 //this function will generate ROI mask and will return the index for the next iteration
 //when no more ROI is available, -1 will be returned
+	Variable fallback=1
 	Variable nextidx=-1
+	
 	if(DataFolderRefStatus(ROIDF)==1 && roi_idx>=0)
-		Wave W_idx=ROIDF:W_RegionROIIndex
-		Wave W_region=ROIDF:W_RegionROIBoundary
-		
-		Variable startidx=-1, endidx=-1, cnt=-1
-		cnt=ipBoundaryFindGroupByIndex(W_region, W_idx, roi_idx, startidx, endidx)
-		if(cnt>0)
-			Make /O /N=(DimSize(frame, 0), DimSize(frame, 1)) /Y=0x48 $roimask_name=0
-			Make /N=(cnt) /D /O ROIDF:M_ROIMaskX, ROIDF:M_ROIMaskY
-			Wave tmpx=ROIDF:M_ROIMaskX
-			Wave tmpy=ROIDF:M_ROIMaskY
-			tmpx[]=W_region[startidx+p][0]
-			tmpy[]=W_region[startidx+p][1]
+		if(dynamicTracking>0)
+			Variable refFrameIdx=frameidx-1
+			if(refFrameIdx>=0)
 			
-			Wave roimask=$roimask_name
-			String roimaskbasename=StringFromList(ItemsInList(roimask_name, ":")-1, roimask_name, ":")
-			
-			ipGraphPanelAddImageByAxis(graphName, roimask)
-			
-			DrawAction /W=$graphName /L=ProgFront delete
-			
-			SetDrawLayer /W=$graphName ProgFront
-			SetDrawEnv /W=$graphName linefgc= (65535,65535,0),fillpat= 0,xcoord= top,ycoord= left, save			
-			DrawPoly /W=$graphName tmpx[0],tmpy[0],1,1,tmpx,tmpy
-			ImageGenerateROIMask /E=1/I=0/W=$graphName $roimaskbasename
-			
-			DrawAction /W=$graphName /L=ProgFront delete
-			
-			Wave M_ROIMask=:M_ROIMask
-			Duplicate /O M_ROIMask, roimask
-			RemoveImage /W=$graphName /Z $roimaskbasename
-			
-			nextidx=roi_idx+1
+				fallback=0
+			endif
 		endif
-	else
-		nextidx=-1
+		
+		if(fallback) //typical static ROI defined in ROI folder		
+			Wave W_idx=ROIDF:W_RegionROIIndex
+			Wave W_region=ROIDF:W_RegionROIBoundary
+			
+			Variable startidx=-1, endidx=-1, cnt=-1
+			cnt=ipBoundaryFindGroupByIndex(W_region, W_idx, roi_idx, startidx, endidx)
+			if(cnt>0)
+				Make /O /N=(DimSize(frame, 0), DimSize(frame, 1)) /Y=0x48 $roimask_name=0
+				Make /N=(cnt) /D /O ROIDF:M_ROIMaskX, ROIDF:M_ROIMaskY
+				Wave tmpx=ROIDF:M_ROIMaskX
+				Wave tmpy=ROIDF:M_ROIMaskY
+				tmpx[]=W_region[startidx+p][0]
+				tmpy[]=W_region[startidx+p][1]
+				
+				ipImageProcGenerateROIMaskFromBoundary(graphName, tmpx, tmpy, roimask_name)
+				
+				nextidx=roi_idx+1
+			endif
+		else
+			nextidx=-1
+		endif
 	endif
-	print "next roi idx returned as:", nextidx
+	
 	return nextidx
 End
 
@@ -1839,12 +1834,14 @@ Function ipImageProcEdgeDetection(String graphName, STRUCT ipImageProcParam & pa
 	Variable roi_counts
 	
 	DFREF savedDF=GetDataFolderDFR()
-	NewDataFolder /O/S $(param.analysisDF)	
-	NewDataFolder /O/S $(num2istr(frameidx))
-	DFREF homedfr=GetDataFolderDFR()
+	NewDataFolder /O/S $(param.analysisDF)
+	DFREF parentdfr=GetDataFolderDFR()
+	try
+		for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
+			SetDataFolder parentdfr
+			NewDataFolder /O/S $(num2istr(frameidx))
+			DFREF homedfr=GetDataFolderDFR()
 			
-	for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
-		try
 			if(!ParamIsDefault(progress))
 				if(wintype(progress)!=7)
 					break
@@ -1868,8 +1865,9 @@ Function ipImageProcEdgeDetection(String graphName, STRUCT ipImageProcParam & pa
 			do
 				if(param.useROI==1)
 					DFREF roidf=:ROI
-					roi_counts=ipImageProcGenerateROIMask(graphName, roidf, roi_counts, frame, roimask_name)
+					roi_counts=ipImageProcGenerateROIMask(graphName, roidf, roi_counts, frameidx, frame, roimask_name, param.dynamicROITracking)
 					Wave roimask=$roimask_name
+					
 					if(roi_counts>=0 && WaveExists(roimask))
 						if(param.threshold>0)
 							ImageThreshold /Q/M=0/T=(param.threshold)/R={roimask,0} frame
@@ -1901,45 +1899,45 @@ Function ipImageProcEdgeDetection(String graphName, STRUCT ipImageProcParam & pa
 				else
 					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats homedfr:M_ImageMorph
 				endif
-				
 				ipImageProcAddDetectedEdge(homedfr)
+				Duplicate /O homedfr:M_ImageMorph, homedfr:M_FilledEdge
+				String filledEdgeName=GetDataFolder(1)+"M_FilledEdge"
+				ipImageProcGenerateROIMaskFromBoundary(graphName, homedfr:W_BoundaryX, homedfr:W_BoundaryY, filledEdgeName, valueE=255)
 				
-		
-				NewDataFolder /O/S outerEdge
-				ImageMorphology /E=4 /I=(param.erosion_iteration) Erosion homedfr:M_ImageMorph
+				NewDataFolder /O/S outerEdge				
+				ImageMorphology /E=4 /I=(param.erosion_iteration) Erosion $filledEdgeName
 		
 				if(param.allow_subset==0)
 					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
 				else
 					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
 				endif
-				
 				ipImageProcAddDetectedEdge(homedfr:outerEdge)
 		
 				SetDataFOlder ::
 				NewDataFolder /O/S innerEdge
-		
-				ImageMorphology /E=4 /I=(param.dialation_iteration) Dilation homedfr:M_ImageMorph
+				ImageMorphology /E=4 /I=(param.dialation_iteration) Dilation $filledEdgeName
 		
 				if(param.allow_subset==0)
 					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
 				else
 					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
 				endif
-				
 				ipImageProcAddDetectedEdge(homedfr:innerEdge)
 				
-				SetDataFolder ::
-				
+				SetDataFolder :: //back to home directory for ROI reading in the next loop				
 			while(roi_counts>=0)
-		catch
-			Variable err=GetRTError(0)
-			if(err!=0)
-				print "Error: ", GetErrMessage(err)
-				err=GetRTError(1)
-			endif
-		endtry
-	endfor
+			
+		endfor
+	catch
+		Variable err=GetRTError(0)
+		if(err!=0)
+			print "Error: ", GetErrMessage(err)
+			err=GetRTError(1)
+		endif
+	endtry
+
 	SetDataFolder savedDF
+	ipGraphPanelRedrawAll(graphName)
 End
 
