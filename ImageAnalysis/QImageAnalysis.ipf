@@ -74,9 +74,8 @@ End
 //TXAXISNAME : the name of the xaxis of the active trace, updated in qipHookFunction
 //TYAXISNAME : the name of the yaxis of the active trace, updated in qipHookFunction
 //
-//PICKSTATUS :
-//
-//ROISTATUS : status of tracking ROI traces, defined and changed in qipHookFunction
+//NEWROI : user request to define ROI region
+//ROISTATUS : status of tracking ROI traces, defined and changed in qipHookFunction, if this is set, a ROI is being defined
 //ROI_CURRENTTRACENAME : name of the current ROI as user defines new components, used only in qipHookFunction and when clear all ROI
 //ROI_ALLTRACENAME : name of already defined ROI, first checked and defined in qipHookFunction, used elsewhere
 //
@@ -84,6 +83,28 @@ End
 //					  in qipEnableHook, and will be cleared to 0 in qipClearAllROI function
 //ROI_XAXISNAME : xaxis name for ROI redraw, defined and changed in qipHookFunction, used in redraw functions
 //ROI_YAXISNAME : yaxis name for ROI redraw, defined and changed in qipHookFunction, used in redraw functions
+//
+//
+//TRACEEDITSTATUS: set in qipHookFunction, indicate whether trace is being edited by mouse clicks. Trace edit will start
+//						if (1) not in the new ROI mode (NEWROI is set to 0), and (2) both ctrl and shift key is pressed when mouse clicks
+//						left click will move the hitpoint of the trace to the new position. mouse move will drag the point too
+//						right click will delete the point. For ROI for every frame if deletion is on a line of ROI, the point is removed. 
+//						if deletion is on	a point set ROI, the point is set to NaN. This behavior is to make sure that the number of points
+//						is kept the same before and after edition to keep tags consistent.
+//TRACEEDITHITPOINT: set in qipHookFunction, records the hit point by the mouse
+//TRACEMODIFIED: this is set in qipHookFunction, indicating that in the graph there are traces that are modified so that when
+//						changing frame index, the user will be notified to decide if changes should be saved/updated
+// To enable a trace for edit in a graph, the trace will need to have note string defined including the following information:
+//      MODIFYFUNC : name of user function that will decide how to fill-in the new coordinates. For user defined traces, the user should
+//						 use the prototype function qipUFP_MODIFYFUNC(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
+//						 where flag is set to -1 for deletion operation. The function should return 0 if the modification does not need
+//						 to be saved when frame is changed, otherwise, should return 1 if modification should be updated later.
+//      SAVEFUNC : name of user function that will decide how to save/update the changed trace. For user defined traces, the user
+//						should use the prototype function qipUFP_SAVEFUNC(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+//      NEED_SAVE_IF_MODIFIED : flag to indicate if trace has been modified, does it need save before frame index is changed.
+//										  this value need to be 1 for proper update. otherwise all modification of trace will be lost when
+//										  frame index changes and traces updated by the frame-specific content
+//      MODIFIED: this should be set by the user function defined by MODIFYFUNC. this is used as a flag to tag traces that are modified
 
 Function qipEnableHook(String graphname)
 	String panelName=graphname+"_PANEL"
@@ -118,10 +139,11 @@ Function qipEnableHook(String graphname)
 	String cordstr="x: , y:"
 	String zval="val:"
 	String frameidxstr=""
-	SetVariable xy_cord win=$panelName, pos={10,10}, bodywidth=200, value=_STR:(cordstr), disable=2
-	SetVariable z_value win=$panelName, pos={10,30}, bodywidth=200, value=_STR:(zval), disable=2
-	SetVariable frame_idx win=$panelName, pos={10,50}, bodywidth=200, value=_STR:(frameidxstr), disable=2
-
+	SetVariable xy_cord win=$panelName, pos={10,10}, bodywidth=200, value=_STR:(cordstr), noedit=1
+	SetVariable z_value win=$panelName, pos={10,30}, bodywidth=200, value=_STR:(zval), noedit=1
+	SetVariable frame_idx win=$panelName, pos={10,50}, bodywidth=185, value=_STR:(frameidxstr), noedit=1
+	Button goto_frameidx win=$panelName, pos={185,50}, size={15,15}, title="#", proc=qipGraphPanelBtnGotoFrame
+ 
 	CheckBox new_roi, win=$panelName, pos={0, 70}, bodywidth=50, title="New ROI",proc=qipGraphPanelCbRedraw
 	CheckBox enclosed_roi, win=$panelName, pos={50, 70}, bodywidth=50, title="Enclosed",proc=qipGraphPanelCbRedraw
 	
@@ -136,8 +158,8 @@ Function qipEnableHook(String graphname)
 	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="Show user ROI",proc=qipGraphPanelCbRedraw
 	Checkbox show_edges, win=$panelName, pos={105,110}, bodywidth=50, title="Show detected objs",proc=qipGraphPanelCbRedraw
 	
-	Button imgproc_addimglayer, win=$panelName, pos={100,130}, size={100,20}, title="Add Image Layers"
-	Button imgproc_calluserfunc, win=$panelName, pos={100,150}, size={100,20}, title="Call User Function"
+	Button imgproc_addimglayer, win=$panelName, pos={100,130}, size={100,20}, title="Add Image Layers",proc=qipGraphPanelBtnAddImageLayer
+	Button imgproc_attachuserfunc, win=$panelName, pos={100,150}, size={100,20}, title="Attach User Function"
 	SetWindow $graphname hook(qipHook)=qipHookFunction
 End
 
@@ -458,7 +480,8 @@ Function qipGraphPanelRedrawROI(String graphName)
 	String roi_all_basename=qipGetShortNameOnly(roi_allName)
 	
 	String roinote=note(roi_all)
-	roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryModifier")
+	roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryLineModifier") 
+	roinote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", roinote, "0") //for global ROIs the save is automatically done by modifier
 	Note /K roi_all, roinote
 	
 	//current user ROI definitionis always shown
@@ -500,32 +523,33 @@ Function qipGraphPanelRedrawROI(String graphName)
 			
 			String tagwave=qipGenerateDerivedName(baseName, ".f.roi.tags"); AbortOnRTE
 			
-			Wave wdot=:W_PointROI; AbortOnRTE
-			Wave wline=:W_RegionROIBoundary; AbortOnRTE
-			
+			Wave wdot=:W_PointROI; AbortOnRTE //wdot now should point to the dot ROIs of the frame (in the datafolder for the frame)
+			Wave wline=:W_RegionROIBoundary; AbortOnRTE //same as above for the line ROIs
 			
 			if(WaveExists(wdot))
-				Duplicate /O wdot, $dotwaveName; AbortOnRTE
+				Duplicate /O wdot, $dotwaveName; AbortOnRTE //copy to the root folder of the frame
 			else
-				Make /O/D/N=(1,2) $dotwaveName=NaN; AbortOnRTE
+				Make /O/D/N=(1,2) $dotwaveName=NaN; AbortOnRTE //or just make a blank wave for the frame
 			endif
 			
-			Wave dotwave=$dotwaveName; AbortOnRTE
+			Wave framewdot=$dotwaveName; AbortOnRTE
 			
-			if(show_dot && WaveExists(dotwave))				
-				qipGraphPanelAddROIByAxis(graphName, dotwave, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
+			if(show_dot && WaveExists(framewdot))				
+				qipGraphPanelAddROIByAxis(graphName, framewdot, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
 				ModifyGraph /W=$(graphName) offset($dotwaveBaseName)={0,0}
-				roinote=note(wdot)
-				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryModifier")
-				Note /K wdot, roinote
+				roinote=note(framewdot)
+				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryPointModifier") //for dots, we will not delete points, only fill in NaN for deletion
+				roinote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", roinote, "1") //for frame specific ROIs we need specific function for update changes
+				roinote=ReplaceStringByKey("SAVEFUNC", roinote, "qipUFP_saveDotROI")
+				Note /K framewdot, roinote
 			else
 				RemoveFromGraph /W=$graphname /Z $dotwaveBaseName; AbortOnRTE				
 			endif			
 			String taglist=AnnotationList(graphName); AbortOnRTE
 			DeleteAnnotations /A/W=$graphName; AbortOnRTE
-			if(show_tag && WaveExists(dotwave))
+			if(show_tag && WaveExists(framewdot))
 				Variable i
-				for(i=0; i<DimSize(dotwave, 0); i+=1)
+				for(i=0; i<DimSize(framewdot, 0); i+=1)
 					Tag /W=$graphName /C/N=$("FRAME_ROI_TAG"+num2istr(i))/G=(16385,28398,65535)/B=1/I=1 $dotwaveBaseName,i,num2istr(i); AbortOnRTE
 				endfor
 			endif
@@ -535,15 +559,17 @@ Function qipGraphPanelRedrawROI(String graphName)
 			else
 				Make /O/D/N=(1,2) $linewaveName=NaN; AbortOnRTE
 			endif
-			Wave linewave=$linewaveName; AbortOnRTE
+			Wave framelinewave=$linewaveName; AbortOnRTE
 			
 			
-			if(show_line && WaveExists(linewave))				
-				qipGraphPanelAddROIByAxis(graphName, linewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
+			if(show_line && WaveExists(framelinewave))				
+				qipGraphPanelAddROIByAxis(graphName, framelinewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
 				ModifyGraph /W=$(graphName) offset($linewaveBaseName)={0,0}
-				roinote=note(wline)
-				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryModifier")
-				Note /K wline, roinote
+				roinote=note(framelinewave)
+				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryLineModifier")
+				roinote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", roinote, "1") //for frame specific ROIs we need specific function for update changes
+				roinote=ReplaceStringByKey("SAVEFUNC", roinote, "qipUFP_saveLineROI")
+				Note /K framelinewave, roinote
 			else
 				RemoveFromGraph /W=$graphname /Z $linewaveBaseName; AbortOnRTE
 			endif			
@@ -568,10 +594,86 @@ Function qipGraphPanelRedrawAll(String graphName)
 	qipGraphPanelRedrawEdges(graphName, frameidx)
 End
 
-Function qipUFP_Modifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
+Function qipUFP_MODIFYFUNC(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
+	return 0
 End
 
-Function qipUFP_BoundaryModifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
+
+Function qipUFP_SAVEFUNC(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+	return 0
+End
+
+Function qipUFP_saveDotROI(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
+	
+	try
+		NewDataFolder /O/S $analysisDF; AbortOnRTE
+		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
+		
+		if(WaveExists(wave_for_save))
+			NewDataFolder /O/S :ROI ; AbortOnRTE
+			Duplicate /O wave_for_save, W_PointROI
+		endif
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	return 0
+end
+
+Function qipUFP_saveLineROI(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
+	
+	try
+		NewDataFolder /O/S $analysisDF; AbortOnRTE
+		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
+		
+		if(WaveExists(wave_for_save))
+			NewDataFolder /O/S :ROI ; AbortOnRTE
+			Make /O /D /N=(1, 2) W_RegionROIIndex=NaN
+			Make /O /D /N=(1, 2) W_RegionROIBoundary=NaN
+			
+			Variable startidx=0, endidx=0
+			Variable len=0
+			Variable cnt_regionIdx=0
+			Variable cnt_regionStart=0
+			Variable cnt_point=0
+			Variable i
+		
+			do
+				len=qipBoundaryGetNextGroup(wave_for_save, startidx, endidx); AbortOnRTE
+		
+				if(len>1)//single point will not be saved
+					if(cnt_regionIdx!=0)//following insertion will need to have NaN space saved
+						InsertPoints /M=0 DimSize(W_RegionROIIndex, 0), 1, W_RegionROIIndex; AbortOnRTE
+						InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), len+1, W_RegionROIBoundary; AbortOnRTE
+					else //first insertion has the first element as blank
+						InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), len, W_RegionROIBoundary; AbortOnRTE
+					endif
+					W_RegionROIIndex[cnt_regionIdx][0]=cnt_regionStart; AbortOnRTE //boundary start point
+					for(i=0; i<len && cnt_regionStart<DimSize(W_RegionROIBoundary, 0); cnt_regionStart+=1, i+=1)
+						W_RegionROIBoundary[cnt_regionStart][0]=wave_for_save[startidx+i][0]; AbortOnRTE
+						W_RegionROIBoundary[cnt_regionStart][1]=wave_for_save[startidx+i][1]; AbortOnRTE
+					endfor
+					W_RegionROIBoundary[cnt_regionStart][]=NaN; AbortOnRTE
+					W_RegionROIIndex[cnt_regionIdx][1]=cnt_regionStart-1; AbortOnRTE //boundary end point
+					cnt_regionStart+=1
+					cnt_regionIdx+=1
+				endif
+		
+				//find the next region/point
+				startidx=endidx+1
+				endidx=startidx
+			while(len>0)
+		endif
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	return 0
+end
+
+Function qipUFP_BoundaryLineModifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
+	Variable modify_flag=0
+	
 	try
 		switch(flag)
 		case -1: //delete the point
@@ -586,9 +688,47 @@ Function qipUFP_BoundaryModifier(Wave wave_for_mod, Variable index, Variable new
 		String wavenote=note(wave_for_mod); AbortOnRTE
 		wavenote=ReplaceStringByKey("MODIFIED", wavenote, "1"); AbortOnRTE
 		Note /K wave_for_mod, wavenote ; AbortOnRTE
+		
+		Variable needsave=str2num(StringByKey("NEED_SAVE_IF_MODIFIED", wavenote))
+		
+		if(needsave==1)
+			modify_flag=1
+		endif
 	catch
 		Variable err=GetRTError(1)
 	endtry
+	
+	return modify_flag
+End
+
+Function qipUFP_BoundaryPointModifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
+	Variable modify_flag=0
+	
+	try
+		switch(flag)
+		case -1: //for dots, we will just fill in NaN, instead of removing the dot because we do not want to change index order/number
+			wave_for_mod[index][]=NaN; AbortOnRTE
+			break
+		default: //just change the value
+			wave_for_mod[index][0]=new_x; AbortOnRTE
+			wave_for_mod[index][1]=new_y; AbortOnRTE
+			break
+		endswitch
+		
+		String wavenote=note(wave_for_mod); AbortOnRTE
+		wavenote=ReplaceStringByKey("MODIFIED", wavenote, "1"); AbortOnRTE
+		Variable NEED_SAVE_IF_MODIFIED=str2num(StringByKey("NEED_SAVE_IF_MODIFIED", wavenote))
+		
+		if(NEED_SAVE_IF_MODIFIED==1)
+			modify_flag=1
+		endif
+		
+		Note /K wave_for_mod, wavenote ; AbortOnRTE
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	
+	return modify_flag
 End
 
 Function qipAddPointToCurrentROI(Wave roiw, Variable idx, Variable imgx, Variable imgy, 
@@ -635,23 +775,44 @@ Function qipAddPointToCurrentROI(Wave roiw, Variable idx, Variable imgx, Variabl
 	endif
 End
 
-Function qipGraphPanelUpdateFrameIndex(Wave imgw, Wave framew, Variable & frameidx, 
+Function qipGraphPanelUpdateFrameIndex(String graphname, Wave imgw, Wave framew, Variable & frameidx, 
 													Variable & trace_modified, Variable deltaIdx)
-	if(DimSize(imgw, 2)>0 && WaveExists(imgw) && WaveExists(framew))
-		Variable change_frame=1
-		if(trace_modified)
-			DoAlert 2, "Traces on this frame has been modified, shall we save these changes accordingly?"
-			switch(V_flag)
-				case 1: //yes
-					//fixme
-					break
-				case 2: //no
-					break
-				default: //cancel
-					change_frame=0
-					break
-			endswitch
-		endif
+//this function will check if traces have been modified at the current frame, before changing the frame index to another one
+//if traces are modified, then each trace will be evaluated to see if "MODIFIED" flag is set, if so, will check the flag
+// "NEED_SAVE_IF_MODIFIED, if both are 1, then will call the function with its name stored in "SAVEFUNC"
+	Variable change_frame=1
+	print "Trace modified? ", trace_modified
+	if(trace_modified)
+		DoAlert 2, "Traces on this frame has been modified, shall we save these changes accordingly?"
+		switch(V_flag)
+			case 1: //yes
+				String tracelist=TraceNameList(graphname, ";", 1) //list only normal graph traces
+				Variable i
+				for(i=0; i<ItemsInList(tracelist); i+=1)
+					Wave trW=TraceNametoWaveRef(graphname, StringFromList(i, tracelist))
+					if(WaveExists(trW))
+						String wavenote=note(trW)
+						Variable modified=str2num(StringByKey("MODIFIED", wavenote))
+						Variable needsave=str2num(StringByKey("NEED_SAVE_IF_MODIFIED", wavenote))
+						
+						if(modified==1 && needsave==1)							
+							String saveFuncRef=StringByKey("SAVEFUNC", wavenote)
+							FUNCREF qipUFP_SAVEFUNC usrFuncRef=$saveFuncRef
+							usrFuncRef(trW, graphname, frameidx, 0)
+							print "save function called for wave:", GetWavesDataFolder(trW, 2)
+						endif
+					endif
+				endfor					
+				break
+			case 2: //no
+				break
+			default: //cancel
+				change_frame=0
+				break
+		endswitch
+	endif
+		
+	if(WaveExists(imgw) && WaveExists(framew) && DimSize(imgw, 2)>0)		
 		if(change_frame)
 			if(deltaIdx<0)
 				frameidx+=1
@@ -665,7 +826,7 @@ Function qipGraphPanelUpdateFrameIndex(Wave imgw, Wave framew, Variable & framei
 			if(frameidx>=DimSize(imgw, 2))
 				frameidx=0
 			endif
-			trace_modified=0
+			trace_modified=0 //for new frame, reset the status of traces-need-saving
 		endif
 	else
 		frameidx=0
@@ -689,14 +850,16 @@ Function qipHookFunction(s)
 	String frameName=GetUserData(s.winName, "", "FRAMENAME")
 	String imageName=GetUserData(s.winName, "", "IMAGENAME")
 	String activetrace=GetUserData(s.winName, "", "ACTIVETRACE")
-	Variable trace_hitpoint=str2num(GetUserData(s.winName, "", "TRACEEDITHITPOINT"))
 
 	Variable frameidx=str2num(GetUserData(s.winName, "", "FRAMEIDX"))
 	Variable yaxispolarity=str2num(GetUserData(s.winName, "", "YAXISPOLARITY"))
 	Variable roi_status=str2num(GetUserData(s.winname, "", "ROISTATUS"))
-	Variable	trace_editstatus=str2num(GetUserData(s.winname, "", "TRACEEDITSTATUS"))
+	
 	Variable new_roi=str2num(GetUserData(s.winname, "", "NEWROI"))
 	Variable enclosed_roi=str2num(GetUserData(s.winname, "", "ENCLOSEDROI"))
+	
+	Variable	trace_editstatus=str2num(GetUserData(s.winname, "", "TRACEEDITSTATUS"))
+	Variable trace_hitpoint=str2num(GetUserData(s.winName, "", "TRACEEDITHITPOINT"))
 	Variable trace_modified=str2num(GetUserData(s.winname, "", "TRACEMODIFIED"))
 
 	if(yaxispolarity!=1)
@@ -744,7 +907,7 @@ Function qipHookFunction(s)
 			if(new_roi==1) //when ROI is being defined, no effect for mouse down
 				trace_editstatus=0
 				hookResult=1
-			elseif((s.eventMod&0xA)==0xA) //both ctrl and shift down when clicking
+			elseif((s.eventMod&0xE)==0xA) //both ctrl and shift down when clicking
 				trace_editstatus=0
 				//check conditions for starting edit
 				traceInfoStr=TraceFromPixel(s.mouseLoc.h, s.mouseLoc.v, "")
@@ -767,9 +930,8 @@ Function qipHookFunction(s)
 								
 						if(strlen(txaxisname)>0 && strlen(tyaxisname)>0)
 							wavenote=note(w_active)
-							print "note got from wave:", wavenote
 							modifyfuncName=StringByKey("MODIFYFUNC", wavenote)
-							FUNCREF qipUFP_Modifier modifyfuncRef=$modifyfuncName
+							FUNCREF qipUFP_MODIFYFUNC modifyfuncRef=$modifyfuncName
 							
 							if((s.eventMod&0x10)!=0) //right click happens means delete
 								tracex=NaN
@@ -780,9 +942,9 @@ Function qipHookFunction(s)
 								tracex=AxisValFromPixel(s.winname, txaxisname, s.mouseLoc.h)
 								tracey=AxisValFromPixel(s.winname, tyaxisname, s.mouseLoc.v)
 								trace_editstatus=1
-								modifyfuncRef(w_active, trace_hitpoint, tracex, tracey, 0)
-								trace_modified=1
-							endif							
+								Variable new_modification=modifyfuncRef(w_active, trace_hitpoint, tracex, tracey, 0)
+								trace_modified=trace_modified || new_modification
+							endif	
 						endif	//axis are correctly labelled
 					endif //wave and point index are correct
 				endif //trace is available at the point of mouse
@@ -858,7 +1020,7 @@ Function qipHookFunction(s)
 				SetWindow $(s.winname) userdata(TXAXISNAME)=txaxisname
 				SetWindow $(s.winname) userdata(TYAXISNAME)=tyaxisname
 				
-				if((strlen(traceName)>0) && (s.eventCode==5) && ((s.eventMod&0xA)==0))
+				if((strlen(traceName)>0) && (s.eventCode==5) && ((s.eventMod&0x1E)==0))
 					//simple mouse up on a trace with no key modifiers
 		 			//the current trace at the pixel is set as active trace
 		 			SetWindow $(s.winname) userdata(ACTIVETRACE)=traceName
@@ -885,7 +1047,7 @@ Function qipHookFunction(s)
 					if(WaveExists(w_active))
 						wavenote=note(w_active)
 						modifyfuncName=StringByKey("MODIFYFUNC", wavenote)
-						FUNCREF qipUFP_Modifier modifyfuncRef=$modifyfuncName
+						FUNCREF qipUFP_MODIFYFUNC modifyfuncRef=$modifyfuncName
 						
 						if((s.eventMod&0x10)!=0) //right click happens means delete
 							tracex=NaN
@@ -916,7 +1078,7 @@ Function qipHookFunction(s)
 		 		
 			if(s.eventCode==5 || (s.eventMod&0x1)!=0) //mouse up, or mouse moving with mouse key held down
 		 		if(trace_editstatus==1)
-		 			if((s.eventMod&0xA)!=0xA)
+		 			if((s.eventMod&0xE)!=0xA)
 		 				trace_editstatus=0
 		 			else
 		 			endif
@@ -950,7 +1112,7 @@ Function qipHookFunction(s)
 					SetWindow $(s.winname), userdata(ROI_XAXISNAME)=roi_xaxisname
 					SetWindow $(s.winname), userdata(ROI_YAXISNAME)=roi_yaxisname
 
-					if((s.eventMod&0x8)!=0) // ctrl is held down
+					if((s.eventMod&0x8)==0x8) // ctrl or cmd is held down, does not care about shift or others
 						if(enclosed_roi==1) //user need to close the ROI
 							idx=DimSize(roi_cur_trace, 0)
 							if(roi_cur_trace[idx-1][0]!= roi_cur_trace[0][0] && roi_cur_trace[idx-1][1]!=roi_cur_trace[0][1])
@@ -983,7 +1145,7 @@ Function qipHookFunction(s)
 			Variable scaleFactor=1
 
 			if(WaveExists(framew))
-				if((s.eventMod&0x4)!=0) //Alt or Opt key is down, scaling
+				if((s.eventMod&0xE)==0x4) //Alt or Opt key is down, scaling
 					if(s.wheelDx<0)
 						scaleFactor=1.10
 					else
@@ -1005,8 +1167,8 @@ Function qipHookFunction(s)
 						SetAxis /W=$(s.winName) $iyaxisname, ymin, ymax
 						SetAxis /W=$(s.winName) $ixaxisname, xmin, xmax
 					endif
-				elseif((s.eventMod&0x8)!=0) //Ctrl or Cmd key is down, changing frame
-					qipGraphPanelUpdateFrameIndex(imgw, framew, frameidx, trace_modified, s.wheelDy)
+				elseif((s.eventMod&0xE)==0x8) //Ctrl or Cmd key is down, changing frame
+					qipGraphPanelUpdateFrameIndex(s.winname, imgw, framew, frameidx, trace_modified, s.wheelDy)
 					update_graph_window=1
 				endif
 				hookResult = 1
@@ -1056,18 +1218,8 @@ Function qipHookFunction(s)
 					break
 				endswitch
 				if(delta!=0)
-					qipGraphPanelUpdateFrameIndex(imgw, framew, frameidx, trace_modified, delta)
+					qipGraphPanelUpdateFrameIndex(s.winname, imgw, framew, frameidx, trace_modified, delta)
 				endif
-//				if(DimSize(imgw, 2)>0)
-//					if(frameidx<0)
-//						frameidx=DimSize(imgw, 2)-1
-//					endif
-//					if(frameidx>=DimSize(imgw, 2))
-//						frameidx=0
-//					endif
-//				else
-//					frameidx=0
-//				endif				
 				update_graph_window=1
 			endif
 
@@ -1182,7 +1334,7 @@ Function qipGraphPanelBtnSaveROIToFrame(ba) : ButtonControl
 	return 0
 End
 
-Function qipGraphPanelBtnCopyROI(ba) : ButtonControl
+Function qipGraphPanelBtnCopyROIFrom(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -1190,8 +1342,8 @@ Function qipGraphPanelBtnCopyROI(ba) : ButtonControl
 			// click code here
 			String graphname=ba.win
 			graphname=StringFromList(0, graphname, "#")
-
-			Variable fromFrame=-1, toFrame=0
+			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
+			Variable fromFrame=frameidx, toFrame=frameidx
 			PROMPT fromFrame, "Copy from frame:"
 			PROMPT toFrame, "Save to frame:"
 			DoPrompt "Copy ROI from which frame to which frame?", fromFrame, toFrame
@@ -1205,6 +1357,39 @@ Function qipGraphPanelBtnCopyROI(ba) : ButtonControl
 
 	return 0
 End
+
+
+Function qipGraphPanelBtnGotoFrame(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			String graphname=ba.win
+			graphname=StringFromList(0, graphname, "#")
+		
+			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
+			Wave img=$(GetUserData(graphname, "", "IMAGENAME"))
+			Wave frame=$(GetUserData(graphname, "", "FRAMENAME"))
+			
+			if(NumType(frameidx)==0 && WaveExists(img) && WaveExists(frame))
+				PROMPT frameidx, "Frame #"
+				DoPrompt "Get to which frame?", frameidx
+				if(V_flag==0)
+					if(frameidx>=0 && frameidx<DimSize(img, 2))
+						SetWindow $graphname, userdata(FRAMEIDX)=num2istr(frameidx)
+						qipGraphPanelRedrawAll(graphname)
+					endif
+				endif
+			endif
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
 
 Function qipGraphPanelBtnClearAllROI(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
@@ -1290,7 +1475,6 @@ Function qipGraphPanelCbRedraw(cba) : CheckBoxControl
 
 	return 0
 End
-
 
 Function qipGraphPanelClearROI(String graphname, Variable clear_userroi, Variable clear_framestart, Variable clear_frameend)
 	String imageName=GetUserData(graphname, "", "IMAGENAME")
@@ -1643,7 +1827,7 @@ Function qipBoundaryFindIndexByPoint(Variable x, Variable y, Wave W_info, Variab
 	endif
 End
 
-Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Variable refFrame)
+Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Variable refFrame, [Wave refDotROI, Wave refLineROI])
 //This function will update ROI records from refFrame's ROI datafolder
 //If the refFrame < 0, user ROI (defined by mouse clicks) will be used for update
 //This will separate singular dots, and lines/regions from each other, and generate index etc
@@ -1670,7 +1854,7 @@ Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Va
 		NewDataFolder /O/S $analysisDF; AbortOnRTE
 		NewDataFolder /O/S :$(num2istr(currentFrame)); AbortOnRTE
 
-		if(refFrame<0) //user ROI is used
+		if(refFrame<0) //global user ROI is used
 			Wave roiwave=$userROIname; AbortOnRTE
 			if(WaveExists(roiwave))
 				//we need to find the ROIs with more than one points which will define the "regions"
@@ -1726,9 +1910,10 @@ Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Va
 				retVal=0
 			endif
 		else //following frames will used previous tracked particle's edge region to get new ROI defined
+			//we should be inside the datafolder for the current folder
 			if(refFrame!=currentFrame)
 				try
-					String refDF=analysisDF+":"+num2istr(refFrame)+":ROI" ; AbortOnRTE
+					String refDF=analysisDF+":"+PossiblyQuoteName(num2istr(refFrame))+":ROI" ; AbortOnRTE
 					DFREF refDFREF=$refDF; AbortOnRTE
 					if(DataFolderRefStatus(refDFREF)==1)
 						Wave refLineROIIdx=refDFREF:W_RegionROIIndex
@@ -1736,13 +1921,13 @@ Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Va
 						Wave refPointROI=refDFREF:W_PointROI
 						
 						if(WaveExists(refLineROIIdx))
-							Duplicate /O refLineROIIdx, :W_RegionROIIndex
+							Duplicate /O refLineROIIdx, :ROI:W_RegionROIIndex
 						endif
 						if(WaveExists(refLineROI))
-							Duplicate /O refLineROI, :W_RegionROIBoundary
+							Duplicate /O refLineROI, :ROI:W_RegionROIBoundary
 						endif
 						if(WaveExists(refPointROI))
-							Duplicate /O refPointROI, :W_PointROI
+							Duplicate /O refPointROI, :ROI:W_PointROI
 						endif
 					endif
 				catch
