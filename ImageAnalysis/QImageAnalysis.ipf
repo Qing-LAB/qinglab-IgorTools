@@ -155,9 +155,10 @@ Function qipEnableHook(String graphname)
 	CheckBox show_dot, win=$panelName, pos={105,70}, bodywidth=50, title="Dot",proc=qipGraphPanelCbRedraw
 	CheckBox show_line, win=$panelName, pos={135,70}, bodywidth=50, title="Line",proc=qipGraphPanelCbRedraw
 	CheckBox show_tag, win=$panelName, pos={170,70}, bodywidth=50, title="Tag",proc=qipGraphPanelCbRedraw
-	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="Show user ROI",proc=qipGraphPanelCbRedraw
-	Checkbox show_edges, win=$panelName, pos={105,110}, bodywidth=50, title="Show detected objs",proc=qipGraphPanelCbRedraw
+	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="GlobalROI",proc=qipGraphPanelCbRedraw
+	Checkbox show_edges, win=$panelName, pos={105,110}, bodywidth=50, title="ObjEdge",proc=qipGraphPanelCbRedraw
 	
+	Button imgproc_pickobjs, win=$panelName, pos={0, 170}, size={100, 20}, title="Pick Objects",proc=qipGraphPanelBtnPickObjs
 	Button imgproc_addimglayer, win=$panelName, pos={100,130}, size={100,20}, title="Add Image Layers",proc=qipGraphPanelBtnAddImageLayer
 	Button imgproc_attachuserfunc, win=$panelName, pos={100,150}, size={100,20}, title="Attach User Function"
 	SetWindow $graphname hook(qipHook)=qipHookFunction
@@ -177,7 +178,7 @@ Function qipDisplayImage(String wname)
 	Wave w=$wname
 	if(WaveExists(w))
 		wname=qipGetFullWaveName(wname)
-		String frameName=qipGenerateDerivedName(wname, ".f")
+		String frameName=qipGenerateDerivedName(wname, ".f", unique=1)
 		
 		Wave frame=$frameName
 		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $frameName
@@ -781,7 +782,7 @@ Function qipGraphPanelUpdateFrameIndex(String graphname, Wave imgw, Wave framew,
 //if traces are modified, then each trace will be evaluated to see if "MODIFIED" flag is set, if so, will check the flag
 // "NEED_SAVE_IF_MODIFIED, if both are 1, then will call the function with its name stored in "SAVEFUNC"
 	Variable change_frame=1
-	print "Trace modified? ", trace_modified
+
 	if(trace_modified)
 		DoAlert 2, "Traces on this frame has been modified, shall we save these changes accordingly?"
 		switch(V_flag)
@@ -799,7 +800,6 @@ Function qipGraphPanelUpdateFrameIndex(String graphname, Wave imgw, Wave framew,
 							String saveFuncRef=StringByKey("SAVEFUNC", wavenote)
 							FUNCREF qipUFP_SAVEFUNC usrFuncRef=$saveFuncRef
 							usrFuncRef(trW, graphname, frameidx, 0)
-							print "save function called for wave:", GetWavesDataFolder(trW, 2)
 						endif
 					endif
 				endfor					
@@ -1279,13 +1279,16 @@ Function /S qipGetFullWaveName(String wname, [WAVE wref])
 	return quotedFullName
 End
 
-Function /S qipGenerateDerivedName(String wname, String suffix)
+Function /S qipGenerateDerivedName(String wname, String suffix, [Variable unique])
 	Variable i
 	String newwname=RemoveListItem(ItemsInList(wname, ":")-1, wname, ":")
 	newwname=RemoveEnding(newwname, ":")
 	String derivedName=StringFromList(ItemsInList(wname, ":")-1, wname, ":")
 	derivedName=ReplaceString("'", derivedName, "")
 	derivedName+=suffix
+	if(unique==1)
+		derivedName=UniqueName(derivedName, 1, 0)
+	endif
 	derivedName=PossiblyQuoteName(derivedName)
 	newwname+=":"+derivedName
 
@@ -2191,7 +2194,7 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 	DFREF parentdfr=GetDataFolderDFR()
 	try
 		for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
-			//SetWindow $graphName userdata(FRAMEIDX)=num2istr(frameidx)
+			SetWindow $graphName userdata(FRAMEIDX)=num2istr(frameidx)
 			SetDataFolder parentdfr
 			NewDataFolder /O/S $(num2istr(frameidx))
 			DFREF homedfr=GetDataFolderDFR()
@@ -2280,13 +2283,16 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
 				endif
 				qipImageProcAddDetectedEdge(homedfr:outerEdge)
-				SetDataFolder :: //back to home directory for ROI reading in the next loop	
-						
+				SetDataFolder :: //back to home directory for ROI reading in the next loop
+				
+				if(!ParamIsDefault(progress))
+					qipGraphPanelRedrawAll(graphName)
+					DoUpdate
+					if(wintype(progress)!=7)
+						break
+					endif
+				endif						
 			while(roi_counts>=0)
-			if(!ParamIsDefault(progress))
-				qipGraphPanelRedrawAll(graphName)
-				DoUpdate
-			endif
 		endfor
 	catch
 		Variable err=GetRTError(0)
