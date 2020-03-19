@@ -109,7 +109,7 @@ End
 Function qipEnableHook(String graphname)
 	String panelName=graphname+"_PANEL"
 
-	NewPanel /EXT=0 /HOST=$graphname /K=2 /W=(0, 0, 200, 200) /N=$(panelName)
+	NewPanel /EXT=0 /HOST=$graphname /K=2 /W=(0, 0, 200, 300) /N=$(panelName)
 	panelName=graphname+"#"+S_Name //the actual name generated
 	SetWindow $graphname userdata(PANELNAME)=panelName
 	SetWindow $graphname userdata(PANELVISIBLE)="1"
@@ -136,15 +136,21 @@ Function qipEnableHook(String graphname)
 	baseName=analysisDF+":"+qipGetShortNameOnly(baseName)
 	SetWindow $graphname userdata(BASENAME)=baseName
 	
+	qipGraphPanelResetControls(panelName)
+
+	SetWindow $graphname hook(qipHook)=qipHookFunction
+End
+
+Function qipGraphPanelResetControls(String panelName)
 	String cordstr="x: , y:"
 	String zval="val:"
 	String frameidxstr=""
-	SetVariable xy_cord win=$panelName, pos={10,10}, bodywidth=200, value=_STR:(cordstr), noedit=1
-	SetVariable z_value win=$panelName, pos={10,30}, bodywidth=200, value=_STR:(zval), noedit=1
-	SetVariable frame_idx win=$panelName, pos={10,50}, bodywidth=185, value=_STR:(frameidxstr), noedit=1
+	SetVariable xy_cord win=$panelName, pos={2,10}, bodywidth=200, value=_STR:(cordstr), noedit=1
+	SetVariable z_value win=$panelName, pos={2,30}, bodywidth=200, value=_STR:(zval), noedit=1
+	SetVariable frame_idx win=$panelName, pos={2,50}, bodywidth=185, value=_STR:(frameidxstr), noedit=1
 	Button goto_frameidx win=$panelName, pos={185,50}, size={15,15}, title="#", proc=qipGraphPanelBtnGotoFrame
  
-	CheckBox new_roi, win=$panelName, pos={0, 70}, bodywidth=50, title="New ROI",proc=qipGraphPanelCbRedraw
+	CheckBox new_roi, win=$panelName, pos={2, 70}, bodywidth=50, title="New ROI",proc=qipGraphPanelCbRedraw
 	CheckBox enclosed_roi, win=$panelName, pos={50, 70}, bodywidth=50, title="Enclosed",proc=qipGraphPanelCbRedraw
 	
 	Button save_roi, win=$panelName, pos={0, 90}, size={100, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame
@@ -152,16 +158,35 @@ Function qipEnableHook(String graphname)
 	Button clear_roi, win=$panelName, pos={0, 130}, size={100, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI
 	Button imgproc_selcell, win=$panelName, pos={0, 150}, size={100,20}, title="Identify Objects",proc=qipGraphPanelBtnEdgeDetect
 
-	CheckBox show_dot, win=$panelName, pos={105,70}, bodywidth=50, title="Dot",proc=qipGraphPanelCbRedraw
-	CheckBox show_line, win=$panelName, pos={135,70}, bodywidth=50, title="Line",proc=qipGraphPanelCbRedraw
-	CheckBox show_tag, win=$panelName, pos={170,70}, bodywidth=50, title="Tag",proc=qipGraphPanelCbRedraw
-	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="GlobalROI",proc=qipGraphPanelCbRedraw
-	Checkbox show_edges, win=$panelName, pos={105,110}, bodywidth=50, title="ObjEdge",proc=qipGraphPanelCbRedraw
+	Button imgproc_attachuserfunc, win=$panelName, pos={0,210}, size={100,20}, title="Attach User Function"
 	
-	Button imgproc_pickobjs, win=$panelName, pos={0, 170}, size={100, 20}, title="Pick Objects",proc=qipGraphPanelBtnPickObjs
-	Button imgproc_addimglayer, win=$panelName, pos={100,130}, size={100,20}, title="Add Image Layers",proc=qipGraphPanelBtnAddImageLayer
-	Button imgproc_attachuserfunc, win=$panelName, pos={100,150}, size={100,20}, title="Attach User Function"
-	SetWindow $graphname hook(qipHook)=qipHookFunction
+	PopupMenu popup_options win=$panelName, pos={100, 70}, size={100,20}, value="ROI Options;Image Layers;Trace Layers;",proc=qipGraphPanelPMOptions
+	GroupBox gb_options  win=$panelName, pos={100,70}, size={100, 200}, title="" 
+
+	//the following will be with popup menu option 1: ROI options
+	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="Show global ROI",proc=qipGraphPanelCbRedraw
+	
+	GroupBox gb_frameroi, win=$panelName, pos={102,105}, size={95, 35}, title="Frame ROI"
+	CheckBox show_dot, win=$panelName, pos={105,120}, bodywidth=30, title="Dot",proc=qipGraphPanelCbRedraw
+	CheckBox show_tag, win=$panelName, pos={135,120}, bodywidth=30, title="Tag",proc=qipGraphPanelCbRedraw
+	CheckBox show_line, win=$panelName, pos={165,120}, bodywidth=30, title="Line",proc=qipGraphPanelCbRedraw
+	
+	GroupBox gb_edges, win=$panelName, pos={102,140}, size={95, 35}, title="Obj Edges"
+	Checkbox show_edgesI, win=$panelName, pos={105,155}, bodywidth=30, title="I",proc=qipGraphPanelCbRedraw
+	Checkbox show_edgesM, win=$panelName, pos={135,155}, bodywidth=30, title="M",proc=qipGraphPanelCbRedraw
+	Checkbox show_edgesO, win=$panelName, pos={165,155}, bodywidth=30, title="O",proc=qipGraphPanelCbRedraw
+	
+	Button imgproc_pickobjs, win=$panelName, pos={102, 180}, size={95, 20}, title="Track single obj...",proc=qipGraphPanelBtnPickObjs
+
+	//the following will be with popup menu option 2: Image Layers
+	Button imgproc_addimglayer_r, win=$panelName, pos={102, 90}, size={95,20}, title="Set Red Channel", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_g, win=$panelName, pos={102, 110}, size={95,20}, title="Set Green Channel", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_b, win=$panelName, pos={102, 130}, size={95,20}, title="Set Blue Channel", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_grey, win=$panelName, pos={102, 150}, size={95,20}, title="Set Grey Channel", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	
+	
+	ControlInfo /W=$panelName popup_options
+	qipGraphPanelUpdateOptionCtrls(panelName, V_Value)
 End
 
 Function qipDisplayImage(String wname)
@@ -177,15 +202,16 @@ Function qipDisplayImage(String wname)
 
 	Wave w=$wname
 	if(WaveExists(w))
+		String graphname=UniqueName("QIPGraph", 6, 0)
 		wname=qipGetFullWaveName(wname)
-		String frameName=qipGenerateDerivedName(wname, ".f", unique=1)
+		String frameName=qipGenerateDerivedName(wname, "."+graphname+".f", unique=1)
 		
 		Wave frame=$frameName
 		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $frameName
 		Wave frame=$frameName
 		frame[][]=w[p][q][0]
 
-		NewImage /K=0 frame
+		NewImage /N=$graphname /K=0 frame
 		Variable ratio=DimSize(w, 1)/DimSize(w, 0)
 		ModifyGraph height={Aspect, ratio}
 
@@ -222,7 +248,7 @@ Function /S qipLoadTIFFImageStack(String filename) //Load TIFF file
 	PROMPT total_images, "Total pages of image (-1 means all):"
 	DoPrompt "TIFF Image Loading setting:", wname, start_idx, total_images
 	if(V_flag==0)
-		ImageLoad /Q /C=(total_images) /S=(start_idx) /LR3D /N=$wname filename
+		ImageLoad /Q /C=(total_images) /S=(start_idx) /LR3D /N=$wname /T=TIFF filename
 		return StringFromList(0, S_waveNames)
 	else
 		return ""
@@ -404,16 +430,19 @@ Function qipFillSelectedBoundaryOnly(Wave edgeFill, Wave rawEdgeX, Wave rawEdgeY
 	endtry
 End
 
-Function qipGraphPanelRedrawEdges(String graphName, Variable frameidx)
+Function qipGraphPanelRedrawEdges(String graphName)
 	Variable i, j
 	String baseName=GetUserData(graphName, "", "BASENAME")
 	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
 	String imgName=GetUserData(graphName, "", "IMAGENAME")
 	String panelName=GetUserData(graphName, "", "PANELNAME")
+	Variable frameidx=str2num(GetUserData(graphName, "", "FRAMEIDX"))
+	
 	Wave imgw=$imgName
 	
-	ControlInfo /W=$panelName show_edges
-	Variable show_edges=V_value
+	Variable show_edgesI=str2num(GetUserData(graphName, "", "SHOW_EDGES_INNER"))
+	Variable show_edgesM=str2num(GetUserData(graphName, "", "SHOW_EDGES_MIDDLE"))
+	Variable show_edgesO=str2num(GetUserData(graphName, "", "SHOW_EDGES_OUTER"))
 
 	if(!WaveExists(imgw))
 		return -1
@@ -434,10 +463,22 @@ Function qipGraphPanelRedrawEdges(String graphName, Variable frameidx)
 		Wave inneredgeBoundary=$(homeDFstr+"innerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
 		Wave outeredgeBoundary=$(homeDFstr+"outerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
 
-		if(show_edges && WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
-			Duplicate /O edgeBoundary, $edgeName
-			Duplicate /O inneredgeBoundary, $innerEdgeName
-			Duplicate /O outeredgeBoundary, $outerEdgeName
+		if(WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
+			if(show_edgesM)
+				Duplicate /O edgeBoundary, $edgeName
+			else
+				Make /O /N=(1, 2) $edgeName=NaN; AbortOnRTE
+			endif
+			if(show_edgesI)
+				Duplicate /O inneredgeBoundary, $innerEdgeName
+			else
+				Make /O /N=(1, 2) $innerEdgeName=NaN; AbortOnRTE
+			endif
+			if(show_edgesO)
+				Duplicate /O outeredgeBoundary, $outerEdgeName
+			else
+				Make /O /N=(1, 2) $outerEdgeName=NaN; AbortOnRTE
+			endif
 		else
 			Make /O /N=(1, 2) $edgeName=NaN; AbortOnRTE
 			Make /O /N=(1, 2) $innerEdgeName=NaN; AbortOnRTE
@@ -583,6 +624,12 @@ Function qipGraphPanelRedrawROI(String graphName)
 End
 
 Function qipGraphPanelRedrawAll(String graphName)
+	qipGraphPanelRedrawImage(graphName)
+	qipGraphPanelRedrawROI(graphName)
+	qipGraphPanelRedrawEdges(graphName)
+End
+
+Function qipGraphPanelRedrawImage(String graphName)
 	Wave img=$GetUserData(graphName, "", "IMAGENAME")
 	Wave frame=$GetUserData(graphName, "", "FRAMENAME")
 	Variable frameidx=str2num(GetUserData(graphName, "", "FRAMEIDX"))
@@ -590,9 +637,6 @@ Function qipGraphPanelRedrawAll(String graphName)
 	if(WaveExists(img) && WaveExists(frame) && NumType(frameidx)==0 && frameidx>=0 && frameidx<DimSize(img, 2))
 		multithread frame[][]=img[p][q][frameidx]
 	endif
-	
-	qipGraphPanelRedrawROI(graphName)
-	qipGraphPanelRedrawEdges(graphName, frameidx)
 End
 
 Function qipUFP_MODIFYFUNC(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
@@ -1210,6 +1254,7 @@ Function qipHookFunction(s)
 						panelVisible=1
 						SetWindow $(panelName), hide=0, needupdate=1
 						DoWindow /F $(s.winname)
+						qipGraphPanelResetControls(panelName)
 					endif
 					SetWindow $(s.winname), userData(PANELVISIBLE)=num2istr(panelVisible)
 					hookResult = 1
@@ -1427,6 +1472,159 @@ Function qipGraphPanelBtnClearAllROI(ba) : ButtonControl
 	return 0
 End
 
+Function qipGraphPanelPMOptions(pa) : PopupMenuControl
+	STRUCT WMPopupAction &pa
+	
+	switch( pa.eventCode )
+		case 2: // mouse up
+			Variable popNum = pa.popNum
+			String popStr = pa.popStr
+			
+			qipGraphPanelUpdateOptionCtrls(pa.win, popNum)
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function qipGraphPanelUpdateOptionCtrls(String win, Variable opt)
+	variable opt1=1, opt2=1, opt3=1
+	switch(opt)
+	case 1:
+		opt1=0; opt2=1; opt3=1;
+		break
+	case 2:
+		opt1=1; opt2=0; opt3=1;
+		break
+	case 3:
+		opt1=1; opt2=1; opt3=0;
+		break
+	default:
+	endswitch
+	
+	//option 1
+	CheckBox show_userroi,win=$win,disable=opt1
+	
+	GroupBox gb_frameroi win=$win,disable=opt1
+	CheckBox show_dot win=$win,disable=opt1
+	CheckBox show_tag win=$win,disable=opt1
+	CheckBox show_line win=$win,disable=opt1
+
+	GroupBox gb_edges win=$win,disable=opt1
+	Checkbox show_edgesI win=$win,disable=opt1
+	Checkbox show_edgesM win=$win,disable=opt1
+	Checkbox show_edgesO win=$win,disable=opt1
+	
+	Button imgproc_pickobjs, win=$win,disable=opt1
+	//option 2
+	Button imgproc_addimglayer_r, win=$win,disable=opt2
+	Button imgproc_addimglayer_g, win=$win,disable=opt2
+	Button imgproc_addimglayer_b, win=$win,disable=opt2
+	Button imgproc_addimglayer_grey, win=$win,disable=opt2
+End
+
+Function qipUFP_IMGRedrawFUNC(Wave srcimg, Wave targetimg, String graphname, Variable frameidx, Variable flag)
+	
+	return 0
+End
+
+Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+	Variable update_graph=0
+	
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			String graphname=ba.win
+			graphname=StringFromList(0, graphname, "#")
+				
+			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
+			String wname="", fname=""
+			
+			strswitch(ba.ctrlName)
+			case "imgproc_addimglayer_r":
+				wname=GetUserData(graphname, "", "APPENDIX_IMAGE_RED")
+				fname=GetUserData(graphname, "", "APPENDIX_IMAGE_RED_USERFUNC")
+				break
+			case "imgproc_addimglayer_g":
+				wname=GetUserData(graphname, "", "APPENDIX_IMAGE_GREEN")
+				fname=GetUserData(graphname, "", "APPENDIX_IMAGE_GREEN_USERFUNC")
+				break
+			case "imgproc_addimglayer_b":
+				wname=GetUserData(graphname, "", "APPENDIX_IMAGE_BLUE")
+				fname=GetUserData(graphname, "", "APPENDIX_IMAGE_BLUE_USERFUNC")
+				break
+			case "imgproc_addimglayer_grey":
+				wname=GetUserData(graphname, "", "APPENDIX_IMAGE_GREY")
+				fname=GetUserData(graphname, "", "APPENDIX_IMAGE_GREY_USERFUNC")
+				break
+			default:
+				return -1
+			endswitch
+			if(strlen(wname)==0)
+				wname="_None_"
+			endif
+			if(strlen(fname)==0)
+				fname="_None_"
+			endif
+			
+			String imgselection="_None_;"+WaveList("*", ";", "DIMS:3;WAVE:0;")
+			String funcSelection="_None_;"+FunctionList("*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:Procedure")
+			PROMPT wname, "Image wave:", popup, imgselection
+			PROMPT fname, "User function for image redraw/update:", popup, funcSelection
+			DoPrompt "Select a image and user function:", wname, fname
+			if(V_flag!=0)
+				return -1
+			endif
+			if(cmpstr(wname, "_None_")==0)
+				wname=""
+			endif
+			if(cmpstr(fname, "_None_")==0)
+				fname=""
+			endif
+			FUNCREF qipUFP_IMGRedrawFUNC fRef=$fname
+			if(str2num(StringByKey("ISPROTO", FUNCRefInfo(fRef)))==1)
+				fname=""
+			endif
+			
+			strswitch(ba.ctrlName)
+			case "imgproc_addimglayer_r":
+				SetWindow $graphname userdata(APPENDIX_IMAGE_RED)=wname
+				SetWindow $graphname, userdata(APPENDIX_IMAGE_RED_USERFUNC)=fname
+				break
+			case "imgproc_addimglayer_g":
+				SetWindow $graphname userdata(APPENDIX_IMAGE_GREEN)=wname
+				SetWindow $graphname, userdata(APPENDIX_IMAGE_GREEN_USERFUNC)=fname
+				break
+			case "imgproc_addimglayer_b":
+				SetWindow $graphname userdata(APPENDIX_IMAGE_BLUE)=wname
+				SetWindow $graphname, userdata(APPENDIX_IMAGE_BLUE_USERFUNC)=fname
+				break
+			case "imgproc_addimglayer_grey":
+				SetWindow $graphname userdata(APPENDIX_IMAGE_GREY)=wname
+				SetWindow $graphname, userdata(APPENDIX_IMAGE_GREY_USERFUNC)=fname
+				break
+			default:
+				return -1
+			endswitch
+			break
+			
+			update_graph=1
+		case -1: // control being killed
+			break
+	endswitch
+	
+	if(update_graph)
+		qipGraphPanelRedrawAll(graphname)
+	endif
+	return 0
+End
+
+Function qipGraphPanelAddImageOverlay()
+End
+
 Function qipGraphPanelCbRedraw(cba) : CheckBoxControl
 	STRUCT WMCheckboxAction &cba
 
@@ -1464,7 +1662,18 @@ Function qipGraphPanelCbRedraw(cba) : CheckBoxControl
 			case "enclosed_roi":
 				SetWindow $graphname userdata(ENCLOSEDROI)=num2istr(checked)
 				break
+			
+			case "show_edgesI":
+				SetWindow $graphname userdata(SHOW_EDGES_INNER)=num2istr(checked)
+				break
 				
+			case "show_edgesM":
+				SetWindow $graphname userdata(SHOW_EDGES_MIDDLE)=num2istr(checked)
+				break
+				
+			case "show_edgesO":
+				SetWindow $graphname userdata(SHOW_EDGES_OUTER)=num2istr(checked)
+				break
 			default:
 				break
 				
@@ -1689,19 +1898,24 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 
 			Variable useIgorDraw=0	// set true to force Igor's own draw method rather than native
 
-			NewPanel /N=myProgress/W=(100,100,400,200)
-			SetVariable frame_idx, pos={50,20}, size={100, 20}, value=_STR:"", disable=2
-			ValDisplay valdisp0,pos={50,40},size={150,20},limits={0,100,0},barmisc={0,0}
-			ValDisplay valdisp0,value= _NUM:0
-			ValDisplay valdisp0,mode= 4 // candy stripe
+			NewPanel /N=myProgress/W=(0,0,320,30)/HOST=$graphname/EXT=2/FLT=2
+			SetActiveSubwindow _endfloat_
+						
+			String progress_panelName=graphname+"#"+S_Name
+			print progress_panelName
+			
+			SetVariable frame_idx win=$progress_panelName, pos={5,12}, size={100, 20}, value=_STR:"", noedit=1
+			ValDisplay valdisp0 win=$progress_panelName, pos={105,10},size={160,20},limits={0,100,0},barmisc={0,0}
+			ValDisplay valdisp0 win=$progress_panelName, value= _NUM:0
+			ValDisplay valdisp0 win=$progress_panelName, mode= 4 // candy stripe
 			if( useIgorDraw )
-				ValDisplay valdisp0,highColor=(0,65535,0)
+				ValDisplay valdisp0 win=$progress_panelName, highColor=(0,65535,0)
 			endif
-			Button bStop,pos={200,40},size={50,20},title="Abort"
+			Button bStop win=$progress_panelName, pos={270,10},size={40,20},title="Abort"
 			//SetActiveSubwindow _endfloat_
-			DoUpdate/W=myProgress/E=1		// mark this as our progress window
+			DoUpdate/W=$progress_panelName/E=1		// mark this as our progress window
 
-			SetWindow myProgress,hook(spinner)=MySpinHook
+			SetWindow $progress_panelName,hook(spinner)=MySpinHook
 
 			if(startFrame<0)
 				startFrame=0
@@ -1710,8 +1924,8 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				endFrame=nloops-1
 			endif
 			
-			qipImageProcEdgeDetection(graphname, param, progress="MyProgress")
-			KillWindow /Z myProgress
+			qipImageProcEdgeDetection(graphname, param, progress=progress_panelName)
+			KillWindow /Z $progress_panelName
 			break
 		case -1: // control being killed
 			break
