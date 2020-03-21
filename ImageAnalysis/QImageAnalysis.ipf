@@ -101,6 +101,50 @@ End
 //										  frame index changes and traces updated by the frame-specific content
 //      MODIFIED: this should be set by the user function defined by MODIFYFUNC. this is used as a flag to tag traces that are modified
 
+Function qipPrepAnalysisDFNames(String graphname, String & imageName, String & baseName, String & analysisDF)
+//this function will help to setup the basic structure of analysis data folder and
+//base names for generating other state variables for the graph and image
+//if image name is provided, it will be saved to the graph window, otherwise it will
+//be read from the graph window and used for setting basenames.
+//if image name is not present either way, the graph name will be used for setting up names.
+	if(WinType(graphname)!=1)
+		print "The wrong type of window is used when calling PrepAnalysisDFName. Graph name was: ", graphname
+		return -1
+	endif
+	
+	DFREF savedDF=GetDataFolderDFR()
+	try
+		SetDataFolder root:
+		
+		if(strlen(imageName)==0)
+			imageName=GetUserData(graphname, "", "IMAGENAME")
+		else
+			SetWindow $graphname userdata(IMAGENAME)=imageName
+		endif
+		baseName=graphname
+		if(strlen(imageName)>0)
+			baseName=imageName+"."+graphname
+		endif
+		
+		analysisDF=qipGenerateDerivedName(baseName, ".DF")
+		String uniqueDF=qipGetShortNameOnly(analysisDF)
+		uniqueDF=ReplaceString("'", uniqueDF, "")
+		uniqueDF=UniqueName(uniqueDF, 11, 0) //find unique name for datafolder
+		
+		analysisDF=qipGetPathNameOnly(baseName)+":"+PossiblyQuoteName(uniqueDF)
+		
+		NewDataFolder /O $analysisDF
+		SetWindow $graphname userdata(ANALYSISDF)=analysisDF
+		print "DataFolder ", analysisDF, " created."
+		
+		baseName=analysisDF+":"+qipGetShortNameOnly(baseName)
+		SetWindow $graphname userdata(BASENAME)=baseName
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	SetDataFolder savedDF
+End
+
 Function qipEnableHook(String graphname)
 	String panelName=graphname+"_PANEL"
 
@@ -108,33 +152,17 @@ Function qipEnableHook(String graphname)
 	panelName=graphname+"#"+S_Name //the actual name generated
 	SetWindow $graphname userdata(PANELNAME)=panelName
 	SetWindow $graphname userdata(PANELVISIBLE)="1"
-	String imgName=GetUserData(graphname, "", "IMAGENAME")
+	SetWindow $graphname userdata(ROIAVAILABLE)="0"
 	
-	String baseName=graphname
-	if(strlen(imgName)>0)
-		baseName=imgName+"."+graphname
+	String imgName=GetUserData(graphname, "", "IMAGENAME")
+	String baseName=GetUserData(graphname, "", "BASENAME")
+	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
+	if(strlen(baseName)==0 || strlen(analysisDF)==0 || DataFolderExists(analysisDF)==0)
+		qipPrepAnalysisDFNames(graphname, imgName, basename, analysisDF)
 	endif
 	
-	String analysisDF=qipGenerateDerivedName(baseName, ".DF")
-	DFREF savedDF=GetDataFolderDFR()
-	SetDataFolder root:
-	String uniqueDF=qipGetShortNameOnly(analysisDF)
-	uniqueDF=ReplaceString("'", uniqueDF, "")
-	uniqueDF=UniqueName(uniqueDF, 11, 0) //find unique name for datafolder
-	SetDataFolder savedDF
-	analysisDF=qipGetPathNameOnly(baseName)+":"+PossiblyQuoteName(uniqueDF)
-	
-	NewDataFolder /O $analysisDF
-	print "DataFolder ", analysisDF, " created."
-	SetWindow $graphname userdata(ANALYSISDF)=analysisDF
-	SetWindow $graphname userdata(ROIAVAILABLE)="0"
-	baseName=analysisDF+":"+qipGetShortNameOnly(baseName)
-	SetWindow $graphname userdata(BASENAME)=baseName
-	
 	qipGraphPanelResetControls(panelName)
-	
 	qipGenerateOverlayColorTables(graphname)
-
 	SetWindow $graphname hook(qipHook)=qipHookFunction
 End
 
@@ -229,19 +257,28 @@ Function qipDisplayImage(String wname, [Variable bg_r, Variable bg_g, Variable b
 	if(WaveExists(w))
 		String graphname=UniqueName("QIPGraph", 6, 0)
 		wname=qipGetFullWaveName(wname)
-		String frameName=qipGenerateDerivedName(wname, "."+graphname+".f", unique=1)
 		
-		Wave frame=$frameName
-		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $frameName
-		Wave frame=$frameName
-		frame[][]=w[p][q][0]
+		String tmpframeName=UniqueName("M_tmpImageFrame", 1, 0)
+		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $tmpframeName
+		Wave tmpframe=$tmpframeName
+		tmpframe[][]=w[p][q][0]
 
-		NewImage /N=$graphname /K=0 frame
+		NewImage /N=$graphname /K=0 tmpframe
 		graphname=S_Name
-		
 		Variable ratio=DimSize(w, 1)/DimSize(w, 0)
 		ModifyGraph height={Aspect, ratio}
+				
+		String baseName=""
+		String analysisDF=""
 		
+		qipPrepAnalysisDFNames(graphname, wname, baseName, analysisDF)
+		
+		String frameName=qipGenerateDerivedName(baseName, ".f")
+		Duplicate /O tmpframe, $frameName
+		Wave newframe=$frameName
+		ReplaceWave /W=$graphname image=$tmpframeName, $frameName
+		KillWaves /Z $tmpframeName
+				
 		if(ParamIsDefault(bg_r))
 			bg_r=0
 		endif
@@ -551,6 +588,7 @@ Function qipGraphPanelRedrawEdges(String graphName)
 
 		String homeDFstr=GetDataFolder(1); AbortOnRTE
 		
+		Wave ROI2InfoIndex=$(homeDFstr+"ROI:W_PointROI2Info"); AbortOnRTE
 		Wave edgeBoundary=$(homeDFstr+"DetectedEdges:W_Boundary"); AbortOnRTE
 		Wave inneredgeBoundary=$(homeDFstr+"innerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
 		Wave outeredgeBoundary=$(homeDFstr+"outerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
@@ -559,26 +597,23 @@ Function qipGraphPanelRedrawEdges(String graphName)
 		variable objidx=V_Value
 		Variable startp, endp
 		
+		String roiEdgeNameM=qipGenerateDerivedName(homeDFstr+"ROI:PointROIObjEdges:W_ROIBoundary", num2istr(frameidx)+".M")
+		String roiEdgeNameI=qipGenerateDerivedName(homeDFstr+"ROI:PointROIObjEdges:W_ROIBoundary", num2istr(frameidx)+".I")
+		String roiEdgeNameO=qipGenerateDerivedName(homeDFstr+"ROI:PointROIObjEdges:W_ROIBoundary", num2istr(frameidx)+".O")
 		String wavenote=""
 		
 		if(WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
 			if(show_edgesM)
-				if(objidx>=0)
-					Wave edgeIndex=$(homeDFstr+"DetectedEdges:W_Info"); AbortOnRTE
-					qipBoundaryFindGroupByIndex(edgeBoundary, edgeIndex, objidx, startp, endp)
-					if(startp>=0 && endp>=startp)
-						Duplicate /O /R=[startp, endp] edgeBoundary, $edgeName
-						Wave edge=$edgeName
-						wavenote=note(edge)
-						wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
-						wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "0") //for frame specific ROIs we need specific function for update changes
-						Note /K edge, wavenote; AbortOnRTE
-					else
-						Make /O /N=(1, 2) $edgeName=NaN; AbortOnRTE
-						Note /K $edgeName; AbortOnRTE
-					endif
+				if(objidx>=0 && WaveExists(ROI2InfoIndex) && objidx<DimSize(ROI2InfoIndex, 0) && WaveExists($roiEdgeNameM))
+					Duplicate /O $roiEdgeNameM, $edgeName
+					Wave edge=$edgeName
+					wavenote=note(edge)
+					wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
+					wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "1") //for frame specific ROIs we need specific function for update changes
+					wavenote=ReplaceStringByKey("SAVEFUNC", wavenote, "qipUFP_SavePointROIEdge_M")
+					Note /K edge, wavenote; AbortOnRTE
 				else
-					Duplicate /O edgeBoundary, $edgeName
+					Duplicate /O edgeBoundary, $edgeName; AbortOnRTE
 					Note /K $edgeName; AbortOnRTE
 				endif
 			else
@@ -586,20 +621,14 @@ Function qipGraphPanelRedrawEdges(String graphName)
 				Note /K $edgeName; AbortOnRTE
 			endif
 			if(show_edgesI)
-				if(objidx>=0)
-					Wave edgeIndex=$(homeDFstr+"innerEdge:DetectedEdges:W_Info"); AbortOnRTE
-					qipBoundaryFindGroupByIndex(inneredgeBoundary, edgeIndex, objidx, startp, endp)
-					if(startp>=0 && endp>=startp)
-						Duplicate /O /R=[startp, endp] inneredgeBoundary, $innerEdgeName
-						Wave edge=$innerEdgeName
-						wavenote=note(edge)
-						wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
-						wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "0") //for frame specific ROIs we need specific function for update changes
-						Note /K edge, wavenote; AbortOnRTE
-					else
-						Make /O /N=(1, 2) $innerEdgeName=NaN; AbortOnRTE
-						Note /K $innerEdgeName; AbortOnRTE
-					endif
+				if(objidx>=0 && WaveExists(ROI2InfoIndex) && objidx<DimSize(ROI2InfoIndex, 0) && WaveExists($roiEdgeNameI))
+					Duplicate /O $roiEdgeNameI, $innerEdgeName
+					Wave edge=$innerEdgeName
+					wavenote=note(edge)
+					wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
+					wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "1") //for frame specific ROIs we need specific function for update changes
+					wavenote=ReplaceStringByKey("SAVEFUNC", wavenote, "qipUFP_SavePointROIEdge_I")
+					Note /K edge, wavenote; AbortOnRTE
 				else
 					Duplicate /O inneredgeBoundary, $innerEdgeName
 					Note /K $innerEdgeName; AbortOnRTE
@@ -609,20 +638,14 @@ Function qipGraphPanelRedrawEdges(String graphName)
 				Note /K $innerEdgeName; AbortOnRTE
 			endif
 			if(show_edgesO)
-				if(objidx>=0)
-					Wave edgeIndex=$(homeDFstr+"outerEdge:DetectedEdges:W_Info"); AbortOnRTE
-					qipBoundaryFindGroupByIndex(outeredgeBoundary, edgeIndex, objidx, startp, endp)
-					if(startp>=0 && endp>=startp)
-						Duplicate /O /R=[startp, endp] outeredgeBoundary, $outerEdgeName
-						Wave edge=$outerEdgeName
-						wavenote=note(edge)
-						wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
-						wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "0") //for frame specific ROIs we need specific function for update changes
-						Note /K edge, wavenote; AbortOnRTE
-					else
-						Make /O /N=(1, 2) $outerEdgeName=NaN; AbortOnRTE
-						Note /K $outerEdgeName; AbortOnRTE
-					endif
+				if(objidx>=0 && WaveExists(ROI2InfoIndex) && objidx<DimSize(ROI2InfoIndex, 0) && WaveExists($roiEdgeNameO))
+					Duplicate /O /R=[startp, endp] outeredgeBoundary, $outerEdgeName
+					Wave edge=$outerEdgeName
+					wavenote=note(edge)
+					wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
+					wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "1") //for frame specific ROIs we need specific function for update changes
+					wavenote=ReplaceStringByKey("SAVEFUNC", wavenote, "qipUFP_SavePointROIEdge_O")
+					Note /K edge, wavenote; AbortOnRTE
 				else
 					Duplicate /O outeredgeBoundary, $outerEdgeName
 					Note /K $outerEdgeName; AbortOnRTE
@@ -920,6 +943,57 @@ Function qipUFP_saveDotROI(Wave wave_for_save, String graphname, Variable framei
 		if(WaveExists(wave_for_save))
 			NewDataFolder /O/S :ROI ; AbortOnRTE
 			Duplicate /O wave_for_save, W_PointROI
+		endif
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	return 0
+end
+
+Function qipUFP_SavePointROIEdge_M(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
+	
+	try
+		NewDataFolder /O/S $analysisDF; AbortOnRTE
+		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
+		String roiEdgeNameM=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(frameidx)+".M")
+
+		if(WaveExists(wave_for_save))
+			Duplicate /O wave_for_save, $roiEdgeNameM ; AbortOnRTE
+		endif
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	return 0
+end
+
+Function qipUFP_SavePointROIEdge_I(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
+	
+	try
+		NewDataFolder /O/S $analysisDF; AbortOnRTE
+		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
+		String roiEdgeNameI=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(frameidx)+".I")
+
+		if(WaveExists(wave_for_save))
+			Duplicate /O wave_for_save, $roiEdgeNameI ; AbortOnRTE
+		endif
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	return 0
+end
+
+Function qipUFP_SavePointROIEdge_O(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
+	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
+	
+	try
+		NewDataFolder /O/S $analysisDF; AbortOnRTE
+		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
+		String roiEdgeNameO=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(frameidx)+".O")
+
+		if(WaveExists(wave_for_save))
+			Duplicate /O wave_for_save, $roiEdgeNameO ; AbortOnRTE
 		endif
 	catch
 		Variable err=GetRTError(1)
@@ -2354,12 +2428,15 @@ Function qipBoundaryFindIndexByPoint(Variable x, Variable y, Wave W_info, Variab
 			endif
 		endif
 	endfor
-	if(selected_i>=0)
+	if(selected_i>=0 && selected_i<DimSize(W_Info, 0))
 		startp=W_info[selected_i][0]
 		endp=W_info[selected_i][1]
 		centerx=W_info[selected_i][8]
 		centery=W_info[selected_i][9]
+	else
+		selected_i=-1
 	endif
+	return selected_i
 End
 
 Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Variable refFrame, [Wave refDotROI, Wave refLineROI])
@@ -2601,6 +2678,7 @@ Function qipImageProcGenerateROIMask(String graphName, DFREF ROIDF, Variable roi
 End
 
 Function qipImageProcClearEdges(String graphName, Variable frameidx, Variable edgeType)
+	Variable clean_flag=1
 	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
 	String dfname=analysisDF+":"+PossiblyQuoteName(num2istr(frameidx))+":"
 	switch(edgeType)
@@ -2613,14 +2691,82 @@ Function qipImageProcClearEdges(String graphName, Variable frameidx, Variable ed
 	case 2: //outer edge
 		dfname+="outerEdge:DetectedEdges"
 		break
+	case 3:
+		dfname+="ROI:PointROIObjEdges"
+		break
 	default:
 		dfname=""
+		clean_flag=0
 		break
 	endswitch
 	
-	if(strlen(dfname)>0)
+	if(clean_flag)
 		KillDataFolder /Z $dfname
 	endif
+End
+
+Function qipImageProcGenerateInfoIndexForDotROIs(DFREF homedfr)
+	DFREF savedDF=GetDataFolderDFR()
+	try
+		SetDataFolder homedfr
+		NewDataFolder /O :ROI:PointROIObjEdges ; AbortOnRTE
+		//DFREF pointROIEdgeDF=:ROI:PointROIObjEdges ; AbortOnRTE
+		
+		Wave pointROI=:ROI:W_PointROI ; AbortOnRTE
+		
+		Wave middle_infow=:DetectedEdges:W_Info ; AbortOnRTE
+		Wave middle_boundary=:DetectedEdges:W_Boundary ; AbortOnRTE
+		
+		Wave inner_infow=:innerEdge:DetectedEdges:W_Info ; AbortOnRTE
+		Wave inner_boundary=:innerEdge:DetectedEdges:W_Boundary ; AbortOnRTE
+		
+		Wave outer_infow=:outerEdge:DetectedEdges:W_Info ; AbortOnRTE
+		Wave outer_boundary=:outerEdge:DetectedEdges:W_Boundary ; AbortOnRTE
+		
+		if(WaveExists(pointROI) && WaveExists(middle_infow) && WaveExists(inner_infow) && WaveExists(outer_infow))
+			Variable maxidx=DimSize(pointROI, 0) ; AbortOnRTE
+			Make /O /N=(maxidx, 3) :ROI:W_PointROI2Info ; AbortOnRTE
+			Wave roi2info=:ROI:W_PointROI2Info ; AbortOnRTE
+			 //this stores the index for W_Info for edges, inner edges and outer edges that 
+			 //best match the point ROI
+			
+			Variable i
+			for(i=0; i<maxidx; i+=1)
+				Variable startp=-1, endp=-1, centerx=NaN, centery=NaN
+				Variable selected_idx
+				String roiEdgeNameM=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(i)+".M")
+				String roiEdgeNameI=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(i)+".I")
+				String roiEdgeNameO=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(i)+".O")
+				selected_idx=qipBoundaryFindIndexByPoint(pointROI[i][0], pointROI[i][1], middle_infow, startp, endp, centerx, centery); AbortOnRTE
+				roi2info[i][0]=selected_idx; AbortOnRTE
+				if(selected_idx>=0)
+					Duplicate /O/R=[middle_infow[selected_idx][0], middle_infow[selected_idx][1]][] middle_boundary, $roiEdgeNameM
+				else
+					Make /O /N=(1,2) /D $roiEdgeNameM=NaN
+				endif
+				
+				selected_idx=qipBoundaryFindIndexByPoint(pointROI[i][0], pointROI[i][1], inner_infow, startp, endp, centerx, centery); AbortOnRTE
+				roi2info[i][1]=selected_idx; AbortOnRTE
+				if(selected_idx>=0)
+					Duplicate /O/R=[inner_infow[selected_idx][0], inner_infow[selected_idx][1]][] inner_boundary, $roiEdgeNameI
+				else
+					Make /O /N=(1,2) /D $roiEdgeNameI=NaN
+				endif
+				
+				selected_idx=qipBoundaryFindIndexByPoint(pointROI[i][0], pointROI[i][1], outer_infow, startp, endp, centerx, centery); AbortOnRTE
+				roi2info[i][2]=selected_idx; AbortOnRTE
+				if(selected_idx>=0)
+					Duplicate /O/R=[outer_infow[selected_idx][0], outer_infow[selected_idx][1]][] outer_boundary, $roiEdgeNameO
+				else
+					Make /O /N=(1,2) /D $roiEdgeNameO=NaN
+				endif
+			endfor
+		endif
+	catch
+		Variable err=GetRTError(1)
+		print "error when generating the index of W_Info for each Dot ROI:", err
+	endtry
+	SetDataFolder savedDF
 End
 
 Function qipImageProcAddDetectedEdge(DFREF homedfr)
@@ -2749,6 +2895,7 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			qipImageProcClearEdges(graphName, frameidx, 0) //clear existing info of edge
 			qipImageProcClearEdges(graphName, frameidx, 1)
 			qipImageProcClearEdges(graphName, frameidx, 2)
+			qipImageProcClearEdges(graphName, frameidx, 3)
 			
 			roi_counts=0
 			do
@@ -2825,6 +2972,13 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 					break
 				endif
 			while(roi_counts>=0)
+			qipImageProcGenerateInfoIndexForDotROIs(homedfr) 
+			//if dot ROI exists, will generate another table
+			//that tells which item in W_Info best links to each dot
+			// :ROI:W_PointROI2Info will have the same rows as W_PointROI
+			//   column [0] for middle edge index in W_Info
+			//   column [1] for inner edge index in W_Info
+			//   column [2] for outer edge index in W_Info
 		endfor
 	catch
 		Variable err=GetRTError(0)
