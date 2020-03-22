@@ -1,12 +1,10 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
-Menu "Macros"
-	Submenu "QingLabTools"
-		Submenu "ImageAnalysis"
-			"Load File...", qipLoadFile("")
-			"Display Image...", qipDisplayImage("")
-		End
+Menu "QingLabTools"
+	Submenu "ImageAnalysis"
+		"Load File...", qipLoadFile("")
+		"Display Image...", qipDisplayImage("")
 	End
 End
 
@@ -333,7 +331,7 @@ Function /S qipLoadTIFFImageStack(String filename) //Load TIFF file
 End
 
 
-Function qipGraphPanelAddROIByAxis(String graphName, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker, Variable mode, Variable redundantOK])
+Function qipGraphPanelAddTraceByAxis(String graphName, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker, Variable mode, Variable redundantOK])
 	Variable trace_drawn=0
 	String xaxisname=GetUserData(graphName, "", "ROI_XAXISNAME")
 	String yaxisname=GetUserData(graphName, "", "ROI_YAXISNAME")
@@ -514,55 +512,28 @@ Function qipGraphPanelAddImageByAxis(String graphName, Wave image, [Variable cta
 	endif
 End
 
-Function qipFillSelectedBoundaryOnly(Wave edgeFill, Wave rawEdgeX, Wave rawEdgeY, Wave pickedInfo, Variable edgeType)
-	Variable cellIndex, boundary_start, boundary_end
-
-	switch(edgeType)
-	case 0: //inner edge
-		cellIndex=2
-		boundary_start=5
-		boundary_end=6
-		break
-	case 1: //middle edge
-		cellIndex=2+9
-		boundary_start=5+9
-		boundary_end=6+9
-		break
-	case 2:
-		cellIndex=2+9*2
-		boundary_start=5+9*2
-		boundary_end=6+9*2
-		break
-	default:
-		return -1
-	endswitch
-
-	try
-		Variable i, j
-
-		for(i=0; i<DimSize(pickedInfo, 0); i+=1) //column 2: cell index, 5: boundary start, 6: boundary end
-			Variable t=(NumType(pickedInfo[i][0])!=0 || \
-							NumType(pickedInfo[i][cellIndex])!=0 || \
-							NumType(pickedInfo[i][boundary_start])!=0 || \
-							NumType(pickedInfo[i][boundary_end])!=0); AbortOnRTE
-			if(t==0)
-				for(j=pickedInfo[i][boundary_start]; j<=pickedInfo[i][boundary_end] && j<DimSize(rawEdgeX, 0); j+=1)
-					edgeFill[j][0]=rawEdgeX[j]; AbortOnRTE
-					edgeFill[j][1]=rawEdgeY[j]; AbortOnRTE
-				endfor
-			else
-				break
-			endif
-		endfor
-	catch
-		Variable err=GetRTError(1)
-	endtry
-End
-
-Function qipGraphPanelPrepRedrawEdges(Variable show_edges, Variable objidx, Wave ROI2InfoIndex, Wave All_edgeBoundary, String roiEdgeName, String redrawEdgeName, string saveFuncName)
+Function qipGraphPanelPrepRedrawEdges(Variable show_edges, Variable objidx, Variable edgeType, Wave ROI2InfoIndex, String redrawEdgeName, string saveFuncName)
+//this function will assume that you are in the folder of the frame
 	if(show_edges)
+		String postfix=""
+		switch(edgeType)
+		case 1: //middle
+			postfix=".M"
+			break
+		case 2: //inner
+			postfix=".I"
+			break
+		case 3: //outer
+			postfix=".O"
+			break
+		default:
+			break
+		endswitch
+		
 		if(objidx>=0 && objidx<DimSize(ROI2InfoIndex, 0))
 		//edge of the selected point ROI obj will be shown, if exists/properly extracted by EdgeDetection function
+			String roiEdgeName=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(objidx)+postfix)
+			
 			if(WaveExists($roiEdgeName) && WaveExists(ROI2InfoIndex)) 
 				//the corresponding boundary has been copied to the PointROIObjEdges folder
 				Duplicate /O $roiEdgeName, $redrawEdgeName; AbortOnRTE
@@ -576,7 +547,23 @@ Function qipGraphPanelPrepRedrawEdges(Variable show_edges, Variable objidx, Wave
 			endif
 		else
 		//all edges will be shown
-			Duplicate /O All_edgeBoundary, $redrawEdgeName; AbortOnRTE
+			Variable i
+			for(i=0; i<DimSize(ROI2InfoIndex, 0); i+=1)
+				String boundaryWaveName=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+postfix)
+				Wave boundaryWave=$boundaryWaveName
+				if(WaveExists(boundaryWave))
+					if(i==0)
+						Duplicate /O boundaryWave, $redrawEdgeName; AbortOnRTE
+					else
+						Wave edge=$redrawEdgeName
+						Variable startp=DimSize(edge, 0)
+						InsertPoints /M=0 DimSize(edge, 0), DimSize(boundaryWave, 0)+1, edge
+						edge[startp][]=NaN
+						startp+=1
+						edge[startp,][]=boundaryWave[p-startp][q]
+					endif
+				endif
+			endfor
 			Note /K $redrawEdgeName; AbortOnRTE
 		endif
 	else
@@ -624,15 +611,10 @@ Function qipGraphPanelRedrawEdges(String graphName)
 		variable objidx=V_Value
 		Variable startp, endp
 		
-		String roiEdgeNameM=qipGenerateDerivedName(homeDFstr+"ROI:PointROIObjEdges:W_ROIBoundary", num2istr(objidx)+".M")
-		String roiEdgeNameI=qipGenerateDerivedName(homeDFstr+"ROI:PointROIObjEdges:W_ROIBoundary", num2istr(objidx)+".I")
-		String roiEdgeNameO=qipGenerateDerivedName(homeDFstr+"ROI:PointROIObjEdges:W_ROIBoundary", num2istr(objidx)+".O")
-		String wavenote=""
-				
 		if(WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
-			qipGraphPanelPrepRedrawEdges(show_edgesM, objidx, ROI2InfoIndex, edgeBoundary, roiEdgeNameM, edgeName, "qipUFP_SavePointROIEdge_M")
-			qipGraphPanelPrepRedrawEdges(show_edgesI, objidx, ROI2InfoIndex, inneredgeBoundary, roiEdgeNameI, innerEdgeName, "qipUFP_SavePointROIEdge_I")
-			qipGraphPanelPrepRedrawEdges(show_edgesO, objidx, ROI2InfoIndex, outeredgeBoundary, roiEdgeNameO, outeredgeName, "qipUFP_SavePointROIEdge_O")
+			qipGraphPanelPrepRedrawEdges(show_edgesM, objidx, 1, ROI2InfoIndex, edgeName, "qipUFP_SavePointROIEdge_M")
+			qipGraphPanelPrepRedrawEdges(show_edgesI, objidx, 2, ROI2InfoIndex, innerEdgeName, "qipUFP_SavePointROIEdge_I")
+			qipGraphPanelPrepRedrawEdges(show_edgesO, objidx, 3, ROI2InfoIndex, outeredgeName, "qipUFP_SavePointROIEdge_O")
 		else
 			Make /O /N=(1, 2) $edgeName=NaN; AbortOnRTE
 			Note /K $edgeName; AbortOnRTE
@@ -642,9 +624,9 @@ Function qipGraphPanelRedrawEdges(String graphName)
 			Note /K $outerEdgeName; AbortOnRTE
 		endif
 
-		qipGraphPanelAddROIByAxis(graphName, $outeredgeName, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
-		qipGraphPanelAddROIByAxis(graphName, $edgeName, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
-		qipGraphPanelAddROIByAxis(graphName, $inneredgeName, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
+		qipGraphPanelAddTraceByAxis(graphName, $outeredgeName, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
+		qipGraphPanelAddTraceByAxis(graphName, $edgeName, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
+		qipGraphPanelAddTraceByAxis(graphName, $inneredgeName, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
 
 	catch
 		Variable err=GetRTError(0)
@@ -687,14 +669,14 @@ Function qipGraphPanelRedrawROI(String graphName)
 	
 	//current user ROI definitionis always shown
 	if(strlen(roi_cur_traceName)>0)
-		if(qipGraphPanelAddROIByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
+		if(qipGraphPanelAddTraceByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
 			ModifyGraph /W=$(graphName) offset($roi_cur_basename)={0,0}
 		endif
 	endif
 	
 	if(show_userroi) //existing record of user ROI is shown only when checkbox is true
 		if(strlen(roi_allName)>0)
-			if(qipGraphPanelAddROIByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
+			if(qipGraphPanelAddTraceByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
 				ModifyGraph /W=$(graphName) offset($roi_all_basename)={0,0}
 			endif
 		endif
@@ -745,7 +727,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			Wave framewdot=$dotwaveName; AbortOnRTE
 			
 			if(show_dot && WaveExists(framewdot))				
-				qipGraphPanelAddROIByAxis(graphName, framewdot, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
+				qipGraphPanelAddTraceByAxis(graphName, framewdot, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
 				ModifyGraph /W=$(graphName) offset($dotwaveBaseName)={0,0}
 				roinote=note(framewdot)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryPointModifier") //for dots, we will not delete points, only fill in NaN for deletion
@@ -775,7 +757,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			
 			
 			if(show_line && WaveExists(framelinewave))				
-				qipGraphPanelAddROIByAxis(graphName, framelinewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
+				qipGraphPanelAddTraceByAxis(graphName, framelinewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
 				ModifyGraph /W=$(graphName) offset($linewaveBaseName)={0,0}
 				roinote=note(framelinewave)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryLineModifier")
@@ -1077,7 +1059,7 @@ Function qipUFP_BoundaryLineModifier(Wave wave_for_mod, Variable index, Variable
 		Variable err=GetRTError(1)
 	endtry
 	
-	return modify_flag
+	return retVal
 End
 
 Function qipUFP_BoundaryPointModifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
@@ -1219,7 +1201,7 @@ Function qipHookFunction(s)
 	STRUCT WMWinHookStruct &s
 
 	Variable hookResult = 0	// 0 if we do not handle event, 1 if we handle it.
-
+	
 	String baseName=GetUserData(s.winName, "", "BASENAME")
 	String panelName=GetUserData(s.winName, "", "PANELNAME")
 	Variable panelVisible=str2num(GetUserData(s.winName, "", "PANELVISIBLE"))
@@ -1288,6 +1270,12 @@ Function qipHookFunction(s)
 	String wavenote=""
 	String modifyfuncName=""
 	
+	if(trace_modified)
+		TextBox /W=$(s.winname)/C/N=TRACE_MODIFIED_FLAG/S=3/B=(65535,32768,32768)/A=LT/X=0/Y=0/V=1 "\\Z06\\Z08MODIFICATION \rNOT SAVED"
+	else
+		TextBox /W=$(s.winname)/C/N=TRACE_MODIFIED_FLAG/V=0
+	endif
+	
 	switch(s.eventCode)
 		case 3:
 			if(new_roi==1) //when ROI is being defined, no effect for mouse down
@@ -1323,15 +1311,15 @@ Function qipHookFunction(s)
 								tracex=NaN
 								tracey=NaN
 								trace_editstatus=0
-								modifyfuncRef(w_active, trace_hitpoint, tracex, tracey, -1)								
+								trace_edit_new_modification=modifyfuncRef(w_active, trace_hitpoint, tracex, tracey, -1)								
 							else
 								tracex=AxisValFromPixel(s.winname, txaxisname, s.mouseLoc.h)
 								tracey=AxisValFromPixel(s.winname, tyaxisname, s.mouseLoc.v)
 								trace_editstatus=1
 								trace_edit_insert_flag= ((s.eventMod&0xE)==0xA) //if ctrl and shift are both down, insert
 								trace_edit_new_modification=modifyfuncRef(w_active, trace_hitpoint, tracex, tracey, trace_edit_insert_flag)
-								trace_modified=trace_modified || trace_edit_new_modification
-							endif	
+							endif
+							trace_modified=trace_modified || trace_edit_new_modification
 						endif	//axis are correctly labelled
 					endif //wave and point index are correct
 				endif //trace is available at the point of mouse
@@ -1722,7 +1710,7 @@ Function qipGraphPanelBtnSaveROIToFrame(ba) : ButtonControl
 			
 			if(V_flag==0)
 				for(frameidx=startidx; frameidx<=endidx; frameidx+=1)
-					qipImageProcUpdateROIRecord(graphName, frameidx, -1)
+					qipImageProcUpdateROIRecord(graphName, frameidx, -1, 0)
 				endfor
 				qipGraphPanelRedrawROI(graphName)
 			endif
@@ -1745,11 +1733,14 @@ Function qipGraphPanelBtnCopyROIFrom(ba) : ButtonControl
 			graphname=StringFromList(0, graphname, "#")
 			Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
 			Variable fromFrame=frameidx, toFrame=frameidx
+			Variable dynamicFlag=1
 			PROMPT fromFrame, "Copy from frame:"
 			PROMPT toFrame, "Save to frame:"
-			DoPrompt "Copy ROI from which frame to which frame?", fromFrame, toFrame
+			PROMPT dynamicFlag, "Use identified object boundary from reference frame?", popup, "_None_;inner boundary;middle boundary;outer boundary;"
+			
+			DoPrompt "Copy ROI from which frame to which frame?", fromFrame, dynamicFlag, toFrame
 			if(V_flag==0 && fromFrame>=0 && toFrame>=0 && fromFrame!=toFrame)
-				qipImageProcUpdateROIRecord(graphName, toFrame, fromFrame)
+				qipImageProcUpdateROIRecord(graphName, toFrame, fromFrame, dynamicFlag)
 			endif
 			break
 		case -1: // control being killed
@@ -1974,8 +1965,8 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 				PROMPT wname, "Main channel image cannot be changed:", popup, imgselection
 			endif			
 			
-			funcSelection="_None_;"+FunctionList("UFP*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:Procedure")
-			PROMPT fname, "User function for image redraw/update. User function needs to be defined in the Procedure window with its name starting with prefix 'UFP':", popup, funcSelection
+			funcSelection="_None_;"+FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:Procedure")
+			PROMPT fname, "User function for image redraw/update. User function needs to be defined in the Procedure window with its name starting with prefix 'QIPUF_':", popup, funcSelection
 			PROMPT transparency, "Transparency (0 means completely transparent, 1 means completely opaque)"
 			
 			DoPrompt "Select a image and user function:", wname, fname, transparency
@@ -2268,7 +2259,7 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				endif
 	
 				Variable threshold=-1
-				Variable minArea=100
+				Variable minArea=50
 				Variable dialation_iteration=3
 				Variable erosion_iteration=4
 				Variable allow_subset=1
@@ -2338,7 +2329,7 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				String /G $(analysisDF+":ParticleAnalysisSettings")
 				SVAR analysissetting=$(analysisDF+":ParticleAnalysisSettings")
 	
-				sprintf analysissetting, "GaussianFilterMatrixSize:%d;GaussianFilterIteration:%d;Threshold:%.1f;MinArea:%.1f;DialationIteration:%d;ErosionIteration:%d", filterMatrixSize, filterIteration, threshold, minArea, dialation_iteration, erosion_iteration
+				sprintf analysissetting, "GraphName:%s;GaussianFilterMatrixSize:%d;GaussianFilterIteration:%d;Threshold:%.1f;MinArea:%.1f;DialationIteration:%d;ErosionIteration:%d", graphname, filterMatrixSize, filterIteration, threshold, minArea, dialation_iteration, erosion_iteration
 	
 				edgedetection_stop=0
 				edgedetection_status=1
@@ -2389,30 +2380,6 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 	endif
 	
 	return 0
-End
-
-
-Function qipFindBoundaryIndexBySpot(Variable x, Variable y, Wave xmin, Wave xmax, Wave ymin, Wave ymax)
-	Variable j, s
-
-	s=DimSize(xmin, 0)
-	try
-		for(j=0; j<s; j+=1)
-			Variable t=(x>=xmin[j] && x<=xmax[j] && y>=ymin[j] && y<=ymax[j]); AbortOnRTE
-			if(t==1)
-				break
-			endif
-		endfor
-	catch
-		Variable err=GetRTError(1)
-		j=-1
-	endtry
-
-	if(j>=s)
-		j=-1
-	endif
-
-	return j
 End
 
 Function qipBoundaryFindGroupByIndex(Wave boundaryX, Wave boundaryIndex, Variable index, Variable & boundary_start, Variable & boundary_end)
@@ -2504,7 +2471,7 @@ Function qipBoundaryFindIndexByPoint(Variable x, Variable y, Wave W_info, Variab
 	return selected_i
 End
 
-Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Variable refFrame, [Wave refDotROI, Wave refLineROI])
+Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Variable refFrame, Variable dynamicFlag)
 //This function will update ROI records from refFrame's ROI datafolder
 //If the refFrame < 0, user ROI (defined by mouse clicks) will be used for update
 //This will separate singular dots, and lines/regions from each other, and generate index etc
@@ -2586,30 +2553,89 @@ Function qipImageProcUpdateROIRecord(String graphName, Variable currentFrame, Va
 
 				retVal=0
 			endif
-		else //following frames will used previous tracked particle's edge region to get new ROI defined
-			//we should be inside the datafolder for the current folder
-			if(refFrame!=currentFrame)
-				try
-					String refDF=analysisDF+":"+PossiblyQuoteName(num2istr(refFrame))+":ROI" ; AbortOnRTE
-					DFREF refDFREF=$refDF; AbortOnRTE
-					if(DataFolderRefStatus(refDFREF)==1)
-						Wave refLineROIIdx=refDFREF:W_RegionROIIndex
-						Wave refLineROI=refDFREF:W_RegionROIBoundary
-						Wave refPointROI=refDFREF:W_PointROI
-						
-						if(WaveExists(refLineROIIdx))
-							Duplicate /O refLineROIIdx, :ROI:W_RegionROIIndex
-						endif
-						if(WaveExists(refLineROI))
-							Duplicate /O refLineROI, :ROI:W_RegionROIBoundary
-						endif
-						if(WaveExists(refPointROI))
-							Duplicate /O refPointROI, :ROI:W_PointROI
-						endif
+		else //need to copy from reference frame to targe frame, no global ROI is used.
+			String refDF=""
+			if(dynamicFlag>=2 && dynamicFlag<=4)
+				//following frames will used previous tracked particle's edge region to get new ROI defined
+			   //we should be inside the datafolder for the current folder
+				refDF=analysisDF+":"+PossiblyQuoteName(num2istr(refFrame))+":ROI" ; AbortOnRTE
+				DFREF refDF_ROI=$refDF; AbortOnRTE
+				DFREF refDF_Boundary=$(refDF+":PointROIObjEdges"); AbortOnRTE
+				if(DataFolderRefStatus(refDF_ROI)==1 && DataFolderRefStatus(refDF_Boundary)==1)
+					Wave refPointROI=refDF_ROI:W_PointROI
+					
+					NewDataFolder /O/S :ROI ; AbortOnRTE
+					Make /O /D /N=(1, 2) W_RegionROIIndex=NaN; AbortOnRTE
+					Make /O /D /N=(1, 2) W_RegionROIBoundary=NaN; AbortOnRTE
+					
+					if(WaveExists(refPointROI) && refFrame!=currentFrame)
+						Duplicate /O refPointROI, :W_PointROI; AbortOnRTE
 					endif
-				catch
-					err=GetRTError(1)
-				endtry
+					
+					String postfix="", boundaryName=""
+					switch(dynamicFlag)
+					case 2: //inner
+						postfix=".I"
+						break
+					case 3: //middle
+						postfix=".M"
+						break
+					case 4: //outer
+						postfix=".O"
+						break
+					default:
+						postfix=""
+						break
+					endswitch					
+	
+					Variable j
+					for(j=0; j<DimSize(refPointROI, 0); j+=1)
+						boundaryName="W_ROIBoundary"+num2istr(j)+postfix; AbortOnRTE
+						Wave boundarywave=refDF_Boundary:$boundaryName; AbortOnRTE
+						if(WaveExists(boundarywave))
+							InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), DimSize(boundarywave, 0)+1, W_RegionROIBoundary; AbortOnRTE
+							if(j==0)
+								W_RegionROIBoundary[1,DimSize(boundarywave, 0)][]=boundarywave[p-1][q]; AbortOnRTE
+								W_RegionROIBoundary[DimSize(W_RegionROIBoundary, 0)-1][]=NaN; AbortOnRTE
+								W_RegionROIIndex[0][0]=1; AbortOnRTE
+								W_RegionROIIndex[0][1]=DimSize(boundaryWave, 0); AbortOnRTE
+							else
+								Variable idxbase=W_RegionROIIndex[j-1][1]+2 ; AbortOnRTE //the end point of last index
+								InsertPoints /M=0 DimSize(W_RegionROIIndex, 0), 1, W_RegionROIIndex; AbortOnRTE
+								W_RegionROIBoundary[idxbase,idxbase+DimSize(boundarywave, 0)-1][]=boundarywave[p-idxbase][q]; AbortOnRTE
+								W_RegionROIBoundary[DimSize(W_RegionROIBoundary, 0)-1][]=NaN; AbortOnRTE
+								W_RegionROIIndex[j][0]=idxbase; AbortOnRTE
+								W_RegionROIIndex[j][1]=idxbase+DimSize(boundarywave, 0)-1
+							endif
+						endif
+					endfor
+					
+				endif
+			else
+				//simply copy the ROI from the refFrame's ROI folder over
+				if(refFrame!=currentFrame)
+					try
+						refDF=analysisDF+":"+PossiblyQuoteName(num2istr(refFrame))+":ROI" ; AbortOnRTE
+						DFREF refDFREF=$refDF; AbortOnRTE
+						if(DataFolderRefStatus(refDFREF)==1)
+							Wave refLineROIIdx=refDFREF:W_RegionROIIndex
+							Wave refLineROI=refDFREF:W_RegionROIBoundary
+							Wave refPointROI=refDFREF:W_PointROI
+							
+							if(WaveExists(refLineROIIdx))
+								Duplicate /O refLineROIIdx, :ROI:W_RegionROIIndex
+							endif
+							if(WaveExists(refLineROI))
+								Duplicate /O refLineROI, :ROI:W_RegionROIBoundary
+							endif
+							if(WaveExists(refPointROI))
+								Duplicate /O refPointROI, :ROI:W_PointROI
+							endif
+						endif
+					catch
+						err=GetRTError(1)
+					endtry
+				endif
 			endif
 		endif
 	catch
@@ -2965,7 +2991,11 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			do
 				if(param.useROI==1)
 					DFREF roidf=:ROI
-					roi_counts=qipImageProcGenerateROIMask(graphName, roidf, roi_counts, frameidx, frame, roimask_name, param.dynamicROITracking)
+					if(frameidx==param.startframe) //first frame will not follow dynamic tracking, but use the ROI defined for this frame
+						roi_counts=qipImageProcGenerateROIMask(graphName, roidf, roi_counts, frameidx, frame, roimask_name, 0)
+					else
+						roi_counts=qipImageProcGenerateROIMask(graphName, roidf, roi_counts, frameidx, frame, roimask_name, param.dynamicROITracking)
+					endif
 					Wave roimask=$roimask_name
 					
 					if(roi_counts>=0 && WaveExists(roimask))
@@ -3086,4 +3116,23 @@ Function qipGraphPanelSVObjIdx(sva) : SetVariableControl
 	endswitch
 
 	return 0
+End
+
+
+Constant QIPUF_CHANNEL_GRAY=0
+Constant QIPUF_CHANNEL_RED=1
+Constant QIPUF_CHANNEL_GREEN=2
+Constant QIPUF_CHANNEL_BLUE=3
+
+Function qipUF_GetFrame(Variable channel, Variable frameidx)
+
+End
+
+Function qipUF_GetObj(Variable frameidx, Variable objidx, Variable & x, Variable & y, WAVE & bTrace, WAVE & bMask)
+End
+
+Function qipUF_GetFrameNumber()
+End
+
+Function qipUF_GetObjNumber()
 End
