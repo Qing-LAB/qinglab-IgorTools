@@ -205,7 +205,7 @@ Function qipGraphPanelResetControls(String panelName)
 	Button save_roi, win=$panelName, pos={0, 90}, size={95, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame
 	Button copy_roi, win=$panelName, pos={0, 110}, size={95,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom
 	Button clear_roi, win=$panelName, pos={0, 130}, size={95, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI
-	Button imgproc_findobj, win=$panelName, fColor=(0,0,32768), pos={0, 150}, size={95,20}, title="Identify Objects",proc=qipGraphPanelBtnEdgeDetect
+	Button imgproc_findobj, win=$panelName, fColor=(0,16384,0), pos={0, 150}, size={95,20}, title="Identify Objects",proc=qipGraphPanelBtnEdgeDetect
 	SetVariable sv_objidx,win=$panelName,title="OBJ#",pos={0, 170},size={50,20},value= _NUM:-1,limits={-1,inf,1},proc=qipGraphPanelSVIndex
 	SetVariable sv_frameidx,win=$panelName,title="FRM#",pos={50,170},size={50,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex
 	
@@ -255,9 +255,13 @@ Function qipDisplayImage(String wname, [Variable bg_r, Variable bg_g, Variable b
 		
 		String tmpframeName=UniqueName("M_tmpImageFrame", 1, 0)
 		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $tmpframeName
+		
+		//tmpframe[][]=w[p][q][0]
+		ImageTransform /PTYP=0 /P=0 getPlane w
+		Wave M_ImagePlane
+		Duplicate /O M_ImagePlane, $tmpframeName
 		Wave tmpframe=$tmpframeName
-		tmpframe[][]=w[p][q][0]
-
+		
 		NewImage /N=$graphname /K=0 tmpframe
 		graphname=S_Name
 		Variable ratio=DimSize(w, 1)/DimSize(w, 0)
@@ -790,11 +794,14 @@ End
 Function qipGraphPanelRedrawImage(String graphName)
 	String panelName=GetUserData(graphName, "", "PANELNAME")
 	Wave img=$GetUserData(graphName, "", "IMAGENAME")
-	Wave frame=$GetUserData(graphName, "", "FRAMENAME")
+	String frameName=GetUserData(graphName, "", "FRAMENAME")
+	
 	Variable frameidx=str2num(GetUserData(graphName, "", "FRAMEIDX"))
 	
 	//main channel image update
-	qipGraphPanelUpdateFrameWave(img, frame, frameidx)
+	qipGraphPanelUpdateFrameWave(img, frameName, frameidx)
+	Wave frame=$frameName
+	
 	String usrFunc=GetUserData(graphName, "", "IMAGE_USERFUNC")
 	if(strlen(usrFunc)>0)
 		FUNCREF qipUFP_IMGFUNC usrFuncRef=$usrFunc
@@ -883,15 +890,18 @@ Function qipGraphPanelRedrawImage(String graphName)
 	SetVariable sv_frameidx, win=$panelName, value=_NUM:frameidx
 End
 
-Function qipGraphPanelUpdateFrameWave(Wave img, Wave frame, Variable frameidx)	
-	if(WaveExists(img) && WaveExists(frame))
+Function qipGraphPanelUpdateFrameWave(Wave img, String frameName, Variable frameidx)	
+	if(WaveExists(img) && WaveExists($frameName))
 		if(frameidx>=DimSize(img, 2))
 			frameidx=DimSize(img, 2)-1
 		endif
 		if(numtype(frameidx)!=0 || frameidx<0)
 			frameidx=0
 		endif
-		multithread frame[][]=img[p][q][frameidx]; AbortOnRTE
+		//multithread frame[][]=img[p][q][frameidx]; AbortOnRTE
+		ImageTransform /P=(frameidx) /PTYP=0 getPlane img ; AbortOnRTE
+		Wave M_ImagePlane
+		Duplicate /O M_ImagePlane, $frameName
 	endif
 End
 
@@ -1871,7 +1881,7 @@ Constant QIP_ALPHA_BLUE = 0.114
 Function qipUFP_IMGFUNC(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, Variable flag)
 	try
 		if(flag&QIPUFP_IMAGEFUNC_REDRAWUPDATE) //normal process of updating frame data
-			qipGraphPanelUpdateFrameWave(srcImage, frameImage, frameidx)
+			qipGraphPanelUpdateFrameWave(srcImage, GetWavesDataFolder(frameImage, 2), frameidx)
 		endif
 		if(flag&QIPUFP_IMAGEFUNC_PREPROCESSING) //pre-processing of edge detection
 			MatrixFilter /N=3 /P=3 gauss frameImage
@@ -3017,7 +3027,11 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			qipImageProcClearEdges(graphName, frameidx, 2)
 			qipImageProcClearEdges(graphName, frameidx, 3)
 
-			multithread frame[][]=image[p][q][frameidx]; AbortOnRTE
+			//multithread frame[][]=image[p][q][frameidx]; AbortOnRTE
+			ImageTransform /P=(frameidx) /PTYP=0 getPlane image
+			Wave M_ImagePlane
+			Duplicate /O M_ImagePlane, $(param.frameName)
+			Wave frame=$(param.frameName)
 			
 			String roimask_name=GetDataFolder(1)+"M_ROI"
 
@@ -3186,17 +3200,43 @@ Constant QIPUF_CHANNEL_RED=1
 Constant QIPUF_CHANNEL_GREEN=2
 Constant QIPUF_CHANNEL_BLUE=3
 
-Function qipUF_GetFrame(DFREF homeDFR, Variable channel, Variable frameidx)
+Function qipUF_GetFrame(String graphname, Variable channel, Variable frameidx, DFREF userDF, String wname)
+	String imgname=""
+	
+	switch(channel)
+	case QIPUF_CHANNEL_GRAY: //main frame
+		imgname=GetUserData(graphname, "", "IMAGENAME")
+		break
+	case QIPUF_CHANNEL_RED: //red channel
+		imgname=GetUserData(graphname, "", "OVERLAY_IMAGE_RED")
+		break
+	case QIPUF_CHANNEL_GREEN: //green channel
+		imgname=GetUserData(graphname, "", "OVERLAY_IMAGE_GREEM")
+		break
+	case QIPUF_CHANNEL_BLUE: //blue channel
+		imgname=GetUserData(graphname, "", "OVERLAY_IMAGE_BLUE")
+		break
+	default:
+		break
+	endswitch
+	
+	Wave img=$imgname
+	if(WaveExists(img) && frameidx>=0 && frameidx<DimSize(img, 2))
+		
+	endif
+	
+End
+
+Function qipUF_GetObj(DFREF homeDFR, Variable frameidx, Variable objidx, Variable & x, Variable & y, WAVE & bTrace, WAVE & bMask)
 
 End
 
-Function qipUF_GetObj(Variable frameidx, Variable objidx, Variable & x, Variable & y, WAVE & bTrace, WAVE & bMask)
+Function qipUF_GetFrameNumber(DFREF homeDFR)
+
 End
 
-Function qipUF_GetFrameNumber()
-End
+Function qipUF_GetObjNumber(DFREF homeDFR)
 
-Function qipUF_GetObjNumber()
 End
 
 
