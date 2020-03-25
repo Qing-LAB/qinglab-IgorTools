@@ -2,6 +2,8 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma ModuleName=QImageAnalysis
 
+#include "QImageAnalysisUFPs"
+
 Menu "QingLabTools"
 	Submenu "ImageAnalysis"
 		"Load File...", qipLoadFile("")
@@ -185,9 +187,9 @@ Function qipGenerateOverlayColorTables(String graphname)
 		Wave M_ColorTableGRAY=:M_ColorTableGRAY
 		
 		InsertPoints /M=1 3, 1, M_ColorTableRED, M_ColorTableGREEN, M_ColorTableBLUE, M_ColorTableGRAY
-		M_ColorTableRED[][3]=(1-QIP_ALPHA_RED)*65535
-		M_ColorTableGREEN[][3]=(1-QIP_ALPHA_GREEN)*65535
-		M_ColorTableBLUE[][3]=(1-QIP_ALPHA_BLUE)*65535
+		M_ColorTableRED[][3]=QIPUF_DEFAULT_ALPHA_RED*65535
+		M_ColorTableGREEN[][3]=QIPUF_DEFAULT_ALPHA_GREEN*65535
+		M_ColorTableBLUE[][3]=QIPUF_DEFAULT_ALPHA_BLUE*65535
 		M_ColorTableGRAY[][3]=65535
 	catch
 	endtry
@@ -200,29 +202,30 @@ Function qipGraphPanelResetControls(String panelName)
 	SetVariable trace_value win=$panelName, pos={2,50}, bodywidth=200, value=_STR:(""), noedit=1
  
 	CheckBox new_roi, win=$panelName, pos={2, 70}, bodywidth=50, title="New ROI",proc=qipGraphPanelCbRedraw
+	CheckBox new_roi, win=$panelName, help={"Enter editing status to create global ROIs"}
 	CheckBox enclosed_roi, win=$panelName, pos={50, 70}, bodywidth=50, title="Enclosed",proc=qipGraphPanelCbRedraw
+	CheckBox enclosed_roi, win=$panelName,help={"Check this if you want the last point always close with the first point."}
+
+	Button save_roi, win=$panelName, pos={0, 85}, size={95, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame
+	Button copy_roi, win=$panelName, pos={0, 105}, size={95,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom
+	Button clear_roi, win=$panelName, pos={0, 125}, size={95, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI
+	Button imgproc_findobj, win=$panelName, fColor=(0,16384,0), pos={0, 145}, size={95,20}, title="Identify Objects",proc=qipGraphPanelBtnEdgeDetect
 	
-	Button save_roi, win=$panelName, pos={0, 90}, size={95, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame
-	Button copy_roi, win=$panelName, pos={0, 110}, size={95,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom
-	Button clear_roi, win=$panelName, pos={0, 130}, size={95, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI
-	Button imgproc_findobj, win=$panelName, fColor=(0,16384,0), pos={0, 150}, size={95,20}, title="Identify Objects",proc=qipGraphPanelBtnEdgeDetect
-	SetVariable sv_objidx,win=$panelName,title="OBJ#",pos={0, 170},size={50,20},value= _NUM:-1,limits={-1,inf,1},proc=qipGraphPanelSVIndex
-	SetVariable sv_frameidx,win=$panelName,title="FRM#",pos={50,170},size={50,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex
+	SetVariable sv_objidx,win=$panelName,title="OBJ",pos={0, 170},size={48,20},value= _NUM:-1,limits={-2,inf,1},proc=qipGraphPanelSVIndex
+	SetVariable sv_objidx,win=$panelName,help={"Index to selectively show edges of object defined by the dot ROIs.\n -2 means showing all raw detected edges, \n-1 means show edges of all detected  objects"}
+	SetVariable sv_frameidx,win=$panelName,title="FRM",pos={48,170},size={48,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex
 	
-	Button imgproc_CallUserfunc, win=$panelName, pos={102,185}, size={95,20}, title="Call User Function"
+	GroupBox gb_options  win=$panelName, pos={100,70}, size={100, 160}, frame=0, title="" 
+	PopupMenu popup_options win=$panelName, pos={100, 70}, size={100,20}, value="ROI Options;Image Layers;Data Processing;",proc=qipGraphPanelPMOptions
 	
-	PopupMenu popup_options win=$panelName, pos={100, 70}, size={100,20}, value="ROI Options;Image Layers;Trace Layers;",proc=qipGraphPanelPMOptions
-	GroupBox gb_options  win=$panelName, pos={100,70}, size={100, 115}, frame=0, title="" 
+	//the following will be with popup menu option 1: ROI options		
+	GroupBox gb_frameroi, win=$panelName, pos={102,85}, size={95, 47}, frame=0, title="Show ROIs"
+	CheckBox show_userroi, win=$panelName, pos={105,99}, bodywidth=50, title="Global",proc=qipGraphPanelCbRedraw
+	CheckBox show_dot, win=$panelName, pos={105,114}, bodywidth=30, title="Dot",proc=qipGraphPanelCbRedraw
+	CheckBox show_tag, win=$panelName, pos={135,114}, bodywidth=30, title="Tag",proc=qipGraphPanelCbRedraw
+	CheckBox show_line, win=$panelName, pos={165,114}, bodywidth=30, title="Line",proc=qipGraphPanelCbRedraw
 	
-	//the following will be with popup menu option 1: ROI options
-	CheckBox show_userroi, win=$panelName, pos={105,90}, bodywidth=50, title="Show global ROI",proc=qipGraphPanelCbRedraw
-	
-	GroupBox gb_frameroi, win=$panelName, pos={102,105}, size={95, 35}, frame=0, title="Frame ROI"
-	CheckBox show_dot, win=$panelName, pos={105,120}, bodywidth=30, title="Dot",proc=qipGraphPanelCbRedraw
-	CheckBox show_tag, win=$panelName, pos={135,120}, bodywidth=30, title="Tag",proc=qipGraphPanelCbRedraw
-	CheckBox show_line, win=$panelName, pos={165,120}, bodywidth=30, title="Line",proc=qipGraphPanelCbRedraw
-	
-	GroupBox gb_edges, win=$panelName, pos={102,140}, size={95, 35}, frame=0, title="Obj Edges"
+	GroupBox gb_edges, win=$panelName, pos={102,138}, size={95, 37}, frame=0, title="Obj Edges"
 	Checkbox show_edgesI, win=$panelName, pos={105,155}, bodywidth=30, title="I",proc=qipGraphPanelCbRedraw
 	Checkbox show_edgesM, win=$panelName, pos={135,155}, bodywidth=30, title="M",proc=qipGraphPanelCbRedraw
 	Checkbox show_edgesO, win=$panelName, pos={165,155}, bodywidth=30, title="O",proc=qipGraphPanelCbRedraw
@@ -232,6 +235,9 @@ Function qipGraphPanelResetControls(String panelName)
 	Button imgproc_addimglayer_r, win=$panelName, pos={102, 120}, size={95,20}, title="Set Red Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
 	Button imgproc_addimglayer_g, win=$panelName, pos={102, 140}, size={95,20}, title="Set Green Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
 	Button imgproc_addimglayer_b, win=$panelName, pos={102, 160}, size={95,20}, title="Set Blue Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	
+	//the following will be with popup menu option 3: Data Processing
+	Button imgproc_CallUserfunc, win=$panelName, pos={102,90}, size={95,20}, title="Call User Function...", disable=1,proc=qipGraphPanelBtnCallUserFunction
 	
 	ControlInfo /W=$panelName popup_options
 	qipGraphPanelUpdateOptionCtrls(panelName, V_Value)
@@ -260,6 +266,7 @@ Function qipDisplayImage(String wname, [Variable bg_r, Variable bg_g, Variable b
 		ImageTransform /PTYP=0 /P=0 getPlane w
 		Wave M_ImagePlane
 		Duplicate /O M_ImagePlane, $tmpframeName
+		KillWaves /Z M_ImagePlane
 		Wave tmpframe=$tmpframeName
 		
 		NewImage /N=$graphname /K=0 tmpframe
@@ -513,7 +520,8 @@ Function qipGraphPanelAddImageByAxis(String graphName, Wave image, [Variable cta
 	endif
 End
 
-Function qipGraphPanelPrepRedrawEdges(Variable show_edges, Variable objidx, Variable edgeType, Wave ROI2InfoIndex, String redrawEdgeName, string saveFuncName)
+Function qipGraphPanelPrepRedrawEdges(Variable show_edges, Variable showRawDetectedEdge, Variable objidx, 
+													Variable edgeType, Wave ROI2InfoIndex, Wave rawEdge, String redrawEdgeName, string saveFuncName)
 //this function will assume that you are in the folder of the frame
 	if(show_edges)
 		String postfix=""
@@ -531,41 +539,47 @@ Function qipGraphPanelPrepRedrawEdges(Variable show_edges, Variable objidx, Vari
 			break
 		endswitch
 		
-		if(objidx>=0 && objidx<DimSize(ROI2InfoIndex, 0))
-		//edge of the selected point ROI obj will be shown, if exists/properly extracted by EdgeDetection function
-			String roiEdgeName=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(objidx)+postfix)
-			
-			if(WaveExists($roiEdgeName) && WaveExists(ROI2InfoIndex)) 
-				//the corresponding boundary has been copied to the PointROIObjEdges folder
-				Duplicate /O $roiEdgeName, $redrawEdgeName; AbortOnRTE
-				Wave edge=$redrawEdgeName
-				String wavenote=note(edge)
-				wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
-				wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "1") //for frame specific ROIs we need specific function for update changes
-				wavenote=ReplaceStringByKey("OBJECT_INDEX", wavenote, num2istr(objidx))
-				wavenote=ReplaceStringByKey("SAVEFUNC", wavenote, saveFuncName)
-				Note /K edge, wavenote; AbortOnRTE
-			endif
+		if(showRawDetectedEdge)
+			//simple duplication
+			Duplicate /O rawEdge, $redrawEdgeName
+			Note /K $redrawEdgeName		
 		else
-		//all edges will be shown
-			Variable i
-			for(i=0; i<DimSize(ROI2InfoIndex, 0); i+=1)
-				String boundaryWaveName=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+postfix)
-				Wave boundaryWave=$boundaryWaveName
-				if(WaveExists(boundaryWave))
-					if(i==0)
-						Duplicate /O boundaryWave, $redrawEdgeName; AbortOnRTE
-					else
-						Wave edge=$redrawEdgeName
-						Variable startp=DimSize(edge, 0)
-						InsertPoints /M=0 DimSize(edge, 0), DimSize(boundaryWave, 0)+1, edge
-						edge[startp][]=NaN
-						startp+=1
-						edge[startp,][]=boundaryWave[p-startp][q]
-					endif
+			if(objidx>=0 && objidx<DimSize(ROI2InfoIndex, 0))
+			//edge of the selected point ROI obj will be shown, if exists/properly extracted by EdgeDetection function
+				String roiEdgeName=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(objidx)+postfix)
+				
+				if(WaveExists($roiEdgeName) && WaveExists(ROI2InfoIndex)) 
+					//the corresponding boundary has been copied to the PointROIObjEdges folder
+					Duplicate /O $roiEdgeName, $redrawEdgeName; AbortOnRTE
+					Wave edge=$redrawEdgeName
+					String wavenote=note(edge)
+					wavenote=ReplaceStringByKey("MODIFYFUNC", wavenote, "qipUFP_BoundaryLineModifier") //for dots, we will not delete points, only fill in NaN for deletion
+					wavenote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", wavenote, "1") //for frame specific ROIs we need specific function for update changes
+					wavenote=ReplaceStringByKey("OBJECT_INDEX", wavenote, num2istr(objidx))
+					wavenote=ReplaceStringByKey("SAVEFUNC", wavenote, saveFuncName)
+					Note /K edge, wavenote; AbortOnRTE
 				endif
-			endfor
-			Note /K $redrawEdgeName; AbortOnRTE
+			else
+			//all edges will be shown
+				Variable i
+				for(i=0; i<DimSize(ROI2InfoIndex, 0); i+=1)
+					String boundaryWaveName=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+postfix)
+					Wave boundaryWave=$boundaryWaveName
+					if(WaveExists(boundaryWave))
+						if(i==0)
+							Duplicate /O boundaryWave, $redrawEdgeName; AbortOnRTE
+						else
+							Wave edge=$redrawEdgeName
+							Variable startp=DimSize(edge, 0)
+							InsertPoints /M=0 DimSize(edge, 0), DimSize(boundaryWave, 0)+1, edge
+							edge[startp][]=NaN
+							startp+=1
+							edge[startp,][]=boundaryWave[p-startp][q]
+						endif
+					endif
+				endfor
+				Note /K $redrawEdgeName; AbortOnRTE
+			endif
 		endif
 	else
 	//no edges are shown
@@ -603,6 +617,7 @@ Function qipGraphPanelRedrawEdges(String graphName, [Variable rawDetectedEdge])
 
 		String homeDFstr=GetDataFolder(1); AbortOnRTE
 		
+		Wave PointROIs=$(homeDFstr+"ROI:W_PointROI"); AbortOnRTE
 		Wave ROI2InfoIndex=$(homeDFstr+"ROI:W_PointROI2Info"); AbortOnRTE
 		Wave edgeBoundary=$(homeDFstr+"DetectedEdges:W_Boundary"); AbortOnRTE
 		Wave inneredgeBoundary=$(homeDFstr+"innerEdge:DetectedEdges:W_Boundary"); AbortOnRTE
@@ -613,17 +628,14 @@ Function qipGraphPanelRedrawEdges(String graphName, [Variable rawDetectedEdge])
 		Variable startp, endp
 		
 		if(WaveExists(edgeBoundary) && WaveExists(inneredgeBoundary) && WaveExists(outeredgeBoundary))
-			if(rawDetectedEdge==1)
-				Duplicate /O edgeBoundary, $edgeName ; AbortOnRTE
-				Note /K $edgeName; AbortOnRTE
-				Duplicate /O inneredgeBoundary, $innerEdgeName ; AbortOnRTE
-				Note /K $innerEdgeName; AbortOnRTE
-				Duplicate /O outeredgeBoundary, $outerEdgeName ; AbortOnRTE
-				Note /K $outerEdgeName; AbortOnRTE
+			if(rawDetectedEdge==1 || !WaveExists(PointROIs) || objidx==-2) //objidx == -1 means all objects, -2 means all raw edges
+				qipGraphPanelPrepRedrawEdges(show_edgesM, 1, objidx, 1, ROI2InfoIndex, edgeBoundary, edgeName, "qipUFP_SavePointROIEdge_M")
+				qipGraphPanelPrepRedrawEdges(show_edgesI, 1, objidx, 2, ROI2InfoIndex, inneredgeBoundary, innerEdgeName, "qipUFP_SavePointROIEdge_I")
+				qipGraphPanelPrepRedrawEdges(show_edgesO, 1, objidx, 3, ROI2InfoIndex, outeredgeBoundary, outeredgeName, "qipUFP_SavePointROIEdge_O")
 			else
-				qipGraphPanelPrepRedrawEdges(show_edgesM, objidx, 1, ROI2InfoIndex, edgeName, "qipUFP_SavePointROIEdge_M")
-				qipGraphPanelPrepRedrawEdges(show_edgesI, objidx, 2, ROI2InfoIndex, innerEdgeName, "qipUFP_SavePointROIEdge_I")
-				qipGraphPanelPrepRedrawEdges(show_edgesO, objidx, 3, ROI2InfoIndex, outeredgeName, "qipUFP_SavePointROIEdge_O")
+				qipGraphPanelPrepRedrawEdges(show_edgesM, 0, objidx, 1, ROI2InfoIndex, edgeBoundary, edgeName, "qipUFP_SavePointROIEdge_M")
+				qipGraphPanelPrepRedrawEdges(show_edgesI, 0, objidx, 2, ROI2InfoIndex, inneredgeBoundary, innerEdgeName, "qipUFP_SavePointROIEdge_I")
+				qipGraphPanelPrepRedrawEdges(show_edgesO, 0, objidx, 3, ROI2InfoIndex, outeredgeBoundary, outeredgeName, "qipUFP_SavePointROIEdge_O")
 			endif
 		else
 			Make /O /N=(1, 2) $edgeName=NaN; AbortOnRTE
@@ -680,14 +692,14 @@ Function qipGraphPanelRedrawROI(String graphName)
 	//current user ROI definitionis always shown
 	if(strlen(roi_cur_traceName)>0)
 		if(qipGraphPanelAddTraceByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
-			ModifyGraph /W=$(graphName) offset($roi_cur_basename)={0,0}
+			ModifyGraph /Z /W=$(graphName) offset($roi_cur_basename)={0,0}
 		endif
 	endif
 	
 	if(show_userroi) //existing record of user ROI is shown only when checkbox is true
 		if(strlen(roi_allName)>0)
 			if(qipGraphPanelAddTraceByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
-				ModifyGraph /W=$(graphName) offset($roi_all_basename)={0,0}
+				ModifyGraph /Z /W=$(graphName) offset($roi_all_basename)={0,0}
 			endif
 		endif
 	else
@@ -723,9 +735,9 @@ Function qipGraphPanelRedrawROI(String graphName)
 			Variable objidx=V_Value
 			Variable maxobjidx=DimSize(wdot, 0)-1
 			if(objidx>maxobjidx)
-				SetVariable sv_objidx, win=$panelName, value= _NUM:-1,limits={-1,maxobjidx,1}
+				SetVariable sv_objidx, win=$panelName, value= _NUM:-1,limits={-2,maxobjidx,1}
 			else
-				SetVariable sv_objidx, win=$panelName, value= _NUM:V_Value,limits={-1,maxobjidx,1}
+				SetVariable sv_objidx, win=$panelName, value= _NUM:V_Value,limits={-2,maxobjidx,1}
 			endif
 			
 			if(WaveExists(wdot))
@@ -738,7 +750,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			
 			if(show_dot && WaveExists(framewdot))				
 				qipGraphPanelAddTraceByAxis(graphName, framewdot, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
-				ModifyGraph /W=$(graphName) offset($dotwaveBaseName)={0,0}
+				ModifyGraph /Z /W=$(graphName) offset($dotwaveBaseName)={0,0}
 				roinote=note(framewdot)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryPointModifier") //for dots, we will not delete points, only fill in NaN for deletion
 				roinote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", roinote, "1") //for frame specific ROIs we need specific function for update changes
@@ -768,7 +780,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			
 			if(show_line && WaveExists(framelinewave))				
 				qipGraphPanelAddTraceByAxis(graphName, framelinewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
-				ModifyGraph /W=$(graphName) offset($linewaveBaseName)={0,0}
+				ModifyGraph /Z /W=$(graphName) offset($linewaveBaseName)={0,0}
 				roinote=note(framelinewave)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryLineModifier")
 				roinote=ReplaceStringByKey("NEED_SAVE_IF_MODIFIED", roinote, "1") //for frame specific ROIs we need specific function for update changes
@@ -791,106 +803,117 @@ Function qipGraphPanelRedrawAll(String graphName)
 	qipGraphPanelRedrawEdges(graphName)
 End
 
+Function qipGraphPanelUpdateSingleImageChannel(Variable request, String graphName, Variable frameidx, 
+																String & frameName, Variable & channel_active_flag)
+	channel_active_flag=0
+	
+	String imageName=""
+	String usrFuncName=""	
+	
+	switch(request & 0xFF) //which channel is it?
+	case QIPUFP_IMAGEFUNC_MAINIMAGE:
+		imageName=GetUserData(graphName, "", "IMAGENAME")
+		usrFuncName=GetUserData(graphName, "", "IMAGE_USERFUNC")
+		frameName=GetUserData(graphName, "", "FRAMENAME")
+		break
+	case QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED:
+		imageName=GetUserData(graphName, "", "OVERLAY_IMAGE_RED")
+		usrFuncName=GetUserData(graphName, "", "OVERLAY_IMAGE_USERFUNC_RED")
+		frameName=GetUserData(graphname, "", "OVERLAY_IMAGE_FRAMENAME_RED")
+		break
+	case QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN:
+		imageName=GetUserData(graphName, "", "OVERLAY_IMAGE_GREEN")
+		usrFuncName=GetUserData(graphName, "", "OVERLAY_IMAGE_USERFUNC_GREEN")
+		frameName=GetUserData(graphname, "", "OVERLAY_IMAGE_FRAMENAME_GREEN")
+		break
+	case QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE:
+		imageName=GetUserData(graphName, "", "OVERLAY_IMAGE_BLUE")
+		usrFuncName=GetUserData(graphName, "", "OVERLAY_IMAGE_USERFUNC_BLUE")
+		frameName=GetUserData(graphname, "", "OVERLAY_IMAGE_FRAMENAME_BLUE")
+		break
+	default:
+		break
+	endswitch
+	
+	Wave image=$imageName
+	Wave frame=$frameName
+
+	if(!WaveExists(image))
+		if(strlen(frameName)>0)
+			RemoveImage /W=$graphName /Z $(qipGetShortNameOnly(frameName))
+		endif
+		
+		return -1
+	endif
+	
+	FUNCREF qipUFP_IMGFUNC_DEFAULT usrFuncRef=$usrFuncName
+	//if usrFuncRef is valid, it will called, otherwise, the default function will be called
+	//which will just copy the corresponding frame
+		
+	if(request & QIPUFP_IMAGEFUNC_REDRAWUPDATE)
+
+		if(!WaveExists(frame) || (DimSize(frame, 0)!=DimSize(image, 0) || DimSize(frame, 1)!=DimSize(image, 1)))
+			Make /O/N=(DimSize(image, 0), DimSize(image, 1))/Y=(WaveType(image)) $frameName
+			Wave frame=$frameName
+		endif
+		usrFuncRef(image, frame, graphname, frameidx, (request & 0xFF) + QIPUFP_IMAGEFUNC_REDRAWUPDATE)
+		channel_active_flag=1
+	endif
+	
+	if(request & QIPUFP_IMAGEFUNC_PREPROCESSING) //preprocessing is called before edge detection, and only user function for main frame is called
+		usrFuncRef(image, frame, graphname, frameidx, (request & 0xFF) + QIPUFP_IMAGEFUNC_PREPROCESSING)
+	endif
+	
+	if(request & QIPUFP_IMAGEFUNC_POSTPROCESSING) //postprocessing is called after all edges of Point ROIs (objectives) are detected
+	//all color channels will be called in sequence
+		usrFuncRef(image, frame, graphname, frameidx, (request & 0xFF) + QIPUFP_IMAGEFUNC_POSTPROCESSING)
+	endif
+End
+
 Function qipGraphPanelRedrawImage(String graphName)
 	String panelName=GetUserData(graphName, "", "PANELNAME")
-	Wave img=$GetUserData(graphName, "", "IMAGENAME")
-	String frameName=GetUserData(graphName, "", "FRAMENAME")
 	
 	Variable frameidx=str2num(GetUserData(graphName, "", "FRAMEIDX"))
-	
+	String frameName=""
+	Variable flag_r=0, flag_g=0, flag_b=0, flag_main=0
+		
 	//main channel image update
-	qipGraphPanelUpdateFrameWave(img, frameName, frameidx)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
+													  frameidx, frameName, flag_main)
 	Wave frame=$frameName
-	
-	String usrFunc=GetUserData(graphName, "", "IMAGE_USERFUNC")
-	if(strlen(usrFunc)>0)
-		FUNCREF qipUFP_IMGFUNC usrFuncRef=$usrFunc
-		usrFuncRef(img, frame, graphname, frameidx, QIPUFP_IMAGEFUNC_MAINIMAGE+QIPUFP_IMAGEFUNC_REDRAWUPDATE)
-	endif
-	
-	String overlayFrameName_r="", overlayFrameName_g="", overlayFrameName_b=""
-	Variable flag_r=0, flag_g=0, flag_b=0
-	
-	//red channel overlay update
-	Wave overlayImage=$GetUserData(graphName, "", "OVERLAY_IMAGE_RED")
-	usrFunc=GetUserData(graphName, "", "OVERLAY_IMAGE_RED_USERFUNC")
-	overlayFrameName_r=GetUserData(graphname, "", "OVERLAY_IMAGE_RED_FRAMENAME")
-	if(WaveExists(overlayImage))
-		FUNCREF qipUFP_IMGFUNC usrFuncRef=$usrFunc
-		//if usrFuncRef is valid, it will called, otherwise, the default function will be called
-		//which will just copy the corresponding frame
-		Wave overlayFrame_r=$overlayFrameName_r
-		if(!WaveExists(overlayframe_r) || (DimSize(overlayframe_r, 0)!=DimSize(overlayImage, 0) || DimSize(overlayframe_r, 1)!=DimSize(OverlayImage, 1)))
-			Make /O/N=(DimSize(overlayImage, 0), DimSize(overlayImage, 1))/Y=(WaveType(overlayImage)) $overlayFrameName_r
-			Wave overlayFrame_r=$overlayFrameName_r
-		endif
-		usrFuncRef(overlayImage, overlayFrame_r, graphname, frameidx, QIPUFP_IMAGEFUNC_APPENDIXIMAGE_RED + QIPUFP_IMAGEFUNC_REDRAWUPDATE)
-		flag_r=1
-	else
-		if(strlen(overlayFrameName_r)>0)
-			RemoveImage /W=$graphName /Z $(qipGetShortNameOnly(overlayFrameName_r))
-		endif
-	endif
-	
-	//green channel overlay update
-	Wave overlayImage=$GetUserData(graphName, "", "OVERLAY_IMAGE_GREEN")
-	usrFunc=GetUserData(graphName, "", "OVERLAY_IMAGE_GREEN_USERFUNC")
-	overlayFrameName_g=GetUserData(graphname, "", "OVERLAY_IMAGE_GREEN_FRAMENAME")
-	if(WaveExists(overlayImage))
-		FUNCREF qipUFP_IMGFUNC usrFuncRef=$usrFunc
-		//if usrFuncRef is valid, it will called, otherwise, the default function will be called
-		//which will just copy the corresponding frame
-		Wave overlayFrame_g=$overlayFrameName_g
-		if(!WaveExists(overlayframe_g) || (DimSize(overlayframe_g, 0)!=DimSize(overlayImage, 0) || DimSize(overlayframe_g, 1)!=DimSize(OverlayImage, 1)))
-			Make /O/N=(DimSize(overlayImage, 0), DimSize(overlayImage, 1))/Y=(WaveType(overlayImage)) $overlayFrameName_g
-			Wave overlayFrame_g=$overlayFrameName_g
-		endif
-		usrFuncRef(overlayImage, overlayFrame_g, graphname, frameidx, QIPUFP_IMAGEFUNC_APPENDIXIMAGE_GREEN + QIPUFP_IMAGEFUNC_REDRAWUPDATE)
-		flag_g=1
-	else
-		if(strlen(overlayFrameName_g)>0)
-			RemoveImage /W=$graphName /Z $(qipGetShortNameOnly(overlayFrameName_g))
-		endif
+	if(flag_main)
+		qipGraphPanelAddImageByAxis(graphName, frame, ctab=4, top=1)
 	endif
 	
 	//blue channel overlay update
-	Wave overlayImage=$GetUserData(graphName, "", "OVERLAY_IMAGE_BLUE")
-	usrFunc=GetUserData(graphName, "", "OVERLAY_IMAGE_BLUE_USERFUNC")
-	overlayFrameName_b=GetUserData(graphname, "", "OVERLAY_IMAGE_BLUE_FRAMENAME")
-	if(WaveExists(overlayImage))
-		FUNCREF qipUFP_IMGFUNC usrFuncRef=$usrFunc
-		//if usrFuncRef is valid, it will called, otherwise, the default function will be called
-		//which will just copy the corresponding frame
-		
-		Wave overlayFrame_b=$overlayFrameName_b
-		if(!WaveExists(overlayframe_b) || (DimSize(overlayframe_b, 0)!=DimSize(overlayImage, 0) || DimSize(overlayframe_b, 1)!=DimSize(OverlayImage, 1)))
-			Make /O/N=(DimSize(overlayImage, 0), DimSize(overlayImage, 1))/Y=(WaveType(overlayImage)) $overlayFrameName_b
-			Wave overlayFrame_b=$overlayFrameName_b
-		endif
-		usrFuncRef(overlayImage, overlayFrame_b, graphname, frameidx, QIPUFP_IMAGEFUNC_APPENDIXIMAGE_BLUE + QIPUFP_IMAGEFUNC_REDRAWUPDATE)
-		flag_b=1
-	else
-		if(strlen(overlayFrameName_b)>0)
-			RemoveImage /W=$graphName /Z $(qipGetShortNameOnly(overlayFrameName_b))
-		endif
-	endif
-	
-	qipGraphPanelAddImageByAxis(graphName, frame, ctab=4, top=1)
-	
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
+													  frameidx, frameName, flag_b)
+	Wave frame=$frameName
 	if(flag_b)
-		qipGraphPanelAddImageByAxis(graphName, overlayFrame_b, ctab=3, top=1)
-	endif
-	if(flag_g)
-		qipGraphPanelAddImageByAxis(graphName, overlayFrame_g, ctab=2, top=1)
-	endif
-	if(flag_r)
-		qipGraphPanelAddImageByAxis(graphName, overlayFrame_r, ctab=1, top=1)
+		qipGraphPanelAddImageByAxis(graphName, frame, ctab=3, top=1)
 	endif
 	
+	//green channel overlay update
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
+													  frameidx, frameName, flag_g)	
+	Wave frame=$frameName
+	if(flag_g)
+		qipGraphPanelAddImageByAxis(graphName, frame, ctab=2, top=1)
+	endif
+	
+	//red channel overlay update
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
+													  frameidx, frameName, flag_r)		
+	Wave frame=$frameName
+	if(flag_r)
+		qipGraphPanelAddImageByAxis(graphName, frame, ctab=1, top=1)
+	endif
+	
+	//update the display of frame number in panel window		
 	SetVariable sv_frameidx, win=$panelName, value=_NUM:frameidx
 End
 
-Function qipGraphPanelUpdateFrameWave(Wave img, String frameName, Variable frameidx)	
+Function qipGraphPanelExtractSingleFrameFromImage(Wave img, String frameName, Variable frameidx)	
 	if(WaveExists(img) && WaveExists($frameName))
 		if(frameidx>=DimSize(img, 2))
 			frameidx=DimSize(img, 2)-1
@@ -902,213 +925,8 @@ Function qipGraphPanelUpdateFrameWave(Wave img, String frameName, Variable frame
 		ImageTransform /P=(frameidx) /PTYP=0 getPlane img ; AbortOnRTE
 		Wave M_ImagePlane
 		Duplicate /O M_ImagePlane, $frameName
+		KillWaves /Z M_ImagePlane
 	endif
-End
-
-Function qipUFP_MODIFYFUNC(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
-	return 0
-End
-
-
-Function qipUFP_SAVEFUNC(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
-	return 0
-End
-
-Function qipUFP_saveDotROI(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
-	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
-	
-	try
-		NewDataFolder /O/S $analysisDF; AbortOnRTE
-		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
-		
-		if(WaveExists(wave_for_save))
-			NewDataFolder /O/S :ROI ; AbortOnRTE
-			Duplicate /O wave_for_save, W_PointROI
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
-end
-
-Function qipUFP_SavePointROIEdge_M(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
-	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
-	
-	try
-		NewDataFolder /O/S $analysisDF; AbortOnRTE
-		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
-		String wavenote=note(wave_for_save)
-		Variable objidx=str2num(StringByKey("OBJECT_INDEX", wavenote))
-		String roiEdgeNameM=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(objidx)+".M")
-
-		if(WaveExists(wave_for_save))
-			Duplicate /O wave_for_save, $roiEdgeNameM ; AbortOnRTE
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
-end
-
-Function qipUFP_SavePointROIEdge_I(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
-	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
-	
-	try
-		NewDataFolder /O/S $analysisDF; AbortOnRTE
-		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
-		String wavenote=note(wave_for_save)
-		Variable objidx=str2num(StringByKey("OBJECT_INDEX", wavenote))
-		String roiEdgeNameI=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(objidx)+".I")
-
-		if(WaveExists(wave_for_save))
-			Duplicate /O wave_for_save, $roiEdgeNameI ; AbortOnRTE
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
-end
-
-Function qipUFP_SavePointROIEdge_O(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
-	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
-	
-	try
-		NewDataFolder /O/S $analysisDF; AbortOnRTE
-		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
-		String wavenote=note(wave_for_save)
-		Variable objidx=str2num(StringByKey("OBJECT_INDEX", wavenote))
-		String roiEdgeNameO=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(objidx)+".O")
-
-		if(WaveExists(wave_for_save))
-			Duplicate /O wave_for_save, $roiEdgeNameO ; AbortOnRTE
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
-end
-
-Function qipUFP_saveLineROI(Wave wave_for_save, String graphname, Variable frameidx, Variable flag)
-	String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
-	
-	try
-		NewDataFolder /O/S $analysisDF; AbortOnRTE
-		NewDataFolder /O/S :$(num2istr(frameidx)); AbortOnRTE
-		
-		if(WaveExists(wave_for_save))
-			NewDataFolder /O/S :ROI ; AbortOnRTE
-			Make /O /D /N=(1, 2) W_RegionROIIndex=NaN
-			Make /O /D /N=(1, 2) W_RegionROIBoundary=NaN
-			
-			Variable startidx=0, endidx=0
-			Variable len=0
-			Variable cnt_regionIdx=0
-			Variable cnt_regionStart=0
-			Variable cnt_point=0
-			Variable i
-		
-			do
-				len=qipBoundaryGetNextGroup(wave_for_save, startidx, endidx); AbortOnRTE
-		
-				if(len>1)//single point will not be saved
-					if(cnt_regionIdx!=0)//following insertion will need to have NaN space saved
-						InsertPoints /M=0 DimSize(W_RegionROIIndex, 0), 1, W_RegionROIIndex; AbortOnRTE
-						InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), len+1, W_RegionROIBoundary; AbortOnRTE
-					else //first insertion has the first element as blank
-						InsertPoints /M=0 DimSize(W_RegionROIBoundary, 0), len, W_RegionROIBoundary; AbortOnRTE
-					endif
-					W_RegionROIIndex[cnt_regionIdx][0]=cnt_regionStart; AbortOnRTE //boundary start point
-					for(i=0; i<len && cnt_regionStart<DimSize(W_RegionROIBoundary, 0); cnt_regionStart+=1, i+=1)
-						W_RegionROIBoundary[cnt_regionStart][0]=wave_for_save[startidx+i][0]; AbortOnRTE
-						W_RegionROIBoundary[cnt_regionStart][1]=wave_for_save[startidx+i][1]; AbortOnRTE
-					endfor
-					W_RegionROIBoundary[cnt_regionStart][]=NaN; AbortOnRTE
-					W_RegionROIIndex[cnt_regionIdx][1]=cnt_regionStart-1; AbortOnRTE //boundary end point
-					cnt_regionStart+=1
-					cnt_regionIdx+=1
-				endif
-		
-				//find the next region/point
-				startidx=endidx+1
-				endidx=startidx
-			while(len>0)
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
-end
-
-Function qipUFP_BoundaryLineModifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
-	Variable modify_flag=0
-	Variable retVal=0
-	try
-		switch(flag)
-		case 0: //just change the value
-			wave_for_mod[index][0]=new_x; AbortOnRTE
-			wave_for_mod[index][1]=new_y; AbortOnRTE
-			modify_flag=1
-			break
-		case 1: //insert a point
-			InsertPoints /M=0 index, 1, wave_for_mod; AbortOnRTE
-			wave_for_mod[index][0]=new_x; AbortOnRTE
-			wave_for_mod[index][1]=new_y; AbortOnRTE
-			modify_flag=1
-			break
-		case -1: //delete the point
-			DeletePoints /M=0 index, 1, wave_for_mod; AbortOnRTE
-			modify_flag=1
-			break
-		default:
-			break
-		endswitch
-		
-		if(modify_flag)
-			String wavenote=note(wave_for_mod); AbortOnRTE
-			wavenote=ReplaceStringByKey("TRACEMODIFIED", wavenote, "1"); AbortOnRTE
-			Note /K wave_for_mod, wavenote ; AbortOnRTE
-			
-			Variable needsave=str2num(StringByKey("NEED_SAVE_IF_MODIFIED", wavenote))
-			
-			if(needsave==1)
-				retVal=1
-			endif
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	
-	return retVal
-End
-
-Function qipUFP_BoundaryPointModifier(Wave wave_for_mod, Variable index, Variable new_x, Variable new_y, Variable flag)
-	Variable modify_flag=0
-	//point modifier will not allow inserting new points to keep index always the same
-	try
-		switch(flag)
-		case -1: //for dots, we will just fill in NaN, instead of removing the dot because we do not want to change index order/number
-			wave_for_mod[index][]=NaN; AbortOnRTE
-			break
-		default: //just change the value
-			wave_for_mod[index][0]=new_x; AbortOnRTE
-			wave_for_mod[index][1]=new_y; AbortOnRTE
-			break
-		endswitch
-		
-		String wavenote=note(wave_for_mod); AbortOnRTE
-		wavenote=ReplaceStringByKey("TRACEMODIFIED", wavenote, "1"); AbortOnRTE
-		Variable NEED_SAVE_IF_MODIFIED=str2num(StringByKey("NEED_SAVE_IF_MODIFIED", wavenote))
-		
-		if(NEED_SAVE_IF_MODIFIED==1)
-			modify_flag=1
-		endif
-		
-		Note /K wave_for_mod, wavenote ; AbortOnRTE
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	
-	return modify_flag
 End
 
 Function qipAddPointToCurrentROI(Wave roiw, Variable idx, Variable imgx, Variable imgy, 
@@ -1399,8 +1217,10 @@ Function qipHookFunction(s)
 				traceInfoStr=TraceFromPixel(s.mouseLoc.h, s.mouseLoc.v, "")
 				traceName=StringByKey("TRACE", traceInfoStr)
 				traceHitStr=StringByKey("HITPOINT", traceInfoStr)
+				trace_hitpoint=str2num(traceHitStr)
 				if(strlen(traceName)==0 && s.eventCode!=5)
 					traceName=activetrace
+					trace_hitpoint=-1
 				endif
 	
 				if(strlen(traceName)>0)
@@ -1467,9 +1287,6 @@ Function qipHookFunction(s)
 					endif
 				endif
 		 	endif
-	 		
-			SetVariable xy_cord win=$panelName, value=_STR:(cordstr)
-			SetVariable img_value win=$panelName, value=_STR:(imageValStr)
 		 		
 			if(s.eventCode==5 || (s.eventMod&0x1)!=0) //mouse up, or mouse moving with mouse key held down
 		 		if(trace_editstatus==1)
@@ -1645,13 +1462,20 @@ Function qipHookFunction(s)
 			TextBox/W=$(s.winname)/K/N=TRACE_MODIFIED_FLAG
 		endif
 		
+		String cordstr2=""
+		
 		if(strlen(traceName)>0)
-			sprintf traceValStr, "TR[%s][x:%.1f,y:%.1f,#%d]", traceName, tracex, tracey, trace_hitpoint
+			sprintf traceValStr, "TR[%s]", traceName
+			sprintf cordstr2, "TR[x:%.1f,y:%.1f,#%d]", tracex, tracey, trace_hitpoint
 		elseif(strlen(activetrace)>0)
 			sprintf traceValStr, "TR[%s][x:%.1f,y:%.1f,#%d]", activetrace, tracex, tracey, trace_hitpoint
+			sprintf cordstr2, "TR[x:%.1f,y:%.1f]", tracex, tracey
 		else
 			traceValStr+="TR[_None_]"
 		endif
+		cordstr+=cordstr2
+		SetVariable xy_cord win=$panelName, value=_STR:(cordstr)
+		SetVariable img_value win=$panelName, value=_STR:(imageValStr)
 		SetVariable trace_value win=$panelName, value=_STR:(traceValStr)
 	
 		if(update_image==1)
@@ -1865,31 +1689,9 @@ Function qipGraphPanelUpdateOptionCtrls(String win, Variable opt)
 	Button imgproc_addimglayer_g, win=$win,disable=opt2
 	Button imgproc_addimglayer_b, win=$win,disable=opt2
 	Button imgproc_addimglayer_GRAY, win=$win,disable=opt2
-End
-
-Constant QIPUFP_IMAGEFUNC_MAINIMAGE=1
-Constant QIPUFP_IMAGEFUNC_APPENDIXIMAGE_RED=2
-Constant QIPUFP_IMAGEFUNC_APPENDIXIMAGE_GREEN=4
-Constant QIPUFP_IMAGEFUNC_APPENDIXIMAGE_BLUE=8
-Constant QIPUFP_IMAGEFUNC_REDRAWUPDATE=16
-Constant QIPUFP_IMAGEFUNC_PREPROCESSING=32
-
-Constant QIP_ALPHA_RED = 0.299
-Constant QIP_ALPHA_GREEN = 0.587
-Constant QIP_ALPHA_BLUE = 0.114
-
-Function qipUFP_IMGFUNC(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, Variable flag)
-	try
-		if(flag&QIPUFP_IMAGEFUNC_REDRAWUPDATE) //normal process of updating frame data
-			qipGraphPanelUpdateFrameWave(srcImage, GetWavesDataFolder(frameImage, 2), frameidx)
-		endif
-		if(flag&QIPUFP_IMAGEFUNC_PREPROCESSING) //pre-processing of edge detection
-			MatrixFilter /N=3 /P=3 gauss frameImage
-		endif
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
+	
+	//option 3
+	Button imgproc_CallUserfunc, win=$win, disable=opt3
 End
 
 Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
@@ -1913,29 +1715,43 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 			strswitch(ba.ctrlName)
 			case "imgproc_addimglayer_r":
 				wname=GetUserData(graphname, "", "OVERLAY_IMAGE_RED")
-				fname=GetUserData(graphname, "", "OVERLAY_IMAGE_RED_USERFUNC")
-				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_RED_TRANSPARENCY"))
+				fname=GetUserData(graphname, "", "OVERLAY_IMAGE_USERFUNC_RED")
+				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_TRANSPARENCY_RED"))
+				if(numtype(transparency)!=0)
+					transparency=QIPUF_DEFAULT_ALPHA_RED
+				endif
 				channel_name="RED"
 				channel_flag=1				
 				break
 			case "imgproc_addimglayer_g":
 				wname=GetUserData(graphname, "", "OVERLAY_IMAGE_GREEN")
-				fname=GetUserData(graphname, "", "OVERLAY_IMAGE_GREEN_USERFUNC")
-				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_GREEN_TRANSPARENCY"))
+				fname=GetUserData(graphname, "", "OVERLAY_IMAGE_USERFUNC_GREEN")
+				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_TRANSPARENCY_GREEN"))
+				if(numtype(transparency)!=0)
+					transparency=QIPUF_DEFAULT_ALPHA_GREEN
+				endif				
 				channel_name="GREEN"
 				channel_flag=2
 				break
 			case "imgproc_addimglayer_b":
 				wname=GetUserData(graphname, "", "OVERLAY_IMAGE_BLUE")
-				fname=GetUserData(graphname, "", "OVERLAY_IMAGE_BLUE_USERFUNC")
-				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_BLUE_TRANSPARENCY"))
+				fname=GetUserData(graphname, "", "OVERLAY_IMAGE_USERFUNC_BLUE")
+				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_TRANSPARENCY_BLUE"))
+				if(numtype(transparency)!=0)
+					transparency=QIPUF_DEFAULT_ALPHA_BLUE
+				endif
 				channel_name="BLUE"
 				channel_flag=3
 				break
 			case "imgproc_addimglayer_GRAY":
 				wname=GetUserData(graphname, "", "IMAGENAME") //the main image cannot be changed
 				fname=GetUserData(graphname, "", "IMAGE_USERFUNC")
+				transparency=str2num(GetUserData(graphname, "", "OVERLAY_IMAGE_TRANSPARENCY_GRAY"))
+				if(numtype(transparency)!=0)
+					transparency=QIPUF_DEFAULT_ALPHA_GRAY
+				endif
 				channel_name="GRAY"
+				channel_flag=-1 //main channel cannot be changed
 				break
 			default:
 				return -1
@@ -1949,9 +1765,6 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 			if(strlen(fname)==0)
 				fname="_None_"
 			endif
-			if(numtype(transparency)!=0)
-				transparency=1
-			endif
 			
 			String imgselection="", funcSelection=""
 
@@ -1964,6 +1777,7 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 			endif			
 			
 			funcSelection="_None_;"+FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:Procedure")
+			funcSelection+=FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:QImageAnalysisUFPs.ipf")
 			PROMPT fname, "User function for image redraw/update. User function needs to be defined in the Procedure window with its name starting with prefix 'QIPUF_':", popup, funcSelection
 			PROMPT transparency, "Transparency (0 means completely transparent, 1 means completely opaque)"
 			
@@ -1986,7 +1800,7 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 				transparency=1
 			endif
 			
-			FUNCREF qipUFP_IMGFUNC fRef=$fname
+			FUNCREF qipUFP_IMGFUNC_DEFAULT fRef=$fname
 			if(str2num(StringByKey("ISPROTO", FUNCRefInfo(fRef)))==1)
 				fname=""
 			endif
@@ -1995,36 +1809,36 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 			strswitch(ba.ctrlName)
 			case "imgproc_addimglayer_r":
 				SetWindow $graphname userdata(OVERLAY_IMAGE_RED)=qipGetFullWaveName(wname)
-				SetWindow $graphname userdata(OVERLAY_IMAGE_RED_USERFUNC)=fname
+				SetWindow $graphname userdata(OVERLAY_IMAGE_USERFUNC_RED)=fname
 				overlay_framename=qipGenerateDerivedName(baseName, ".f.red")
-				SetWindow $graphname userdata(OVERLAY_IMAGE_RED_FRAMENAME)=overlay_framename
+				SetWindow $graphname userdata(OVERLAY_IMAGE_FRAMENAME_RED)=overlay_framename
 				Wave colortab=$(analysisDF+":M_ColorTableRED")
 				if(WaveExists(colortab))
 					colortab[][3]=transparency*65535
 				endif
-				SetWindow $graphname userdata(OVERLAY_IMAGE_RED_TRANSPARENCY)=num2str(transparency)
+				SetWindow $graphname userdata(OVERLAY_IMAGE_TRANSPARENCY_RED)=num2str(transparency)
 				break
 			case "imgproc_addimglayer_g":
 				SetWindow $graphname userdata(OVERLAY_IMAGE_GREEN)=qipGetFullWaveName(wname)
-				SetWindow $graphname userdata(OVERLAY_IMAGE_GREEN_USERFUNC)=fname
+				SetWindow $graphname userdata(OVERLAY_IMAGE_USERFUNC_GREEN)=fname
 				overlay_framename=qipGenerateDerivedName(baseName, ".f.green")
-				SetWindow $graphname userdata(OVERLAY_IMAGE_GREEN_FRAMENAME)=overlay_framename
+				SetWindow $graphname userdata(OVERLAY_IMAGE_FRAMENAME_GREEN)=overlay_framename
 				Wave colortab=$(analysisDF+":M_ColorTableGREEN")
 				if(WaveExists(colortab))
 					colortab[][3]=transparency*65535
 				endif
-				SetWindow $graphname userdata(OVERLAY_IMAGE_GREEN_TRANSPARENCY)=num2str(transparency)
+				SetWindow $graphname userdata(OVERLAY_IMAGE_TRANSPARENCY_GREEN)=num2str(transparency)
 				break
 			case "imgproc_addimglayer_b":
 				SetWindow $graphname userdata(OVERLAY_IMAGE_BLUE)=qipGetFullWaveName(wname)
-				SetWindow $graphname userdata(OVERLAY_IMAGE_BLUE_USERFUNC)=fname
+				SetWindow $graphname userdata(OVERLAY_IMAGE_USERFUNC_BLUE)=fname
 				overlay_framename=qipGenerateDerivedName(baseName, ".f.blue")
-				SetWindow $graphname userdata(OVERLAY_IMAGE_BLUE_FRAMENAME)=overlay_framename
+				SetWindow $graphname userdata(OVERLAY_IMAGE_FRAMENAME_BLUE)=overlay_framename
 				Wave colortab=$(analysisDF+":M_ColorTableBLUE")
 				if(WaveExists(colortab))
 					colortab[][3]=transparency*65535
 				endif
-				SetWindow $graphname userdata(OVERLAY_IMAGE_BLUE_TRANSPARENCY)=num2str(transparency)
+				SetWindow $graphname userdata(OVERLAY_IMAGE_TRANSPARENCY_BLUE)=num2str(transparency)
 				break
 			case "imgproc_addimglayer_GRAY":
 				SetWindow $graphname, userdata(IMAGE_USERFUNC)=fname
@@ -2032,7 +1846,7 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 				if(WaveExists(colortab))
 					colortab[][3]=transparency*65535
 				endif
-				SetWindow $graphname userdata(OVERLAY_IMAGE_GRAY_TRANSPARENCY)=num2str(transparency)
+				SetWindow $graphname userdata(OVERLAY_IMAGE_TRANSPARENCY_GRAY)=num2str(transparency)
 				break
 			default:
 				break
@@ -2051,6 +1865,22 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 	
 	return 0
 End
+
+
+Function qipGraphPanelBtnCallUserFunction(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
 
 Function qipGraphPanelCbRedraw(cba) : CheckBoxControl
 	STRUCT WMCheckboxAction &cba
@@ -2086,6 +1916,8 @@ Function qipGraphPanelCbRedraw(cba) : CheckBoxControl
 				
 			case "new_roi":
 				SetWindow $graphname userdata(NEWROI)=num2istr(checked)
+				CheckBox enclosed_roi, win=$(cba.win), value=1
+				SetWindow $graphname userdata(ENCLOSEDROI)="1"
 				break
 				
 			case "enclosed_roi":
@@ -2206,7 +2038,6 @@ STRUCTURE qipImageProcParam
 	
 	String analysisDF
 	String imageName
-	String frameName
 
 	Variable maxframeidx
 	
@@ -2231,6 +2062,10 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				
 				finished_flag=1
 			else
+			
+				SetWindow $graphname userdata(NEWROI)="0"
+				CheckBox new_roi, win=$(ba.win), value=0 //disable NEW_ROI status first
+				
 				String imageName=GetUserData(graphname, "", "IMAGENAME")
 				String frameName=GetUserData(graphname, "", "FRAMENAME")
 				Variable frameidx=str2num(GetUserData(graphname, "", "FRAMEIDX"))
@@ -2321,7 +2156,6 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				
 				param.analysisDF=analysisDF
 				param.imageName=imageName
-				param.frameName=frameName
 				param.maxframeidx=DimSize($imagename, 2)-1
 	
 				String /G $(analysisDF+":ParticleAnalysisSettings")
@@ -2342,7 +2176,7 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				Button save_roi, win=$ba.win, disable=2
 				Button copy_roi, win=$ba.win, disable=2
 				Button clear_roi, win=$ba.win, disable=2
-				Button imgproc_CallUserfunc, win=$ba.win, disable=2
+				
 				SetVariable sv_frameidx, win=$ba.win, disable=2
 				
 				CheckBox new_roi, win=$ba.win, disable=2
@@ -2368,7 +2202,7 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 		Button save_roi, win=$ba.win, disable=0
 		Button copy_roi, win=$ba.win, disable=0
 		Button clear_roi, win=$ba.win, disable=0
-		Button imgproc_CallUserfunc, win=$ba.win, disable=0
+		
 		SetVariable sv_frameidx, win=$ba.win, disable=0
 		
 		CheckBox new_roi, win=$ba.win, disable=0
@@ -2842,10 +2676,10 @@ Function qipImageProcClearEdges(String graphName, Variable frameidx, Variable ed
 	endif
 End
 
-Function qipImageProcFindIndexForDotROI(Wave pointROI, Variable roiIdx, Wave infow, Wave boundary, Wave roi2info, String roiEdgeName)
+Function qipImageProcFindIndexForDotROI(Wave pointROI, Variable roiIdx, Wave infow, Wave boundary, Wave roi2info, Variable infocolumn, String roiEdgeName)
 	Variable startp=-1, endp=-1, centerx=NaN, centery=NaN
 	Variable selected_idx=qipBoundaryFindIndexByPoint(pointROI[roiIdx][0], pointROI[roiIdx][1], infow, startp, endp, centerx, centery); AbortOnRTE
-	roi2info[roiidx][0]=selected_idx; AbortOnRTE
+	roi2info[roiidx][infocolumn]=selected_idx; AbortOnRTE
 	if(selected_idx>=0)
 		Duplicate /O/R=[infow[selected_idx][0], infow[selected_idx][1]][], boundary, $roiEdgeName
 	else
@@ -2866,7 +2700,7 @@ Function qipImageProcGenerateInfoIndexForDotROIs(DFREF homedfr)
 		//DFREF pointROIEdgeDF=:ROI:PointROIObjEdges ; AbortOnRTE
 		
 		Wave pointROI=:ROI:W_PointROI ; AbortOnRTE
-		
+	
 		Wave middle_infow=:DetectedEdges:W_Info ; AbortOnRTE
 		Wave middle_boundary=:DetectedEdges:W_Boundary ; AbortOnRTE
 		
@@ -2890,11 +2724,11 @@ Function qipImageProcGenerateInfoIndexForDotROIs(DFREF homedfr)
 				String roiEdgeNameI=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(i)+".I")
 				String roiEdgeNameO=qipGenerateDerivedName(":ROI:PointROIObjEdges:W_ROIBoundary", num2istr(i)+".O")
 				
-				qipImageProcFindIndexForDotROI(pointROI, i, middle_infow, middle_boundary, roi2info, roiEdgeNameM); AbortOnRTE
+				qipImageProcFindIndexForDotROI(pointROI, i, middle_infow, middle_boundary, roi2info, 0, roiEdgeNameM); AbortOnRTE
 				
-				qipImageProcFindIndexForDotROI(pointROI, i, inner_infow, inner_boundary, roi2info, roiEdgeNameI); AbortOnRTE
+				qipImageProcFindIndexForDotROI(pointROI, i, inner_infow, inner_boundary, roi2info, 1, roiEdgeNameI); AbortOnRTE
 				
-				qipImageProcFindIndexForDotROI(pointROI, i, outer_infow, outer_boundary, roi2info, roiEdgeNameO); AbortOnRTE
+				qipImageProcFindIndexForDotROI(pointROI, i, outer_infow, outer_boundary, roi2info, 2, roiEdgeNameO); AbortOnRTE
 				
 			endfor
 		endif
@@ -2906,6 +2740,7 @@ Function qipImageProcGenerateInfoIndexForDotROIs(DFREF homedfr)
 End
 
 Function qipImageProcAddDetectedEdge(DFREF homedfr)
+//add detected edges in the current region ROI to the stored edge records
 	try
 		NewDataFolder /O homedfr:DetectedEdges; AbortOnRTE
 		DFREF edgeDF=homedfr:DetectedEdges; AbortOnRTE
@@ -2994,9 +2829,8 @@ End
 
 Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & param)
 	Wave image=$(param.imageName)
-	Wave frame=$(param.frameName)
 
-	if(!WaveExists(image) || !WaveExists(frame))
+	if(!WaveExists(image))
 		return -1
 	endif
 	
@@ -3007,11 +2841,17 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 	DFREF savedDF=GetDataFolderDFR()
 	NewDataFolder /O/S $(param.analysisDF)
 	DFREF parentdfr=GetDataFolderDFR()
-	FUNCREF qipUFP_IMGFUNC usrFuncRef=$(GetUserData(graphName, "", "IMAGE_USERFUNC"))
+	Wave ratio=root:ratio
+	ratio=NaN
+	DoWindow /F $graphName
+	DoUpdate
+	NewMovie /F=10
+	
 	try
 		for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
 			SetWindow $graphName userdata(FRAMEIDX)=num2istr(frameidx)
-			qipGraphPanelRedrawAll(graphName)
+			
+			qipGraphPanelRedrawAll(graphName) //this will update all frames including all color channels
 			
 			stop_flag=str2num(GetUserData(graphName, "", "EDGEDETECTION_STOP"))
 			if(stop_flag==1)
@@ -3026,16 +2866,14 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			qipImageProcClearEdges(graphName, frameidx, 1)
 			qipImageProcClearEdges(graphName, frameidx, 2)
 			qipImageProcClearEdges(graphName, frameidx, 3)
-
-			//multithread frame[][]=image[p][q][frameidx]; AbortOnRTE
-			ImageTransform /P=(frameidx) /PTYP=0 getPlane image
-			Wave M_ImagePlane
-			Duplicate /O M_ImagePlane, $(param.frameName)
-			Wave frame=$(param.frameName)
 			
 			String roimask_name=GetDataFolder(1)+"M_ROI"
-
-			usrFuncRef(image, frame, graphname, frameidx, 1) //preprocessing of frame data before threshold
+			Variable update_flag
+			
+			//preprocessing main image before edge detection
+			String frameName=""
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, frameName, update_flag)
+			Wave frame=$(frameName)
 			
 			roi_counts=0
 			do
@@ -3075,23 +2913,22 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 				ImageMorphology /E=5 Opening homedfr:M_ImageMorph
 		
 				if(param.allow_subset==0)
-					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea)/FILL stats homedfr:M_ImageMorph
+					ImageAnalyzeParticles /Q/D=$(frameName) /W/E/A=(param.minArea)/FILL stats homedfr:M_ImageMorph
 				else
-					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats homedfr:M_ImageMorph
+					ImageAnalyzeParticles /Q/D=$(frameName) /W/E/A=(param.minArea) stats homedfr:M_ImageMorph
 				endif
 				qipImageProcAddDetectedEdge(homedfr)
 				Duplicate /O homedfr:M_ImageMorph, homedfr:M_FilledEdge
 				String filledEdgeName=GetDataFolder(1)+"M_FilledEdge"
 				qipImageProcGenerateROIMaskFromBoundary(graphName, homedfr:W_BoundaryX, homedfr:W_BoundaryY, filledEdgeName, valueE=255)
 				
-
 				NewDataFolder /O/S innerEdge
 				ImageMorphology /E=4 /I=(param.dialation_iteration) Dilation $filledEdgeName
 		
 				if(param.allow_subset==0)
-					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
+					ImageAnalyzeParticles /Q/D=$(frameName) /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
 				else
-					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
+					ImageAnalyzeParticles /Q/D=$(frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
 				endif
 				qipImageProcAddDetectedEdge(homedfr:innerEdge)
 				SetDataFOlder ::
@@ -3101,9 +2938,9 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 				ImageMorphology /E=4 /I=(param.erosion_iteration+param.dialation_iteration) Erosion :M_ImageMorph
 		
 				if(param.allow_subset==0)
-					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
+					ImageAnalyzeParticles /Q/D=$(frameName) /W/E/A=(param.minArea)/FILL stats :M_ImageMorph
 				else
-					ImageAnalyzeParticles /Q/D=$(param.frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
+					ImageAnalyzeParticles /Q/D=$(frameName) /W/E/A=(param.minArea) stats :M_ImageMorph
 				endif
 				qipImageProcAddDetectedEdge(homedfr:outerEdge)
 				SetDataFolder :: //back to home directory for ROI reading in the next loop
@@ -3116,14 +2953,25 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 					break
 				endif
 			while(roi_counts>=0)
-			qipImageProcGenerateInfoIndexForDotROIs(homedfr) 
+			
+			qipImageProcGenerateInfoIndexForDotROIs(homedfr)
 			//if dot ROI exists, will generate another table
 			//that tells which item in W_Info best links to each dot
 			// :ROI:W_PointROI2Info will have the same rows as W_PointROI
 			//   column [0] for middle edge index in W_Info
 			//   column [1] for inner edge index in W_Info
 			//   column [2] for outer edge index in W_Info
+			
+			//postprocessing
+			SetDataFolder homedfr
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
+			DoUpdate
+			AddMovieFrame
 		endfor
+		CloseMovie
 	catch
 		Variable err=GetRTError(0)
 		if(err!=0)
@@ -3192,51 +3040,6 @@ Function qipGraphPanelSVIndex(sva) : SetVariableControl
 	endswitch
 
 	return 0
-End
-
-
-Constant QIPUF_CHANNEL_GRAY=0
-Constant QIPUF_CHANNEL_RED=1
-Constant QIPUF_CHANNEL_GREEN=2
-Constant QIPUF_CHANNEL_BLUE=3
-
-Function qipUF_GetFrame(String graphname, Variable channel, Variable frameidx, DFREF userDF, String wname)
-	String imgname=""
-	
-	switch(channel)
-	case QIPUF_CHANNEL_GRAY: //main frame
-		imgname=GetUserData(graphname, "", "IMAGENAME")
-		break
-	case QIPUF_CHANNEL_RED: //red channel
-		imgname=GetUserData(graphname, "", "OVERLAY_IMAGE_RED")
-		break
-	case QIPUF_CHANNEL_GREEN: //green channel
-		imgname=GetUserData(graphname, "", "OVERLAY_IMAGE_GREEM")
-		break
-	case QIPUF_CHANNEL_BLUE: //blue channel
-		imgname=GetUserData(graphname, "", "OVERLAY_IMAGE_BLUE")
-		break
-	default:
-		break
-	endswitch
-	
-	Wave img=$imgname
-	if(WaveExists(img) && frameidx>=0 && frameidx<DimSize(img, 2))
-		
-	endif
-	
-End
-
-Function qipUF_GetObj(DFREF homeDFR, Variable frameidx, Variable objidx, Variable & x, Variable & y, WAVE & bTrace, WAVE & bMask)
-
-End
-
-Function qipUF_GetFrameNumber(DFREF homeDFR)
-
-End
-
-Function qipUF_GetObjNumber(DFREF homeDFR)
-
 End
 
 
@@ -3881,4 +3684,3 @@ static Picture QingLabBadge
 	z8OZBBY!QNJ
 	ASCII85End
 End
-
