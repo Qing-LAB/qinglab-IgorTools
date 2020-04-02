@@ -810,7 +810,7 @@ Function qipGraphPanelRedrawAll(String graphName)
 End
 
 Function qipGraphPanelUpdateSingleImageChannel(Variable request, String graphName, Variable frameidx, 
-																String & frameName, Variable & channel_active_flag)
+																String caller, String & frameName, Variable & channel_active_flag)
 	channel_active_flag=0
 	
 	String imageName=""
@@ -857,22 +857,33 @@ Function qipGraphPanelUpdateSingleImageChannel(Variable request, String graphNam
 	//which will just copy the corresponding frame
 		
 	if(request & QIPUFP_IMAGEFUNC_REDRAWUPDATE)
-
 		if(!WaveExists(frame) || (DimSize(frame, 0)!=DimSize(image, 0) || DimSize(frame, 1)!=DimSize(image, 1)))
 			Make /O/N=(DimSize(image, 0), DimSize(image, 1))/Y=(WaveType(image)) $frameName
 			Wave frame=$frameName
 		endif
-		usrFuncRef(image, frame, graphname, frameidx, (request & 0xFF) + QIPUFP_IMAGEFUNC_REDRAWUPDATE)
+		usrFuncRef(image, frame, graphname, frameidx, caller, (request & 0xFF) + QIPUFP_IMAGEFUNC_REDRAWUPDATE)
 		channel_active_flag=1
 	endif
 	
+	if(request & QIPUFP_IMAGEFUNC_INIT) //init user call, typically for preparing waves, graphs, movies etc
+		usrFuncRef(image, frame, graphname, frameidx, caller, (request & 0xFF) + QIPUFP_IMAGEFUNC_INIT)
+	endif
+	
 	if(request & QIPUFP_IMAGEFUNC_PREPROCESSING) //preprocessing is called before edge detection, and only user function for main frame is called
-		usrFuncRef(image, frame, graphname, frameidx, (request & 0xFF) + QIPUFP_IMAGEFUNC_PREPROCESSING)
+		usrFuncRef(image, frame, graphname, frameidx, caller, (request & 0xFF) + QIPUFP_IMAGEFUNC_PREPROCESSING)
 	endif
 	
 	if(request & QIPUFP_IMAGEFUNC_POSTPROCESSING) //postprocessing is called after all edges of Point ROIs (objectives) are detected
 	//all color channels will be called in sequence
-		usrFuncRef(image, frame, graphname, frameidx, (request & 0xFF) + QIPUFP_IMAGEFUNC_POSTPROCESSING)
+		usrFuncRef(image, frame, graphname, frameidx, caller, (request & 0xFF) + QIPUFP_IMAGEFUNC_POSTPROCESSING)
+	endif
+	
+	if(request & QIPUFP_IMAGEFUNC_FINALIZE) //finalize user call, typically for closing files, movies etc.
+		usrFuncRef(image, frame, graphname, frameidx, caller, (request & 0xFF) + QIPUFP_IMAGEFUNC_FINALIZE)
+	endif
+	
+	if(request & QIPUFP_IMAGEFUNC_CUSTOMIZED) //finalize user call, typically for closing files, movies etc.
+		usrFuncRef(image, frame, graphname, frameidx, caller, (request & 0xFF0000FF) + QIPUFP_IMAGEFUNC_CUSTOMIZED)
 	endif
 End
 
@@ -885,7 +896,7 @@ Function qipGraphPanelRedrawImage(String graphName)
 		
 	//main channel image update
 	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
-													  frameidx, frameName, flag_main)
+													  frameidx, "GraphPanelRedraw", frameName, flag_main)
 	Wave frame=$frameName
 	if(flag_main)
 		qipGraphPanelAddImageByAxis(graphName, frame, ctab=4, top=1)
@@ -893,7 +904,7 @@ Function qipGraphPanelRedrawImage(String graphName)
 	
 	//blue channel overlay update
 	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
-													  frameidx, frameName, flag_b)
+													  frameidx, "GraphPanelRedraw", frameName, flag_b)
 	Wave frame=$frameName
 	if(flag_b)
 		qipGraphPanelAddImageByAxis(graphName, frame, ctab=3, top=1)
@@ -901,7 +912,7 @@ Function qipGraphPanelRedrawImage(String graphName)
 	
 	//green channel overlay update
 	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
-													  frameidx, frameName, flag_g)	
+													  frameidx, "GraphPanelRedraw", frameName, flag_g)	
 	Wave frame=$frameName
 	if(flag_g)
 		qipGraphPanelAddImageByAxis(graphName, frame, ctab=2, top=1)
@@ -909,7 +920,7 @@ Function qipGraphPanelRedrawImage(String graphName)
 	
 	//red channel overlay update
 	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_REDRAWUPDATE, graphName, \
-													  frameidx, frameName, flag_r)		
+													  frameidx, "GraphPanelRedraw", frameName, flag_r)		
 	Wave frame=$frameName
 	if(flag_r)
 		qipGraphPanelAddImageByAxis(graphName, frame, ctab=1, top=1)
@@ -1111,6 +1122,18 @@ Function qipHookFunction(s)
 	
 	String roi_xaxisname=GetUserData(s.winname, "", "ROI_XAXISNAME")
 	String roi_yaxisname=GetUserData(s.winname, "", "ROI_YAXISNAME")
+	
+	if(strlen(roi_xaxisname)==0 || strlen(roi_yaxisname)==0)
+		if(strlen(ixaxisname)>0 && strlen(iyaxisname)>0)
+			roi_xaxisname=ixaxisname
+			roi_yaxisname=iyaxisname
+		elseif(strlen(txaxisname)>0 && strlen(tyaxisname)>0)
+			roi_xaxisname=txaxisname
+			roi_yaxisname=tyaxisname
+		endif
+		SetWindow $(s.winname), userdata(ROI_XAXISNAME)=roi_xaxisname
+		SetWindow $(s.winname), userdata(ROI_YAXISNAME)=roi_yaxisname
+	endif
 
 	Variable imgx, imgy, tracex, tracey
 	Variable update_image=0
@@ -1782,8 +1805,8 @@ Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
 				PROMPT wname, "Main channel image cannot be changed:", popup, imgselection
 			endif			
 			
-			funcSelection="_None_;"+FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:Procedure")
-			funcSelection+=FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:5,VALTYPE:1,WIN:QImageAnalysisUFPs.ipf")
+			funcSelection="_None_;"+FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:6,VALTYPE:1,WIN:Procedure")
+			funcSelection+=FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:6,VALTYPE:1,WIN:QImageAnalysisUFPs.ipf")
 			PROMPT fname, "User function for image redraw/update. User function needs to be defined in the Procedure window with its name starting with prefix 'QIPUF_':", popup, funcSelection
 			PROMPT transparency, "Transparency (0 means completely transparent, 1 means completely opaque)"
 			
@@ -2850,10 +2873,10 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 	NewDataFolder /O/S $(param.analysisDF)
 	DFREF parentdfr=GetDataFolderDFR()
 	
-	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
-	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
-	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
-	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcEdgeDetection", frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcEdgeDetection", frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcEdgeDetection", frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcEdgeDetection", frameName, update_flag)
 	
 	try
 		for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
@@ -2880,7 +2903,7 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			
 			//preprocessing main image before edge detection
 			
-			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, "ImageProcEdgeDetection", frameName, update_flag)
 			Wave frame=$(frameName)
 			
 			roi_counts=0
@@ -2972,10 +2995,10 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			
 			//postprocessing
 			SetDataFolder homedfr
-			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
-			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
-			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
-			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcEdgeDetection", frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcEdgeDetection", frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcEdgeDetection", frameName, update_flag)
+			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcEdgeDetection", frameName, update_flag)
 		endfor
 	catch
 		Variable err=GetRTError(0)

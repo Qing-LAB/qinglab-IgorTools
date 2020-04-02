@@ -4,98 +4,29 @@
 
 //user function prototypes
 
+//0x000000FF gives the channel related to the call
 Constant QIPUFP_IMAGEFUNC_MAINIMAGE=0x1
 Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED=0x2
 Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN=0x4
 Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE=0x8
+
+//0x00FFFF00 gives the request type
 Constant QIPUFP_IMAGEFUNC_REDRAWUPDATE=0x100
 Constant QIPUFP_IMAGEFUNC_INIT=0x200
 Constant QIPUFP_IMAGEFUNC_PREPROCESSING=0x400
 Constant QIPUFP_IMAGEFUNC_POSTPROCESSING=0x800
 Constant QIPUFP_IMAGEFUNC_FINALIZE=0x1000
+Constant QIPUFP_IMAGEFUNC_CUSTOMIZED=0x2000
+
+//0xFF000000 is reserved for user to customize the request code
 
 Constant QIPUF_DEFAULT_ALPHA_RED = 0.701
 Constant QIPUF_DEFAULT_ALPHA_GREEN = 0.413
 Constant QIPUF_DEFAULT_ALPHA_BLUE = 0.886
 Constant QIPUF_DEFAULT_ALPHA_GRAY = 1
 
-//functions for processing image stacks and frame data
-Function QIPUF_CalculateFluorescenceRatio(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, Variable request)
-	try
-		if(request & QIPUFP_IMAGEFUNC_REDRAWUPDATE) //normal process of updating frame data
-			qipGraphPanelExtractSingleFrameFromImage(srcImage, GetWavesDataFolder(frameImage, 2), frameidx)
-		endif
-		
-		if(request & QIPUFP_IMAGEFUNC_INIT) //prepare for variables etc
-		//by default nothing is done here
-		endif
-		
-		if(request & QIPUFP_IMAGEFUNC_POSTPROCESSING)
-			Variable i
-			Wave PointROI=:ROI:W_PointROI
-			Wave ratio=root:W_FluorecenceRatio
-			
-			if(WaveExists(srcImage) && WaveExists(PointROI))
-			
-				Variable width=DimSize(frameImage, 0)
-				Variable height=DimSize(frameImage, 1)
-				
-				if(!WaveExists(ratio) || (DimSize(ratio, 0)!=DimSize(srcImage, 2)) || (DimSize(ratio, 1) !=DimSize(PointROI, 0)))
-					Make /O/N=(DimSize(srcImage, 2), DimSize(PointROI, 0)) root:W_FluorecenceRatio=NaN
-				endif
-				
-				Wave ratio=root:W_FluorecenceRatio
-				
-				Variable inner_boundary_len, inner_boundary_dotproduct
-				Variable outer_boundary_len, outer_boundary_dotproduct
-				String homedf=GetDataFolder(1)
-				
-				for(i=0; i<DimSize(PointROI, 0); i+=1)
-					if(numtype(PointROI[i][0])==0)
-						String name=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+".I")
-						Wave b=$name
-
-						if(WaveExists(b))
-							GetBoundaryMaskProduct(frameImage, b, width, height, inner_boundary_len, inner_boundary_dotproduct)
-						endif
-						name=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+".O")
-						Wave b=$name
-						if(WaveExists(b))
-							GetBoundaryMaskProduct(frameImage, b, width, height, outer_boundary_len, outer_boundary_dotproduct)
-						endif
-						ratio[frameidx][i]=(outer_boundary_dotproduct/outer_boundary_len)/(inner_boundary_dotproduct/inner_boundary_len)
-					endif
-				endfor
-			endif
-		endif
-		
-		if(request & QIPUFP_IMAGEFUNC_FINALIZE)
-		//by default nothing is done here
-		endif
-		
-	catch
-		Variable err=GetRTError(1)
-	endtry
-	return 0
-End
-
-Static Function GetBoundaryMaskProduct(Wave img, Wave boundary, Variable width, Variable height, Variable & boundary_len, Variable & boundary_dotproduct)
-	Make /FREE /D/N=(DimSize(boundary, 0)) tmpx, tmpy
-	tmpx=boundary[p][0]
-	tmpy=boundary[p][1]
-	ImageBoundaryToMask width=width, height=height, xwave=tmpx, ywave=tmpy
-	Wave M_ROIMask
-	WaveStats /Q M_ROIMASK
-	M_ROIMASK/=V_Max
-	Redimension/Y=(WaveType(img)) M_ROIMask
-	boundary_len=sum(M_ROIMask)
-	MatrixOp /FREE tmpProduct = M_ROIMask.img
-	boundary_dotproduct=tmpProduct[0]
-End
-
-
-//functions for processing image stacks and frame data
-Function qipUFP_IMGFUNC_DEFAULT(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, Variable request)
+//Prototype functions for processing image stacks and frame data
+Function qipUFP_IMGFUNC_DEFAULT(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, String caller, Variable request)
 	try
 		if(request & QIPUFP_IMAGEFUNC_REDRAWUPDATE) //normal process of updating frame data
 			qipGraphPanelExtractSingleFrameFromImage(srcImage, GetWavesDataFolder(frameImage, 2), frameidx)
@@ -321,4 +252,79 @@ Function qipUFP_BoundaryPointModifier(Wave wave_for_mod, Variable index, Variabl
 	endtry
 	
 	return modify_flag
+End
+
+//prototype functions (based on QIPUFP_IMGFUNC_DEFAULT for processing image stacks and frame data
+Function QIPUF_CalculateFluorescenceRatio(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, String caller, Variable request)
+	try
+		if(request & QIPUFP_IMAGEFUNC_REDRAWUPDATE) //normal process of updating frame data
+			qipGraphPanelExtractSingleFrameFromImage(srcImage, GetWavesDataFolder(frameImage, 2), frameidx)
+		endif
+		
+		if(request & QIPUFP_IMAGEFUNC_INIT) //prepare for variables etc
+		//by default nothing is done here
+		endif
+		
+		if(request & QIPUFP_IMAGEFUNC_POSTPROCESSING)
+			Variable i
+			Wave PointROI=:ROI:W_PointROI
+			Wave ratio=root:W_FluorecenceRatio
+			
+			if(WaveExists(srcImage) && WaveExists(PointROI))
+			
+				Variable width=DimSize(frameImage, 0)
+				Variable height=DimSize(frameImage, 1)
+				
+				if(!WaveExists(ratio) || (DimSize(ratio, 0)!=DimSize(srcImage, 2)) || (DimSize(ratio, 1) !=DimSize(PointROI, 0)))
+					Make /O/N=(DimSize(srcImage, 2), DimSize(PointROI, 0)) root:W_FluorecenceRatio=NaN
+				endif
+				
+				Wave ratio=root:W_FluorecenceRatio
+				
+				Variable inner_boundary_len, inner_boundary_dotproduct
+				Variable outer_boundary_len, outer_boundary_dotproduct
+				String homedf=GetDataFolder(1)
+				
+				for(i=0; i<DimSize(PointROI, 0); i+=1)
+					if(numtype(PointROI[i][0])==0)
+						String name=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+".I")
+						Wave b=$name
+
+						if(WaveExists(b))
+							GetBoundaryMaskProduct(frameImage, b, width, height, inner_boundary_len, inner_boundary_dotproduct)
+						endif
+						name=":ROI:PointROIObjEdges:"+PossiblyQuoteName("W_ROIBoundary"+num2istr(i)+".O")
+						Wave b=$name
+						if(WaveExists(b))
+							GetBoundaryMaskProduct(frameImage, b, width, height, outer_boundary_len, outer_boundary_dotproduct)
+						endif
+						ratio[frameidx][i]=(outer_boundary_dotproduct/outer_boundary_len)/(inner_boundary_dotproduct/inner_boundary_len)
+					endif
+				endfor
+			endif
+			DoUpdate
+		endif
+		
+		if(request & QIPUFP_IMAGEFUNC_FINALIZE)
+		//by default nothing is done here
+		endif
+		
+	catch
+		Variable err=GetRTError(1)
+	endtry
+	return 0
+End
+
+Static Function GetBoundaryMaskProduct(Wave img, Wave boundary, Variable width, Variable height, Variable & boundary_len, Variable & boundary_dotproduct)
+	Make /FREE /D/N=(DimSize(boundary, 0)) tmpx, tmpy
+	tmpx=boundary[p][0]
+	tmpy=boundary[p][1]
+	ImageBoundaryToMask width=width, height=height, xwave=tmpx, ywave=tmpy
+	Wave M_ROIMask
+	WaveStats /Q M_ROIMASK
+	M_ROIMASK/=V_Max
+	Redimension/Y=(WaveType(img)) M_ROIMask
+	boundary_len=sum(M_ROIMask)
+	MatrixOp /FREE tmpProduct = M_ROIMask.img
+	boundary_dotproduct=tmpProduct[0]
 End
