@@ -268,7 +268,7 @@ Function QIPUF_CalculateFluorescenceRatio(Wave srcImage, Wave frameImage, String
 		if(request & QIPUFP_IMAGEFUNC_POSTPROCESSING)
 			Variable i
 			Wave PointROI=:ROI:W_PointROI
-			Wave ratio=root:W_FluorecenceRatio
+			Wave ratio=root:W_FluorescenceRatio
 			
 			if(WaveExists(srcImage) && WaveExists(PointROI))
 			
@@ -276,10 +276,10 @@ Function QIPUF_CalculateFluorescenceRatio(Wave srcImage, Wave frameImage, String
 				Variable height=DimSize(frameImage, 1)
 				
 				if(!WaveExists(ratio) || (DimSize(ratio, 0)!=DimSize(srcImage, 2)) || (DimSize(ratio, 1) !=DimSize(PointROI, 0)))
-					Make /O/N=(DimSize(srcImage, 2), DimSize(PointROI, 0)) root:W_FluorecenceRatio=NaN
+					Make /O/N=(DimSize(srcImage, 2), DimSize(PointROI, 0)) root:W_FluorescenceRatio=NaN
 				endif
 				
-				Wave ratio=root:W_FluorecenceRatio
+				Wave ratio=root:W_FluorescenceRatio
 				
 				Variable inner_boundary_len, inner_boundary_dotproduct
 				Variable outer_boundary_len, outer_boundary_dotproduct
