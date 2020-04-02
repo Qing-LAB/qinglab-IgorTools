@@ -4,7 +4,7 @@
 
 #include "QImageAnalysisUFPs"
 
-Menu "QingLabTools"
+Menu "&QingLabTools"
 	Submenu "ImageAnalysis"
 		"Load File...", qipLoadFile("")
 		"Display Image...", qipDisplayImage("")
@@ -147,6 +147,7 @@ Function qipPrepAnalysisDFNames(String graphname, String & imageName, String & b
 End
 
 Function qipEnableHook(String graphname)
+//this function will attach the hook function to the graph window
 	String panelName=graphname+"_PANEL"
 
 	NewPanel /EXT=0 /HOST=$graphname /K=2 /W=(0, 0, 200, 230) /N=$(panelName)
@@ -169,6 +170,7 @@ Function qipEnableHook(String graphname)
 End
 
 Function qipGenerateOverlayColorTables(String graphname)
+//standard color table will be used for specified color channels
 	DFREF savedDF=GetDataFolderDFR()
 	try
 		String analysisDF=GetUserData(graphname, "", "ANALYSISDF")
@@ -197,6 +199,7 @@ Function qipGenerateOverlayColorTables(String graphname)
 End
 
 Function qipGraphPanelResetControls(String panelName)
+//redraw all controls
 	SetVariable xy_cord win=$panelName, pos={2,10}, bodywidth=200, value=_STR:(""), noedit=1
 	SetVariable img_value win=$panelName, pos={2,30}, bodywidth=200, value=_STR:(""), noedit=1
 	SetVariable trace_value win=$panelName, pos={2,50}, bodywidth=200, value=_STR:(""), noedit=1
@@ -338,11 +341,10 @@ Function /S qipLoadTIFFImageStack(String filename) //Load TIFF file
 	endif
 End
 
-
-Function qipGraphPanelAddTraceByAxis(String graphName, Wave trace, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker, Variable mode, Variable redundantOK])
+Function qipGraphPanelAddTraceByAxis(String graphName, Wave trace, String xaxisname, String yaxisname, [Variable r, Variable g, Variable b, Variable alpha, Variable show_marker, Variable mode, Variable redundantOK])
 	Variable trace_drawn=0
-	String xaxisname=GetUserData(graphName, "", "ROI_XAXISNAME")
-	String yaxisname=GetUserData(graphName, "", "ROI_YAXISNAME")
+//	String xaxisname=GetUserData(graphName, "", "ROI_XAXISNAME")
+//	String yaxisname=GetUserData(graphName, "", "ROI_YAXISNAME")
 	
 	if(strlen(xaxisname)==0 || strlen(yaxisname)==0)
 		return 0
@@ -646,9 +648,12 @@ Function qipGraphPanelRedrawEdges(String graphName, [Variable rawDetectedEdge])
 			Note /K $outerEdgeName; AbortOnRTE
 		endif
 
-		qipGraphPanelAddTraceByAxis(graphName, $outeredgeName, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
-		qipGraphPanelAddTraceByAxis(graphName, $edgeName, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
-		qipGraphPanelAddTraceByAxis(graphName, $inneredgeName, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
+		String roi_xaxisname=GetUserData(graphName, "", "ROI_XAXISNAME")
+		String roi_yaxisname=GetUserData(graphName, "", "ROI_YAXISNAME")
+		
+		qipGraphPanelAddTraceByAxis(graphName, $outeredgeName, roi_xaxisname, roi_yaxisname, r=0, g=65535, b=0, alpha=32768); AbortOnRTE
+		qipGraphPanelAddTraceByAxis(graphName, $edgeName, roi_xaxisname, roi_yaxisname, r=65535, g=0, b=0, alpha=32768); AbortOnRTE
+		qipGraphPanelAddTraceByAxis(graphName, $inneredgeName, roi_xaxisname, roi_yaxisname, r=0, g=0, b=65535, alpha=32768); AbortOnRTE
 
 	catch
 		Variable err=GetRTError(0)
@@ -670,9 +675,10 @@ Function qipGraphPanelRedrawROI(String graphName)
 	String roi_allName=GetUserData(graphName, "", "ROI_ALLTRACENAME")
 	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
 	Variable frameidx=str2num(GetUserData(graphName, "", "FRAMEIDX"))
-	String baseName=GetUserData(graphName, "", "BASENAME")
-	
+	String baseName=GetUserData(graphName, "", "BASENAME")	
 	String panelName=GetUserData(graphName, "", "PANELNAME")
+	String roi_xaxisname=GetUserData(graphName, "", "ROI_XAXISNAME")
+	String roi_yaxisname=GetUserData(graphName, "", "ROI_YAXISNAME")
 	
 	ControlInfo /W=$panelName show_userroi
 	Variable show_userroi=V_value
@@ -691,14 +697,14 @@ Function qipGraphPanelRedrawROI(String graphName)
 	
 	//current user ROI definitionis always shown
 	if(strlen(roi_cur_traceName)>0)
-		if(qipGraphPanelAddTraceByAxis(graphName, roi_cur_trace, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
+		if(qipGraphPanelAddTraceByAxis(graphName, roi_cur_trace, roi_xaxisname, roi_yaxisname, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
 			ModifyGraph /Z /W=$(graphName) offset($roi_cur_basename)={0,0}
 		endif
 	endif
 	
 	if(show_userroi) //existing record of user ROI is shown only when checkbox is true
 		if(strlen(roi_allName)>0)
-			if(qipGraphPanelAddTraceByAxis(graphName, roi_all, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
+			if(qipGraphPanelAddTraceByAxis(graphName, roi_all, roi_xaxisname, roi_yaxisname, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
 				ModifyGraph /Z /W=$(graphName) offset($roi_all_basename)={0,0}
 			endif
 		endif
@@ -749,7 +755,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			Wave framewdot=$dotwaveName; AbortOnRTE
 			
 			if(show_dot && WaveExists(framewdot))				
-				qipGraphPanelAddTraceByAxis(graphName, framewdot, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
+				qipGraphPanelAddTraceByAxis(graphName, framewdot, roi_xaxisname, roi_yaxisname, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
 				ModifyGraph /Z /W=$(graphName) offset($dotwaveBaseName)={0,0}
 				roinote=note(framewdot)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryPointModifier") //for dots, we will not delete points, only fill in NaN for deletion
@@ -779,7 +785,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			
 			
 			if(show_line && WaveExists(framelinewave))				
-				qipGraphPanelAddTraceByAxis(graphName, framelinewave, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
+				qipGraphPanelAddTraceByAxis(graphName, framelinewave, roi_xaxisname, roi_yaxisname, r=0, g=0, b=65535, alpha=65535, mode=0); AbortOnRTE
 				ModifyGraph /Z /W=$(graphName) offset($linewaveBaseName)={0,0}
 				roinote=note(framelinewave)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryLineModifier")
@@ -2834,18 +2840,20 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 		return -1
 	endif
 	
-	Variable frameidx
-	Variable roi_counts
-	Variable stop_flag
-	
+	Variable frameidx=-1
+	Variable roi_counts=-1
+	Variable stop_flag=0
+	String frameName=""
+	Variable update_flag
+				
 	DFREF savedDF=GetDataFolderDFR()
 	NewDataFolder /O/S $(param.analysisDF)
 	DFREF parentdfr=GetDataFolderDFR()
-	Wave ratio=root:ratio
-	ratio=NaN
-	DoWindow /F $graphName
-	DoUpdate
-	NewMovie /F=10
+	
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
+	qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, frameName, update_flag)
 	
 	try
 		for(frameidx=param.startframe; frameidx>=0 && frameidx<=param.endframe && frameidx<=param.maxframeidx; frameidx+=1)
@@ -2868,10 +2876,10 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			qipImageProcClearEdges(graphName, frameidx, 3)
 			
 			String roimask_name=GetDataFolder(1)+"M_ROI"
-			Variable update_flag
+
 			
 			//preprocessing main image before edge detection
-			String frameName=""
+			
 			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, frameName, update_flag)
 			Wave frame=$(frameName)
 			
@@ -2968,10 +2976,7 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
 			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
 			qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, frameName, update_flag)
-			DoUpdate
-			AddMovieFrame
 		endfor
-		CloseMovie
 	catch
 		Variable err=GetRTError(0)
 		if(err!=0)

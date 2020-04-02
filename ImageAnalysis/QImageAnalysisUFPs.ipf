@@ -2,20 +2,50 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma ModuleName=QImageAnalysisUFPs
 
+//user function prototypes
+
+Constant QIPUFP_IMAGEFUNC_MAINIMAGE=0x1
+Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED=0x2
+Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN=0x4
+Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE=0x8
+Constant QIPUFP_IMAGEFUNC_REDRAWUPDATE=0x100
+Constant QIPUFP_IMAGEFUNC_INIT=0x200
+Constant QIPUFP_IMAGEFUNC_PREPROCESSING=0x400
+Constant QIPUFP_IMAGEFUNC_POSTPROCESSING=0x800
+Constant QIPUFP_IMAGEFUNC_FINALIZE=0x1000
+
+Constant QIPUF_DEFAULT_ALPHA_RED = 0.701
+Constant QIPUF_DEFAULT_ALPHA_GREEN = 0.413
+Constant QIPUF_DEFAULT_ALPHA_BLUE = 0.886
+Constant QIPUF_DEFAULT_ALPHA_GRAY = 1
+
 //functions for processing image stacks and frame data
 Function QIPUF_CalculateFluorescenceRatio(Wave srcImage, Wave frameImage, String graphname, Variable frameidx, Variable request)
 	try
 		if(request & QIPUFP_IMAGEFUNC_REDRAWUPDATE) //normal process of updating frame data
 			qipGraphPanelExtractSingleFrameFromImage(srcImage, GetWavesDataFolder(frameImage, 2), frameidx)
 		endif
+		
+		if(request & QIPUFP_IMAGEFUNC_INIT) //prepare for variables etc
+		//by default nothing is done here
+		endif
+		
 		if(request & QIPUFP_IMAGEFUNC_POSTPROCESSING)
 			Variable i
 			Wave PointROI=:ROI:W_PointROI
-			Wave ratio=root:ratio
+			Wave ratio=root:W_FluorecenceRatio
 			
-			if(WaveExists(ratio) && WaveExists(PointROI))
+			if(WaveExists(srcImage) && WaveExists(PointROI))
+			
 				Variable width=DimSize(frameImage, 0)
 				Variable height=DimSize(frameImage, 1)
+				
+				if(!WaveExists(ratio) || (DimSize(ratio, 0)!=DimSize(srcImage, 2)) || (DimSize(ratio, 1) !=DimSize(PointROI, 0)))
+					Make /O/N=(DimSize(srcImage, 2), DimSize(PointROI, 0)) root:W_FluorecenceRatio=NaN
+				endif
+				
+				Wave ratio=root:W_FluorecenceRatio
+				
 				Variable inner_boundary_len, inner_boundary_dotproduct
 				Variable outer_boundary_len, outer_boundary_dotproduct
 				String homedf=GetDataFolder(1)
@@ -38,6 +68,11 @@ Function QIPUF_CalculateFluorescenceRatio(Wave srcImage, Wave frameImage, String
 				endfor
 			endif
 		endif
+		
+		if(request & QIPUFP_IMAGEFUNC_FINALIZE)
+		//by default nothing is done here
+		endif
+		
 	catch
 		Variable err=GetRTError(1)
 	endtry
@@ -57,21 +92,6 @@ Static Function GetBoundaryMaskProduct(Wave img, Wave boundary, Variable width, 
 	MatrixOp /FREE tmpProduct = M_ROIMask.img
 	boundary_dotproduct=tmpProduct[0]
 End
-
-//user function prototypes
-
-Constant QIPUFP_IMAGEFUNC_MAINIMAGE=1
-Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED=2
-Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN=4
-Constant QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE=8
-Constant QIPUFP_IMAGEFUNC_REDRAWUPDATE=256
-Constant QIPUFP_IMAGEFUNC_PREPROCESSING=512
-Constant QIPUFP_IMAGEFUNC_POSTPROCESSING=1024
-
-Constant QIPUF_DEFAULT_ALPHA_RED = 0.701
-Constant QIPUF_DEFAULT_ALPHA_GREEN = 0.413
-Constant QIPUF_DEFAULT_ALPHA_BLUE = 0.886
-Constant QIPUF_DEFAULT_ALPHA_GRAY = 1
 
 
 //functions for processing image stacks and frame data
