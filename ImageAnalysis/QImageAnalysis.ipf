@@ -1902,6 +1902,83 @@ Function qipGraphPanelBtnCallUserFunction(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
+			String graphname=ba.win
+			graphname=StringFromList(0, graphname, "#")
+			
+			Variable preprocess_flag=1
+			Variable postprocess_flag=1
+			Variable customized_flag=0
+			Variable start_frame=0
+			Variable end_frame=-1
+
+			PROMPT preprocess_flag, "Request preprocessing frame?", popup, "NO;YES;"
+			PROMPT postprocess_flag, "Request postprocessing frame?", popup, "NO;YES;"
+			PROMPT customized_flag, "Request customized request code (1-255)?"
+			PROMPT start_frame, "Start from frame #"
+			PROMPT end_Frame, "End at frame # (-1 means to the end)"
+			
+			String funcSelection="_None_;"+FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:6,VALTYPE:1,WIN:Procedure")
+			funcSelection+=FunctionList("QIPUF_*", ";", "KIND:2,NPARAMS:6,VALTYPE:1,WIN:QImageAnalysisUFPs.ipf")
+			String fname_main=GetUserData(graphname, "", "IMAGE_USERFUNC")
+			String fname_red=GetUserData(graphname, "", "OVERLAY_IMAGE_USERFUNC_RED")
+			String fname_green=GetUserData(graphname, "", "OVERLAY_IMAGE_USERFUNC_GREEN")
+			String fname_blue=GetUserData(graphname, "", "OVERLAY_IMAGE_USERFUNC_BLUE")
+			
+			PROMPT fname_main, "Which user function to call for the main image?", popup, funcSelection
+			PROMPT fname_red, "Which user function to call for the red channel?", popup, funcSelection
+			PROMPT fname_green, "Which user function to call for the green channel?", popup, funcSelection
+			PROMPT fname_blue, "Which user function to call for the blue channel?", popup, funcSelection
+			
+			DoPrompt "Set flags for calling user functions", preprocess_flag, postprocess_flag, customized_flag, fname_main, fname_red, fname_green, fname_blue, start_frame, end_frame
+			
+			if(V_flag==0) //continue
+				customized_flag=floor(customized_flag)
+				if(customized_flag<0 || customized_flag>255)
+					customized_flag=0
+				endif
+				
+				if(preprocess_flag==1)
+					preprocess_flag=0
+				else
+					preprocess_flag=1
+				endif
+				
+				if(postprocess_flag==1)
+					postprocess_flag=0
+				else
+					postprocess_flag=1
+				endif
+				
+				if(strlen(fname_main)==0 || cmpstr(fname_main, "_None_")==0)
+					SetWindow $graphname, userdata(IMAGE_USERFUNC)=""
+				else
+					SetWindow $graphname, userdata(IMAGE_USERFUNC)=fname_main
+				endif
+				
+				if(strlen(fname_red)==0 || cmpstr(fname_red, "_None_")==0)
+					SetWindow $graphname, userdata(OVERLAY_IMAGE_USERFUNC_RED)=""
+				else
+					SetWindow $graphname, userdata(OVERLAY_IMAGE_USERFUNC_RED)=fname_red
+				endif
+				
+				if(strlen(fname_green)==0 || cmpstr(fname_green, "_None_")==0)
+					SetWindow $graphname, userdata(OVERLAY_IMAGE_USERFUNC_GREEN)=""
+				else
+					SetWindow $graphname, userdata(OVERLAY_IMAGE_USERFUNC_GREEN)=fname_green
+				endif
+				
+				if(strlen(fname_blue)==0 || cmpstr(fname_blue, "_None_")==0)
+					SetWindow $graphname, userdata(OVERLAY_IMAGE_USERFUNC_BLUE)=""
+				else
+					SetWindow $graphname, userdata(OVERLAY_IMAGE_USERFUNC_BLUE)=fname_blue
+				endif
+				
+				print "Start calling user functions for channels [main, r, g, b] :", fname_main, fname_red, fname_green, fname_blue
+				qipImageProcCallUserFunctionByFrames(graphname, preprocess_flag, postprocess_flag, customized_flag, start_frame, end_frame)
+			else
+				print "User cancelled the call."
+			endif
+			
 			break
 		case -1: // control being killed
 			break
@@ -3013,6 +3090,99 @@ Function qipImageProcEdgeDetection(String graphName, STRUCT qipImageProcParam & 
 	qipGraphPanelRedrawAll(graphName)
 End
 
+Function qipImageProcCallUserFunctionByFrames(String graphName, Variable preprocess_flag, Variable postprocess_flag, 
+															Variable customized_flag, Variable start_frame, Variable end_frame)
+	String imagename=GetUserData(graphName, "", "IMAGENAME")
+	String analysisDF=GetUserData(graphName, "", "ANALYSISDF")
+	
+	Wave image=$imagename
+	
+	if(!WaveExists(image))
+		return -1
+	endif
+	
+	if(start_frame<0)
+		start_frame=0
+	endif
+	if(start_frame>=DimSize(image, 2))
+		return -1
+	endif
+	
+	if(end_frame==-1)
+		end_frame=DimSize(image, 2)
+	endif
+	
+	if(end_frame<start_frame)
+		return -1
+	endif
+	
+	Variable frameidx=-1
+	Variable roi_counts=-1
+	Variable stop_flag=0
+	String frameName=""
+	Variable update_flag
+				
+	DFREF savedDF=GetDataFolderDFR()
+	
+	try
+		NewDataFolder /O/S $analysisDF
+		DFREF parentdfr=GetDataFolderDFR()
+		
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_INIT, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+	
+		for(frameidx=start_frame; frameidx>=0 && frameidx<=end_frame; frameidx+=1)
+			SetWindow $graphName userdata(FRAMEIDX)=num2istr(frameidx)
+			
+			qipGraphPanelRedrawAll(graphName) //this will update all frames including all color channels
+			
+			SetDataFolder parentdfr
+			NewDataFolder /O/S $(num2istr(frameidx))
+			DFREF homedfr=GetDataFolderDFR()
+			
+			if(preprocess_flag)
+				SetDataFolder homedfr
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_PREPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+			endif
+			
+			if(customized_flag>0)
+				customized_flag = QIPUFP_IMAGEFUNC_CUSTOMIZED+ ((customized_flag << QIPUFP_IMAGEFUNC_CUSTOMREQSHIFT) & QIPUFP_IMAGEFUNC_CUSTOMREQMASK)
+				SetDataFolder homedfr
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + customized_flag, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + customized_flag, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + customized_flag, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + customized_flag, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+			endif
+			
+			if(postprocess_flag)
+				SetDataFolder homedfr
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+				qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_POSTPROCESSING, graphName, frameidx, "ImageProcCallUserFunc", frameName, update_flag)
+			endif
+			
+		endfor
+		
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_MAINIMAGE + QIPUFP_IMAGEFUNC_FINALIZE, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_RED + QIPUFP_IMAGEFUNC_FINALIZE, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_GREEN + QIPUFP_IMAGEFUNC_FINALIZE, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+		qipGraphPanelUpdateSingleImageChannel(QIPUFP_IMAGEFUNC_OVERLAYIMAGE_BLUE + QIPUFP_IMAGEFUNC_FINALIZE, graphName, -1, "ImageProcCallUserFunc", frameName, update_flag)
+	catch
+		Variable err=GetRTerror(1)
+		
+		print "error occured during calling user functions:", err
+		print "frame:", frameidx
+	endtry
+	
+	SetDataFolder savedDF
+	return 0
+End
 
 Function qipGraphPanelSVIndex(sva) : SetVariableControl
 	STRUCT WMSetVariableAction &sva
