@@ -234,3 +234,19 @@ Function hookLinkedTrace(s)
 
 	return hookResult		// 0 if nothing done, else 1
 End
+
+Function normalizeTraceImage(wave w, [variable offset])
+
+	variable i
+	variable c
+	if(ParamIsDefault(offset))
+		offset=0
+	endif
+	for(i=0; i<DimSize(w, 0); i+=1)
+		c=w[i][offset]
+		w[i][]=w[i][q]/c		
+	endfor
+	
+	MatrixOP /O w=w^t	
+End
+
