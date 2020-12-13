@@ -176,7 +176,7 @@ Function qipGraphPanelMakeVisible(String graphname, Variable panelVisible)
 		MoveSubWindow /W=$(panelName) fnum=(0, 0, 280, 350)
 		qipGraphPanelResetControls(panelName)
 	else
-		MoveSubWindow /W=$(panelName) fnum=(0, 0, 10, 70)
+		MoveSubWindow /W=$(panelName) fnum=(0, 0, 25, 65)
 		qipGraphPanelResetControls(panelName, hide=1)
 	endif
 End
@@ -219,7 +219,7 @@ Function qipGraphPanelResetControls(String panelName, [variable hide])
 	
 	//redraw all controls	
 	if(disable_flag==1)
-		Button btn_hide,win=$panelName, pos={0, 0}, title="S\nH\nO\nW",size={20,60}, proc=qipGraphPanelBtnToggleVisibility
+		Button btn_hide,win=$panelName, pos={0, 0}, title="S\nH\nO\nW",size={25,60}, proc=qipGraphPanelBtnToggleVisibility
 	else
 		Button btn_hide, win=$panelName, pos={244, 10}, size={35,20}, title="HIDE", proc=qipGraphPanelBtnToggleVisibility
 	endif
@@ -230,23 +230,24 @@ Function qipGraphPanelResetControls(String panelName, [variable hide])
 	SetVariable trace_value win=$panelName, pos={2,50}, bodywidth=240, value=_STR:(""), noedit=1, disable=disable_flag
  
  	//ROI controls
-	CheckBox new_roi, win=$panelName, pos={2, 70}, bodywidth=75, title="New ROI",proc=qipGraphPanelCbRedraw
+	GroupBox gb_defineroi, win=$panelName, pos={2,70}, size={138, 85}, frame=0, title="", disable=disable_flag
+	CheckBox new_roi, win=$panelName, pos={5, 75}, bodywidth=75, title="New ROI",proc=qipGraphPanelCbRedraw
 	CheckBox new_roi, win=$panelName, help={"Enter editing status to create global ROIs"}, disable=disable_flag
-	CheckBox enclosed_roi, win=$panelName, pos={75, 70}, bodywidth=80, title="Enclosed",proc=qipGraphPanelCbRedraw, disable=disable_flag
+	CheckBox enclosed_roi, win=$panelName, pos={72, 75}, bodywidth=80, title="Enclosed",proc=qipGraphPanelCbRedraw, disable=disable_flag
 	CheckBox enclosed_roi, win=$panelName,help={"Check this if you want the last point always close with the first point."}
 
-	Button save_roi, win=$panelName, pos={0, 85}, size={140, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame, disable=disable_flag
-	Button copy_roi, win=$panelName, pos={0, 105}, size={140,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom, disable=disable_flag
-	Button clear_roi, win=$panelName, pos={0, 125}, size={140, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI, disable=disable_flag
-	Button imgproc_findobj, win=$panelName, pos={0, 145}, size={140,20}, title="Detect Objects",proc=qipGraphPanelBtnEdgeDetect, disable=disable_flag
+	Button save_roi, win=$panelName, pos={5, 90}, size={130, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame, disable=disable_flag
+	Button copy_roi, win=$panelName, pos={5, 110}, size={130,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom, disable=disable_flag
+	Button clear_roi, win=$panelName, pos={5, 130}, size={130, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI, disable=disable_flag
 	
 	//frame index and object index
-	SetVariable sv_objidx,win=$panelName,title="OBJ",pos={0, 170},size={70,20},value= _NUM:-1,limits={-2,inf,1},proc=qipGraphPanelSVIndex, disable=disable_flag
+	Button imgproc_findobj, win=$panelName, pos={5, 160}, size={130,20}, title="Detect Objects...",proc=qipGraphPanelBtnEdgeDetect, disable=disable_flag
+	SetVariable sv_objidx,win=$panelName,title="OBJ",pos={5, 180},size={65,20},value= _NUM:-1,limits={-2,inf,1},proc=qipGraphPanelSVIndex, disable=disable_flag
 	SetVariable sv_objidx,win=$panelName,help={"Index to selectively show edges of object defined by the dot ROIs.\n -2 means showing all raw detected edges, \n-1 means show edges of all detected  objects"}
-	SetVariable sv_frameidx,win=$panelName,title="FRM",pos={70,170},size={70,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex, disable=disable_flag
+	SetVariable sv_frameidx,win=$panelName,title="FRM",pos={70,180},size={65,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex, disable=disable_flag
 	
 	//option and user functions
-	GroupBox gb_options  win=$panelName, pos={143,70}, size={135, 120}, frame=0, title="", disable=disable_flag
+	GroupBox gb_options  win=$panelName, pos={143,70}, size={135, 130}, frame=0, title="", disable=disable_flag
 	PopupMenu popup_options win=$panelName, pos={143, 70}, size={120,20}, value="ROI Options;Image Layers;Data Processing;",proc=qipGraphPanelPMOptions, disable=disable_flag
 	
 	//the following will be with popup menu option 1: ROI options		
@@ -1171,9 +1172,13 @@ Function qipHookFunction(s)
 	
 	String wavenote=""
 	String modifyfuncName=""
-	
+		
 	switch(s.eventCode)
-		case 3:
+		case 3: //mouse down
+			if(panelVisible==0)
+				break
+			endif
+			
 			if(new_roi==1 && ((s.eventMod&0x4)==0)) //when ROI is being defined, and alt key is not down
 				//will clear trace edit status
 				trace_editstatus=0
@@ -1227,11 +1232,14 @@ Function qipHookFunction(s)
 				endif
 				
 			endif
-			
 			break
 					
 		case 4: //mouse moving
 		case 5: //mouse up
+			if(panelVisible==0)
+				break
+			endif
+		
 			imgx=NaN
 			imgy=NaN
 			if(strlen(panelName)<=0)
@@ -1351,7 +1359,7 @@ Function qipHookFunction(s)
 		 		if(trace_editstatus==1)
 		 			if((s.eventMod&0xE)!=0x8) //ctrl is released
 		 				trace_editstatus=0
-		 			endif		 			
+		 			endif			
 		 		elseif((s.eventMod&0x4)==0 && new_roi) //no alt or opt key held down
 					Variable idx=-1
 					
@@ -1405,16 +1413,21 @@ Function qipHookFunction(s)
 						SetWindow $(s.winname), userdata(ROISTATUS)="0"
 						SetWindow $(s.winname), userdata(ROIAVAILABLE)="1"
 					endif
-				endif 				
+				endif
 			endif //mouse up, or mouse moving with mouse key held down
 			if((s.eventMod&0x04)==0)
 				hookResult = 1
 			else
 				hookResult=0
 			endif
+		
 			break
 
 		case 22: // mousewheel event
+			if(panelVisible==0)
+				break
+			endif
+			
 			Variable scaleFactor=1
 
 			if(WaveExists(framew))
@@ -1506,7 +1519,7 @@ Function qipHookFunction(s)
 	endswitch
 	
 	if(hookResult)
-	
+
 		s.doSetCursor = 1
 		s.cursorCode = 3
 	
