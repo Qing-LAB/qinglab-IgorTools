@@ -148,13 +148,14 @@ End
 
 Function qipEnableHook(String graphname)
 //this function will attach the hook function to the graph window
-	String panelName=graphname+"_PANEL"
-
-	NewPanel /EXT=0 /HOST=$graphname /K=2 /W=(0, 0, 200, 230) /N=$(panelName)
+	String panelName=graphname+"_QIPPANEL"
+	
+	NewPanel /EXT=0 /HOST=$graphname /K=2 /W=(0, 0, 280, 350) /N=$(panelName) as "QImageAnalysis by QingLAB@ASU"
 	panelName=graphname+"#"+S_Name //the actual name generated
 	SetWindow $graphname userdata(PANELNAME)=panelName
-	SetWindow $graphname userdata(PANELVISIBLE)="1"
+	SetWindow $panelName userdata(PANELVISIBLE)="1"
 	SetWindow $graphname userdata(ROIAVAILABLE)="0"
+	DrawPICT /W=$panelName 244,35,0.30,0.30,QImageAnalysis#QingLabBadge
 	
 	String imgName=GetUserData(graphname, "", "IMAGENAME")
 	String baseName=GetUserData(graphname, "", "BASENAME")
@@ -162,11 +163,22 @@ Function qipEnableHook(String graphname)
 	if(strlen(baseName)==0 || strlen(analysisDF)==0 || DataFolderExists(analysisDF)==0)
 		qipPrepAnalysisDFNames(graphname, imgName, basename, analysisDF)
 	endif
-	DrawPICT /W=$panelName 0,210,0.25,0.25,QImageAnalysis#QingLabBadge
-	DrawText /W=$panelName 22,230,"\\Z07QImageAnalysis\rBy QingLAB@ASU"
+	
 	qipGraphPanelResetControls(panelName)
 	qipGenerateOverlayColorTables(graphname)
 	SetWindow $graphname hook(qipHook)=qipHookFunction
+End
+
+Function qipGraphPanelMakeVisible(String graphname, Variable panelVisible)
+	String panelName=GetUserData(graphname, "", "PANELNAME")
+	
+	if(panelVisible==1) //panel is visible now
+		MoveSubWindow /W=$(panelName) fnum=(0, 0, 280, 350)
+		qipGraphPanelResetControls(panelName)
+	else
+		MoveSubWindow /W=$(panelName) fnum=(0, 0, 10, 70)
+		qipGraphPanelResetControls(panelName, hide=1)
+	endif
 End
 
 Function qipGenerateOverlayColorTables(String graphname)
@@ -198,52 +210,70 @@ Function qipGenerateOverlayColorTables(String graphname)
 	SetDataFolder savedDF
 End
 
-Function qipGraphPanelResetControls(String panelName)
-//redraw all controls
-	SetVariable xy_cord win=$panelName, pos={2,10}, bodywidth=200, value=_STR:(""), noedit=1
-	SetVariable img_value win=$panelName, pos={2,30}, bodywidth=200, value=_STR:(""), noedit=1
-	SetVariable trace_value win=$panelName, pos={2,50}, bodywidth=200, value=_STR:(""), noedit=1
+Function qipGraphPanelResetControls(String panelName, [variable hide])
+	Variable disable_flag=1
+	
+	if(ParamISDefault(hide) || hide==0)
+		disable_flag=0
+	endif
+	
+	//redraw all controls	
+	if(disable_flag==1)
+		Button btn_hide,win=$panelName, pos={0, 0}, title="S\nH\nO\nW",size={20,60}, proc=qipGraphPanelBtnToggleVisibility
+	else
+		Button btn_hide, win=$panelName, pos={244, 10}, size={35,20}, title="HIDE", proc=qipGraphPanelBtnToggleVisibility
+	endif
+	
+	//Information display
+	SetVariable xy_cord win=$panelName, pos={2,10}, bodywidth=240, value=_STR:(""), noedit=1, disable=disable_flag
+	SetVariable img_value win=$panelName, pos={2,30}, bodywidth=240, value=_STR:(""), noedit=1, disable=disable_flag
+	SetVariable trace_value win=$panelName, pos={2,50}, bodywidth=240, value=_STR:(""), noedit=1, disable=disable_flag
  
-	CheckBox new_roi, win=$panelName, pos={2, 70}, bodywidth=50, title="New ROI",proc=qipGraphPanelCbRedraw
-	CheckBox new_roi, win=$panelName, help={"Enter editing status to create global ROIs"}
-	CheckBox enclosed_roi, win=$panelName, pos={50, 70}, bodywidth=50, title="Enclosed",proc=qipGraphPanelCbRedraw
+ 	//ROI controls
+	CheckBox new_roi, win=$panelName, pos={2, 70}, bodywidth=75, title="New ROI",proc=qipGraphPanelCbRedraw
+	CheckBox new_roi, win=$panelName, help={"Enter editing status to create global ROIs"}, disable=disable_flag
+	CheckBox enclosed_roi, win=$panelName, pos={75, 70}, bodywidth=80, title="Enclosed",proc=qipGraphPanelCbRedraw, disable=disable_flag
 	CheckBox enclosed_roi, win=$panelName,help={"Check this if you want the last point always close with the first point."}
 
-	Button save_roi, win=$panelName, pos={0, 85}, size={95, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame
-	Button copy_roi, win=$panelName, pos={0, 105}, size={95,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom
-	Button clear_roi, win=$panelName, pos={0, 125}, size={95, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI
-	Button imgproc_findobj, win=$panelName, fColor=(0,16384,0), pos={0, 145}, size={95,20}, title="Identify Objects",proc=qipGraphPanelBtnEdgeDetect
+	Button save_roi, win=$panelName, pos={0, 85}, size={140, 20}, title="Save ROI To Frame...",proc=qipGraphPanelBtnSaveROIToFrame, disable=disable_flag
+	Button copy_roi, win=$panelName, pos={0, 105}, size={140,20}, title="Copy ROI From...",proc=qipGraphPanelBtnCopyROIFrom, disable=disable_flag
+	Button clear_roi, win=$panelName, pos={0, 125}, size={140, 20}, title="Clear All ROI",proc=qipGraphPanelBtnClearAllROI, disable=disable_flag
+	Button imgproc_findobj, win=$panelName, pos={0, 145}, size={140,20}, title="Detect Objects",proc=qipGraphPanelBtnEdgeDetect, disable=disable_flag
 	
-	SetVariable sv_objidx,win=$panelName,title="OBJ",pos={0, 170},size={48,20},value= _NUM:-1,limits={-2,inf,1},proc=qipGraphPanelSVIndex
+	//frame index and object index
+	SetVariable sv_objidx,win=$panelName,title="OBJ",pos={0, 170},size={70,20},value= _NUM:-1,limits={-2,inf,1},proc=qipGraphPanelSVIndex, disable=disable_flag
 	SetVariable sv_objidx,win=$panelName,help={"Index to selectively show edges of object defined by the dot ROIs.\n -2 means showing all raw detected edges, \n-1 means show edges of all detected  objects"}
-	SetVariable sv_frameidx,win=$panelName,title="FRM",pos={48,170},size={48,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex
+	SetVariable sv_frameidx,win=$panelName,title="FRM",pos={70,170},size={70,20},value=_NUM:0,limits={0,inf,1},proc=qipGraphPanelSVIndex, disable=disable_flag
 	
-	GroupBox gb_options  win=$panelName, pos={100,70}, size={100, 160}, frame=0, title="" 
-	PopupMenu popup_options win=$panelName, pos={100, 70}, size={100,20}, value="ROI Options;Image Layers;Data Processing;",proc=qipGraphPanelPMOptions
+	//option and user functions
+	GroupBox gb_options  win=$panelName, pos={143,70}, size={135, 120}, frame=0, title="", disable=disable_flag
+	PopupMenu popup_options win=$panelName, pos={143, 70}, size={120,20}, value="ROI Options;Image Layers;Data Processing;",proc=qipGraphPanelPMOptions, disable=disable_flag
 	
 	//the following will be with popup menu option 1: ROI options		
-	GroupBox gb_frameroi, win=$panelName, pos={102,85}, size={95, 47}, frame=0, title="Show ROIs"
-	CheckBox show_userroi, win=$panelName, pos={105,99}, bodywidth=50, title="Global",proc=qipGraphPanelCbRedraw
-	CheckBox show_dot, win=$panelName, pos={105,114}, bodywidth=30, title="Dot",proc=qipGraphPanelCbRedraw
-	CheckBox show_tag, win=$panelName, pos={135,114}, bodywidth=30, title="Tag",proc=qipGraphPanelCbRedraw
-	CheckBox show_line, win=$panelName, pos={165,114}, bodywidth=30, title="Line",proc=qipGraphPanelCbRedraw
+	GroupBox gb_frameroi, win=$panelName, pos={146,88}, size={127, 50}, frame=0, title="Show ROIs", disable=disable_flag
+	CheckBox show_userroi, win=$panelName, pos={150,102}, bodywidth=50, title="Global",proc=qipGraphPanelCbRedraw, disable=disable_flag
+	CheckBox show_dot, win=$panelName, pos={150,118}, bodywidth=40, title="Dot",proc=qipGraphPanelCbRedraw, disable=disable_flag
+	CheckBox show_tag, win=$panelName, pos={190,118}, bodywidth=40, title="Tag",proc=qipGraphPanelCbRedraw, disable=disable_flag
+	CheckBox show_line, win=$panelName, pos={230,118}, bodywidth=40, title="Line",proc=qipGraphPanelCbRedraw, disable=disable_flag
 	
-	GroupBox gb_edges, win=$panelName, pos={102,138}, size={95, 37}, frame=0, title="Obj Edges"
-	Checkbox show_edgesI, win=$panelName, pos={105,155}, bodywidth=30, title="I",proc=qipGraphPanelCbRedraw
-	Checkbox show_edgesM, win=$panelName, pos={135,155}, bodywidth=30, title="M",proc=qipGraphPanelCbRedraw
-	Checkbox show_edgesO, win=$panelName, pos={165,155}, bodywidth=30, title="O",proc=qipGraphPanelCbRedraw
+	GroupBox gb_edges, win=$panelName, pos={146,138}, size={127, 37}, frame=0, title="Obj Edges", disable=disable_flag
+	Checkbox show_edgesI, win=$panelName, pos={150,155}, bodywidth=30, title="I",proc=qipGraphPanelCbRedraw, disable=disable_flag
+	Checkbox show_edgesM, win=$panelName, pos={190,155}, bodywidth=30, title="M",proc=qipGraphPanelCbRedraw, disable=disable_flag
+	Checkbox show_edgesO, win=$panelName, pos={230,155}, bodywidth=30, title="O",proc=qipGraphPanelCbRedraw, disable=disable_flag
 
 	//the following will be with popup menu option 2: Image Layers
-	Button imgproc_addimglayer_GRAY, win=$panelName, pos={102, 90}, size={95,20}, title="Set Main Channel", disable=1, proc=qipGraphPanelBtnSetImageLayer
-	Button imgproc_addimglayer_r, win=$panelName, pos={102, 120}, size={95,20}, title="Set Red Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
-	Button imgproc_addimglayer_g, win=$panelName, pos={102, 140}, size={95,20}, title="Set Green Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
-	Button imgproc_addimglayer_b, win=$panelName, pos={102, 160}, size={95,20}, title="Set Blue Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_GRAY, win=$panelName, pos={145, 93}, size={130,20}, title="Set Main Channel", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_r, win=$panelName, pos={145, 120}, size={130,20}, title="Set Red Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_g, win=$panelName, pos={145, 140}, size={130,20}, title="Set Green Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
+	Button imgproc_addimglayer_b, win=$panelName, pos={145, 160}, size={130,20}, title="Set Blue Chn Overlay", disable=1, proc=qipGraphPanelBtnSetImageLayer
 	
 	//the following will be with popup menu option 3: Data Processing
-	Button imgproc_CallUserfunc, win=$panelName, pos={102,90}, size={95,20}, title="Call User Function...", disable=1,proc=qipGraphPanelBtnCallUserFunction
+	Button imgproc_CallUserfunc, win=$panelName, pos={147,90}, size={120,20}, title="Call User Function...", disable=1,proc=qipGraphPanelBtnCallUserFunction
 	
-	ControlInfo /W=$panelName popup_options
-	qipGraphPanelUpdateOptionCtrls(panelName, V_Value)
+	if(disable_flag==0)
+		ControlInfo /W=$panelName popup_options
+		qipGraphPanelUpdateOptionCtrls(panelName, V_Value)
+	endif
 End
 
 Function qipDisplayImage(String wname, [Variable bg_r, Variable bg_g, Variable bg_b])
@@ -697,14 +727,14 @@ Function qipGraphPanelRedrawROI(String graphName)
 	
 	//current user ROI definitionis always shown
 	if(strlen(roi_cur_traceName)>0)
-		if(qipGraphPanelAddTraceByAxis(graphName, roi_cur_trace, roi_xaxisname, roi_yaxisname, r=0, g=32768, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
+		if(qipGraphPanelAddTraceByAxis(graphName, roi_cur_trace, roi_xaxisname, roi_yaxisname, r=0, g=32768, b=0, alpha=65535, show_marker=((1<<8)+(2<<4)+2), mode=4))
 			ModifyGraph /Z /W=$(graphName) offset($roi_cur_basename)={0,0}
 		endif
 	endif
 	
 	if(show_userroi) //existing record of user ROI is shown only when checkbox is true
 		if(strlen(roi_allName)>0)
-			if(qipGraphPanelAddTraceByAxis(graphName, roi_all, roi_xaxisname, roi_yaxisname, r=32768, g=0, b=0, alpha=65535, show_marker=((43<<8)+(5<<4)+2), mode=4))
+			if(qipGraphPanelAddTraceByAxis(graphName, roi_all, roi_xaxisname, roi_yaxisname, r=32768, g=0, b=0, alpha=65535, show_marker=((1<<8)+(2<<4)+2), mode=4))
 				ModifyGraph /Z /W=$(graphName) offset($roi_all_basename)={0,0}
 			endif
 		endif
@@ -755,7 +785,7 @@ Function qipGraphPanelRedrawROI(String graphName)
 			Wave framewdot=$dotwaveName; AbortOnRTE
 			
 			if(show_dot && WaveExists(framewdot))				
-				qipGraphPanelAddTraceByAxis(graphName, framewdot, roi_xaxisname, roi_yaxisname, r=0, g=0, b=65535, alpha=65535, show_marker=((19<<8)+(2<<4)+1), mode=3); AbortOnRTE
+				qipGraphPanelAddTraceByAxis(graphName, framewdot, roi_xaxisname, roi_yaxisname, r=0, g=0, b=65535, alpha=65535, show_marker=((1<<8)+(2<<4)+1), mode=3); AbortOnRTE
 				ModifyGraph /Z /W=$(graphName) offset($dotwaveBaseName)={0,0}
 				roinote=note(framewdot)
 				roinote=ReplaceStringByKey("MODIFYFUNC", roinote, "qipUFP_BoundaryPointModifier") //for dots, we will not delete points, only fill in NaN for deletion
@@ -1064,7 +1094,7 @@ Function qipHookFunction(s)
 	
 	String baseName=GetUserData(s.winName, "", "BASENAME")
 	String panelName=GetUserData(s.winName, "", "PANELNAME")
-	Variable panelVisible=str2num(GetUserData(s.winName, "", "PANELVISIBLE"))
+	Variable panelVisible=str2num(GetUserData(panelName, "", "PANELVISIBLE"))
 	String analysisDF=GetUserData(s.winName, "", "ANALYSISDF")
 	if(strlen(baseName)==0 || strlen(panelName)==0 || strlen(analysisDF)==0 || NumType(panelVisible)!=0)
 		//these should be defined, otherwise the hook function does not do anything
@@ -1453,14 +1483,12 @@ Function qipHookFunction(s)
 				case 202: //Tab key pressed
 					if(panelVisible==1) //panel is visible now
 						panelVisible=0
-						SetWindow $(panelName), hide=1
+						qipGraphPanelMakeVisible(s.winname, panelVisible)
 					else
 						panelVisible=1
-						SetWindow $(panelName), hide=0, needupdate=1
-						DoWindow /F $(s.winname)
-						qipGraphPanelResetControls(panelName)
+						qipGraphPanelMakeVisible(s.winname, panelVisible)
 					endif
-					SetWindow $(s.winname), userData(PANELVISIBLE)=num2istr(panelVisible)
+					SetWindow $(panelName), userData(PANELVISIBLE)=num2istr(panelVisible)
 					hookResult = 1
 					break
 				default:
@@ -1721,6 +1749,29 @@ Function qipGraphPanelUpdateOptionCtrls(String win, Variable opt)
 	
 	//option 3
 	Button imgproc_CallUserfunc, win=$win, disable=opt3
+End
+
+Function qipGraphPanelBtnToggleVisibility(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+	Variable update_graph=0
+	
+	switch( ba.eventCode )
+		case 2: // mouse up
+			Variable visible=str2num(GetUserData(ba.win, "", "PANELVISIBLE"))
+			String graphname=StringFromList(0, ba.win, "#")
+			if(visible)
+				qipGraphPanelMakeVisible(graphname, 0)
+				SetWindow $ba.win, userdata(PANELVISIBLE)="0"
+			else
+				qipGraphPanelMakeVisible(graphname, 1)
+				SetWindow $ba.win, userdata(PANELVISIBLE)="1"
+			endif
+			break
+		default:
+			break
+	endswitch
+	
+	return 0
 End
 
 Function qipGraphPanelBtnSetImageLayer(ba) : ButtonControl
@@ -2288,7 +2339,7 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 				CheckBox new_roi, win=$ba.win, disable=2
 				CheckBox enclosed_roi, win=$ba.win, disable=2
 				
-				Button imgproc_findobj, win=$ba.win, fColor=(32768,0,0), title="STOP Edge Detection"
+				Button imgproc_findobj, win=$ba.win, fColor=(65535,0,0), title="STOP Edge Detection"
 				
 				qipImageProcEdgeDetection(graphname, param)
 				finished_flag=1
@@ -2314,7 +2365,7 @@ Function qipGraphPanelBtnEdgeDetect(ba) : ButtonControl
 		CheckBox new_roi, win=$ba.win, disable=0
 		CheckBox enclosed_roi, win=$ba.win, disable=0
 		
-		Button imgproc_findobj, win=$ba.win, fColor=(0,0,32768), title="Identify Objects"
+		Button imgproc_findobj, win=$ba.win, fColor=(0,0,0), title="Detect Objects"
 	endif
 	
 	return 0
