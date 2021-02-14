@@ -1349,7 +1349,7 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 				SVAR usrfuncname=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
 				if(checked)
 					checked=0
-					String funclist="_none_;_create_new_;"+FunctionList("*", ";", "KIND:2,NPARAMS:4,VALTYPE:1,WIN:Procedure")
+					String funclist="_none_;_create_new_;"+FunctionList("*", ";", "KIND:2,NPARAMS:7,VALTYPE:1,WIN:Procedure")
 					String selected_func=""
 					PROMPT selected_func, "Select real-time data process function", popup funclist
 					DoPrompt "select function", selected_func
@@ -1393,7 +1393,7 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 					FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 						Make /FREE /N=0 tmpwave
-						userfunc_ret=refFunc(tmpwave, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
+						userfunc_ret=refFunc(tmpwave, 0, 0, 0, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
 
 						if(userfunc_ret!=0) //user function cannot init properly
 							sprintf tmpstr, "User function %s cannot initialize properly with return code %d... user function is removed.", usrfuncname, userfunc_ret
@@ -2441,16 +2441,10 @@ Constant ITCSTATUS_INITDONE=0x200
 Constant ITCSTATUS_FUNCALLED_BEFOREINIT=0x400
 Constant ITCSTATUS_FUNCALLED_AFTERINIT=0x800
 
-Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int flag)
+Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int length, int adc_chnnum, double samplingrate, int flag)
 //Please modify the code as needed 
 //and set as user data process function from the ITCPanel
 	Variable ret_val=0
-	Variable intervaltime, freq, length, channelnum
-	
-	intervaltime=deltax(adcdata) //this value is only valid when flag==ITCUSERFUNC_CYCLESYNC
-	freq=1/intervaltime //this value is only valid when flag==ITCUSERFUNC_CYCLESYNC
-	length=DimSize(adcdata, 0)
-	channelnum=DimSize(adcdata, 1)
 	
 	switch(flag)
 	case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
@@ -2590,7 +2584,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, 0, ITCUSERFUNC_IDLE); AbortOnRTE
+					refFunc(adcdata, total_count, 0, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
 				endif
 			endif
 			break
@@ -2604,7 +2598,7 @@ Function itc_bgTask(s)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 					//Attention: at this point, no adcdata wave have been initialized
-					userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
+					userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
 					if(userfunc_ret!=0) //user function can decide when to allow init
 						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
 							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
@@ -2660,7 +2654,7 @@ Function itc_bgTask(s)
 				if(strlen(UserFunc)>0)
 					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-						userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
+						userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
 					endif
 				endif
 				
@@ -2871,7 +2865,7 @@ Function itc_bgTask(s)
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								userfunc_ret=refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
+								userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
 								if(userfunc_ret!=0) //user function returned non-zero code, will stop the recording
 									sprintf tmpstr, "Error: User function returned code %d. Recording is terminated.", userfunc_ret
 									itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -2938,7 +2932,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, cycle_count, ITCUSERFUNC_STOP); AbortOnRTE
+					refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
 				endif
 			endif
 			Status=4
