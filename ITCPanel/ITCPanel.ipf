@@ -2599,13 +2599,18 @@ Function itc_bgTask(s)
 				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 					//Attention: at this point, no adcdata wave have been initialized
 					userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
-					if(userfunc_ret!=0) //user function can decide when to allow init
+					if(userfunc_ret>0) //user function can decide when to allow init
 						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
 							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
 							itc_updatenb(tmpstr)
 							Status = Status | ITCSTATUS_FUNCALLED_BEFOREINIT //only log this message once			
 						endif					
 						break //break off the switch case
+					elseif(userfunc_ret<0)
+						sprintf tmpstr, "Error: User function returned negative before_init code %d. Recording is terminated.", userfunc_ret
+						itc_updatenb(tmpstr, r=32768, g=0, b=0)
+						Status=4
+						break //no longer continue
 					else
 						Status= Status | ITCSTATUS_ALLOWINIT
 					endif
@@ -2658,13 +2663,18 @@ Function itc_bgTask(s)
 					endif
 				endif
 				
-				if(userfunc_ret!=0) //user function can decide when to continue after the init process
+				if(userfunc_ret>0) //user function can decide when to continue after the init process
 					if((Status & ITCSTATUS_FUNCALLED_AFTERINIT)==0)
 						sprintf tmpstr, "User function pauses the recording with code %d...", userfunc_ret
 						itc_updatenb(tmpstr)
 						Status = Status | ITCSTATUS_FUNCALLED_AFTERINIT //message will only be logged once
 					endif
 					break //break off the switch case
+				elseif(userfunc_ret<0)
+					sprintf tmpstr, "Error: User function returned negative after_init code %d. Recording is terminated.", userfunc_ret
+					itc_updatenb(tmpstr, r=32768, g=0, b=0)
+					Status=4
+					break //no longer continue
 				endif
 				
 				Status = Status & ITCSTATUS_MASK //user function agrees to proceed, clear all internal flags
