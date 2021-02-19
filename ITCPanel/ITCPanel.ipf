@@ -283,7 +283,7 @@ Function ITC_init()
 	SetVariable itc_sv_recordnum win=ITCPanel,frame=0,valueColor=(65280,0,0)
 	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,26},size={380,16},value=_STR:"",proc=itc_quicknote
 	
-	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate",pos={600, 10},size={190,16},format="%.3W1PHz",limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
+	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate (Hz)",pos={600, 10},size={190,16},limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
 	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 	
 	GroupBox itc_acquistion_box win=ITCPanel,title="",pos={410,1},size={185,50}	

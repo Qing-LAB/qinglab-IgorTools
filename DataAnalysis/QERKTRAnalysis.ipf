@@ -250,8 +250,12 @@ Function normalizeTraceImage(wave w, [variable offset])
 	MatrixOP /O w=w^t	
 End
 
-Function interpolateFrame(wave w, variable frame)
+Function interpolateFrame(wave w, variable frame, [variable count])
 	Variable i
+	
+	if(ParamIsDefault(count))
+		count=2
+	endif
 	
 	for(i=0; i<DimSize(w, 0); i+=1)
 		w[i][frame]=(w[i][frame-1]+w[i][frame+1])/2
