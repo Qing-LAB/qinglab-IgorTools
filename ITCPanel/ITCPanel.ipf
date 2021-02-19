@@ -2584,7 +2584,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, 0, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
+					refFunc(adcdata, total_count, 0, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
 				endif
 			endif
 			break
@@ -2598,7 +2598,7 @@ Function itc_bgTask(s)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 					//Attention: at this point, no adcdata wave have been initialized
-					userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
+					userfunc_ret=refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
 					if(userfunc_ret>0) //user function can decide when to allow init
 						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
 							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
@@ -2659,7 +2659,7 @@ Function itc_bgTask(s)
 				if(strlen(UserFunc)>0)
 					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-						userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
+						userfunc_ret=refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
 					endif
 				endif
 				
@@ -2875,7 +2875,7 @@ Function itc_bgTask(s)
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								userfunc_ret=refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
+								userfunc_ret=refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
 								if(userfunc_ret!=0) //user function returned non-zero code, will stop the recording
 									sprintf tmpstr, "Error: User function returned code %d. Recording is terminated.", userfunc_ret
 									itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -2942,7 +2942,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, cycle_count, BlockSize, selectedadc_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
+					refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
 				endif
 			endif
 			Status=4
