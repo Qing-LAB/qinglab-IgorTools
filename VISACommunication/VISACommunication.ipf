@@ -26,7 +26,7 @@
 //ChangeLog
 //Last updated 2015/10/20
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-
+#include "VISA"
 #include "WaveBrowser"
 
 Constant visaComm_ReadWaitTime=50 // in milliseconds
