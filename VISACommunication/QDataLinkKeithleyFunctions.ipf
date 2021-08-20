@@ -128,7 +128,7 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 	catch
 		Variable err=GetRTError(1)
 		if(err!=0)
-			print "EMController_rtfunc encountered an error for slot "+num2istr(slot)+": "+GetErrMessage(err)
+			print "Keithley2600_rtfunc encountered an error for slot "+num2istr(slot)+": "+GetErrMessage(err)
 		endif
 	endtry
 	return 0

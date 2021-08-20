@@ -2,31 +2,20 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7.0
 #pragma IndependentModule=QDataLinkCore
+
+#if exists("ReportVISAError")!=3
 #include "VISA"
+#endif
+
+#ifndef WAVEBROWSER
 #include "WaveBrowser"
+#endif
+
 #include "QDataLinkConstants"
 #include "QDataLinkEMControllerFunctions"
 #include "QDataLinkKeithleyFunctions"
 #include "QDataLinkUserFunctions"
 
-
-#ifdef DEBUG_QDLVISA_3
-#ifndef DEBUG_QDLVISA_2
-#define DEBUG_QDLVISA_2
-#endif
-#endif
-
-#ifdef DEBUG_QDLVISA_2
-#ifndef DEBUG_QDLVISA_1
-#define DEBUG_QDLVISA_1
-#endif
-#endif
-
-#ifdef DEBUG_QDLVISA
-#ifndef DEBUG_QDL_VISA_1
-#define DEBUG_QDL_VISA_1
-#endif
-#endif
 
 //////////////////////////////////////////////////////////////////////////////////////
 /////////QDataLinkMenu
@@ -106,7 +95,7 @@ End
 //otherwise, will ask for a new instance number. The information of previously used instances (for a certain connection)
 //will be stored in the global infoStr and will remain there.
 //the number of active connections is contained in the infoStr, and the total number of instances listed there
-//is kept below QDL_MAX_CONNECTIONS
+//is kept below QDL_MAX_CONNECTIONS (stored in QDataLinkConstants)
 Function QDLMenuHandler(variable idx)
 	String fullPkgPath=WBSetupPackageDir(QDLPackageName)
 	String overall_info=WBPkgGetInfoString(QDLPackageName)
@@ -159,7 +148,7 @@ Function QDLMenuHandler(variable idx)
 				instance_from_panel=str2num(GetUserData(panel, "", "instance")); AbortOnRTE
 				if(strlen(panel)>0 && instance_from_panel==instance_selected)
 					DoWindow /F $panel
-					panel_flag=1		
+					panel_flag=1
 				endif
 			endif
 		catch
@@ -210,6 +199,25 @@ Function qdl_log(String msg, Variable r, Variable g, Variable b, Variable notime
 	endif
 End
 
+ThreadSafe Function qdl_log_towave(String msg)
+	Wave /T LogWave=root:W_QDLLog
+	Variable count
+	if(WaveExists(LogWave))
+		Make /N=(100, 2) /T root:W_QDLLog
+		Wave /T LogWave=root:W_QDLLog
+		note /K LogWave, "0"
+		count=0
+	else
+		count=str2num(note(LogWave))
+	endif
+	if(count>=DimSize(LogWave, 0))
+		InsertPoints /M=0 inf, 100, LogWave
+	endif
+	LogWave[count][0]="["+date()+"] ["+time()+"]"
+	LogWave[count][1]=msg
+	count+=1
+	note /K LogWave, num2istr(count)
+End
 
 Function /T QDLQueryPanel(Variable instance)
 	String name, notes, connection, param_str
@@ -1499,6 +1507,14 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 	Variable threadIDX=-1
 	Variable slot_num=-1
 	
+	Variable dbg_lvl
+	NVAR DEBUG_LEVEL=root:DEBUG_LEVEL
+	if(NVAR_Exists(DEBUG_LEVEL) && DEBUG_LEVEL>=0)
+		dbg_lvl=DEBUG_LEVEL
+	else
+		dbg_lvl=0
+	endif
+	
 	//check if resource manager is properly initialized.
 	try
 		NVAR DefaultRM=$WBPkgGetName(fullPkgPath, WBPkgDFVar, QDLDefaultRMName)
@@ -1687,6 +1703,9 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 			callback_func=""
 			inbox=""
 			outbox=""
+			
+			cp.DEBUG_LEVEL=dbg_lvl
+			
 			StructPut /S cp, param_str //update the parameter stored in the instance string folder
 			retStr=param_str
 
@@ -1819,6 +1838,8 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 		return -1
 	endif
 	
+	Variable dbg_lvl=cp.DEBUG_LEVEL
+	
 	try
 		Variable timeout=cp.timeout_ms
 		Variable instr=cp.instr
@@ -1836,15 +1857,15 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 		if(!(req[slot] & (QDL_REQUEST_READ_BUSY | QDL_REQUEST_WRITE_BUSY)) && (req[slot] & QDL_REQUEST_CLEAR_BUFFER))
 			status=viDiscardEvents(instr, VI_ALL_ENABLED_EVENTS, VI_QUEUE)
 			if(status!=VI_SUCCESS && status!=VI_SUCCESS_QUEUE_EMPTY)
-#if defined(DEBUG_QDLVISA_3)
-				print "viDiscardEvents returned status: "+num2istr(status)
-#endif
+				if(dbg_lvl>=3)
+					qdl_log_towave("[DBL3] viDiscardEvents returned status: "+num2istr(status))
+				endif
 			endif
 			status=viClear(instr)
 			req[slot] = req[slot] & (~ QDL_REQUEST_CLEAR_BUFFER)
-#if defined(DEBUG_QDLVISA_3)
-			print "viClear status:", num2istr(status)
-#endif
+			if(dbg_lvl>=3)
+				qdl_log_towave("[DBL3] viClear status:"+num2istr(status))
+			endif
 			AbortOnValue status!=VI_SUCCESS, -1
 		endif
 		if(!(req[slot] & QDL_REQUEST_READ_BUSY)) //request for writing comes before reading, but not in the middle of it
@@ -1873,20 +1894,18 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 								req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 												| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
 							endif
-#if defined(DEBUG_QDLVISA_1)
-							print "viWrite error."
-							print "viWrite status:", num2istr(status)
-#endif
+							if(dbg_lvl>=1)
+								qdl_log_towave("[DBL1] viWrite error. status:"+num2istr(status))
+							endif
 							AbortOnValue -1, -4
 						else
 							cp.outbox_retCnt=retCnt
 							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 											| QDL_REQUEST_WRITE_COMPLETE
-#if defined(DEBUG_QDLVISA_3)
-							print "viWrite sent :"+outbox[slot]
-							print "viWrite sent length:", retCnt
-							print "viWrite status:", num2istr(status)
-#endif
+							if(dbg_lvl>=3)
+								qdl_log_towave("[DBL3] viWrite sent length:"+num2istr(retCnt)+", status:"+num2istr(status))
+								qdl_log_towave("[DBL3] viWrite sent :"+outbox[slot])
+							endif
 						endif
 					else //zero length writing will be marked finished immediately without actual writing
 						req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
@@ -1912,9 +1931,9 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if((current_time-cp.starttime_ms)>=cp.timeout_ms)
 						req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 								| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
-#if defined(DEBUG_QDLVISA_2)
-						print "VISA read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
-#endif
+						if(dbg_lvl>=2)
+							qdl_log_towave("[DBL2] VISA read timed out:"+num2istr(current_time-cp.starttime_ms)+", threshold: "+num2istr(cp.timeout_ms))
+						endif
 					endif
 				endif
 			endif
@@ -1943,16 +1962,16 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					AbortOnvalue status!=VI_SUCCESS, -6
 				else
 					if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_NEMPTY)
-#if defined(DEBUG_QDLVISA_3)
-						print "viWaitOnEvent returned success:"+num2istr(outEventType)
-#endif
+						if(dbg_lvl>=3)
+							qdl_log_towave("[DBL3] viWaitOnEvent returned success:"+num2istr(outEventType))
+						endif
 						bytes_at_port=QDL_MAX_BUFFER_LEN
 					elseif(status==VI_ERROR_TMO)
 						bytes_at_port=0
 					else
-#if defined(DEBUG_QDLVISA_1)
-				print "viWaitOnEvent returned unknown status: ", num2istr(status)
-#endif
+						if(dbg_lvl>=1)
+							qdl_log_towave("[DBL1] viWaitOnEvent returned unknown status: "+num2istr(status))
+						endif
 						bytes_at_port=0
 					endif
 				endif
@@ -1982,11 +2001,10 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if(packetSize>0)	
 						status=viRead(instr, receivedStr, packetSize, retCnt)	
 						if(retCnt>0)
-#if defined(DEBUG_QDLVISA_3)
-							print "viRead get message: ", receivedStr
-							print "viRead length:", retCnt
-							print "viRead status:", num2istr(status)
-#endif
+							if(dbg_lvl>=3)
+								qdl_log_towave("[DBL3] viRead length:"+num2istr(retCnt)+", status:"+num2istr(status))
+								qdl_log_towave("[DBL3] viRead get message: "+receivedStr)
+							endif
 							Variable i, termflag=0
 							for(i=0; i<retCnt; i+=1)
 								if(char2num(receivedStr[i])==termChar)
@@ -1995,10 +2013,10 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 									break
 								endif
 							endfor
-							if(termflag==1)			
+							if(termflag==1)
 								if(i+1!=retCnt)
 									print "terminal char detected in the middle of received string."
-									print "event :"+num2istr(outEventType)									
+									print "event :"+num2istr(outEventType)
 									print "status:"+num2istr(status)
 									print "position of termChar:"+num2istr(i)
 									print "retCnt of the packet received:"+num2istr(retCnt)
@@ -2017,10 +2035,9 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 					if(read_complete_flag)
 						req[slot] = (req[slot] & (~(QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 										 | QDL_REQUEST_READ_COMPLETE
-#if defined(DEBUG_QDLVISA_3)
-						print "read request completed."
-						print "request status:", num2istr(req[slot])
-#endif
+						if(dbg_lvl>=3)
+							qdl_log_towave("[DBL3] read request completed. status:"+num2istr(req[slot]))
+						endif
 					endif
 					
 				endif //event arrived

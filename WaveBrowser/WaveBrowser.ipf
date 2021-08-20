@@ -24,6 +24,9 @@
 //	THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
+
+#define WAVEBROWSER
+
 #include <WaveSelectorWidget>
 #include <PopupWaveSelector>
 

@@ -1,7 +1,15 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7
-#include "wavebrowser"
+
+#ifndef WAVEBROWSER
+#include "WaveBrowser"
+#endif
+
+#ifndef QDATALINK
+#include "QDataLink"
+#endif
+
 #include "keithley2600Constants"
 
 Menu "QDataLink"
