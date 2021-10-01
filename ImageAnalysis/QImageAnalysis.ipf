@@ -277,9 +277,33 @@ Function qipGraphPanelResetControls(String panelName, [variable hide])
 	endif
 End
 
+Function qipExtractFrame(wave w, variable chn, variable frame, [string name])
+	if(ParamIsDefault(name))
+		name=NameOfWave(w)+"_ch"+num2istr(chn)+"fr"+num2istr(frame)
+	endif
+	
+	Variable xdim, ydim, cdim, fdim, wtype
+	
+	xdim=DimSize(w, 0)
+	ydim=DimSize(w, 1)
+	cdim=DimSize(w, 2)
+	fdim=DimSize(w, 3)
+	wtype=WaveType(w)
+	
+	if((chn==0 || chn<cdim) && (frame==0 || frame<fdim))
+		Make /O/Y=(wtype) /N=(xdim, ydim) $name
+		
+		Wave newwave=$name
+		newwave[][]=w[p][q][chn][frame]
+	endif
+
+End
+
+
 Function qipDisplayImage(String wname, [Variable bg_r, Variable bg_g, Variable bg_b])
 	if(strlen(wname)==0)
-		String imgselection=WaveList("*", ";", "DIMS:3;WAVE:0;")
+		String imgselection=WaveList("*", ";", "DIMS:4;WAVE:0;")
+		imgselection+=WaveList("*", ";", "DIMS:3;WAVE:0;")
 		imgselection+=WaveList("*", ";", "DIMS:2;WAVE:0;")
 		PROMPT wname, "Image wave:", popup, imgselection
 		DoPrompt "Select a image:", wname
@@ -296,11 +320,7 @@ Function qipDisplayImage(String wname, [Variable bg_r, Variable bg_g, Variable b
 		String tmpframeName=UniqueName("M_tmpImageFrame", 1, 0)
 		Make /O /Y=(WaveType(w)) /N=(DimSize(w, 0), DimSize(w, 1)) $tmpframeName
 		
-		//tmpframe[][]=w[p][q][0]
-		ImageTransform /PTYP=0 /P=0 getPlane w
-		Wave M_ImagePlane
-		Duplicate /O M_ImagePlane, $tmpframeName
-		KillWaves /Z M_ImagePlane
+		qipExtractFrame(w, 0, 0, name=tmpframeName)
 		Wave tmpframe=$tmpframeName
 		
 		NewImage /N=$graphname /K=0 tmpframe
