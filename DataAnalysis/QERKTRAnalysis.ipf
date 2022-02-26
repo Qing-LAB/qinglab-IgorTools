@@ -41,8 +41,7 @@ Function LoadExcelNumericDataAsMatrix(pathName, fileName, worksheetName, [startC
 	Printf format, nameOut, startCell, endCell, worksheetName
 End
 
-Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, variable delta_timeindex)
-	
+Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, variable delta_timeindex, variable warning_threshold)	
 	Variable i=0
 	Variable t=start_timeindex
 	Variable total_cell=0
@@ -82,15 +81,17 @@ Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, va
 		endfor
 		InsertPoints /M=2 Inf, 1, CellSummary
 		s+=1
+		print "Processing frame:", s
+		CellSummary[][][s]=nan
 		for(c=0; c<total_cell; c+=1)
-			variable r=search_best_record(CellSummary[c][1][s-1], CellSummary[c][2][s-1], w, previous_i, i)
-			if(r>=0)
-				CellSummary[c][0][s]=w[r][3]
-				CellSummary[c][1][s]=w[r][4]
-				CellSummary[c][2][s]=w[r][5]
-				CellSummary[c][3][s]=w[r][7]
-			else
-				print "strange. cannot find a match for cell ", c
+			if(NumType(CellSummary[c][0][s-1])==0)
+				variable r=search_best_record(c, CellSummary[c][1][s-1], CellSummary[c][2][s-1], w, previous_i, i, warning_threshold)
+				if(r>=0)
+					CellSummary[c][0][s]=w[r][3]
+					CellSummary[c][1][s]=w[r][4]
+					CellSummary[c][2][s]=w[r][5]
+					CellSummary[c][3][s]=w[r][7]
+				endif
 			endif
 		endfor
 		
@@ -98,17 +99,29 @@ Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, va
 
 End
 
-Function search_best_record(variable x, variable y, wave w, variable starti, variable endi)
+Function search_best_record(variable cell_idx, variable x, variable y, wave w, variable starti, variable endi, variable warning_threshold)
 	Variable distance=Inf
+	Variable newx=nan, newy=nan
 	Variable i
 	Variable r=-1
 	for(i=starti; i<DimSize(w, 0) && i<=endi; i+=1)
-		Variable d=(x-w[i][4])^2+(y-w[i][5])^2
+		Variable d=sqrt((x-w[i][4])^2+(y-w[i][5])^2)
 		if(d<distance)
 			r=i
 			distance=d
+			newx=w[i][4]
+			newy=w[i][5]
 		endif
 	endfor
+	if(r>0 && NumType(distance)==0)
+		if(distance>warning_threshold)
+			print "WARNING: cell ", cell_idx, "moved too far from its original position, there might be a loss of cell record."
+			print "x=", x, "y=", y, "new_x=", newx, "new_y=", newy, "shift=", distance
+			print "index=", i
+			print "skipping this cell."
+			r=-r
+		endif
+	endif
 	return r
 End
 
@@ -119,13 +132,13 @@ Function appendTrace(wave w, variable startid, variable endid, string ex_id_str,
 	Variable j
 	Make /O/N=(1, DimSize(w, 2)) AverageRecord=0
 	Make /O/N=1 AverageRecordFlag=NaN
-	Make /O/N=(2, endid-startid+2) CellWithResponse, CellWithoutResponse, CellExcluded
+	Make /O/N=(3, endid-startid+2) CellWithResponse, CellWithoutResponse, CellExcluded
 	Make /FREE /N=(DimSize(w, 2)) tmp
 	CellWithResponse=NaN
 	CellWithoutResponse=NaN
 	CellExcluded=NaN
 	display
-	for(id=startid; id<endid; id+=1)
+	for(id=startid; id<=endid; id+=1)
 		variable ex_id_idx=FindListItem(num2istr(id), ex_id_str)
 		
 		if(ex_id_idx<0)
@@ -140,13 +153,15 @@ Function appendTrace(wave w, variable startid, variable endid, string ex_id_str,
 					tmp[]=AverageRecord[c][p]
 					WaveStats /Q tmp
 					if(V_sdev>threshold)
-						CellWithResponse[0][id]=w[j][1][0]
-						CellWithResponse[1][id]=w[j][2][0]
+						CellWithResponse[0][id-startid]=w[j][1][0]
+						CellWithResponse[1][id-startid]=w[j][2][0]
+						CellWithResponse[2][id-startid]=id
 						print "setting cell with response :", id
 						AverageRecordFlag[c]=1
 					else
-						CellWithoutResponse[0][id]=w[j][1][0]
-						CellWithoutResponse[1][id]=w[j][2][0]
+						CellWithoutResponse[0][id-startid]=w[j][1][0]
+						CellWithoutResponse[1][id-startid]=w[j][2][0]
+						CellWithoutResponse[2][id-startid]=id
 						print "setting cell without response :", id
 					endif
 					String name="CELL_"+num2istr(id)
@@ -162,8 +177,9 @@ Function appendTrace(wave w, variable startid, variable endid, string ex_id_str,
 				endif
 			endfor
 		else
-			CellExcluded[0][id]=w[j][1][0]
-			CellExcluded[1][id]=w[j][2][0]
+			CellExcluded[0][id-startid]=w[j][1][0]
+			CellExcluded[1][id-startid]=w[j][2][0]
+			CellExcluded[2][id-startid]=id
 			print "Cell excluded explicitly:", id
 		endif
 	endfor
