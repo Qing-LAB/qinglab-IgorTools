@@ -70,11 +70,11 @@ function QIRefreshFilePath(string homePath, string & relativePath, string & full
 	endif
 end
 
-function QILoadTiffByIdx(string frameWaveName, int idx, int refresh_tag_flag, int load_data_flag, [string &imginfo])
+function QILoadTiffByIdx(string frameWaveName, int idx, int refresh_tag_flag, int load_data_flag, [string &imginfo, variable ridx, variable gidx, variable bidx])
 	
 	Variable refNum
 	Variable retVal=-1
-	Variable imgidx
+	string imgidx="", compareidx=""
 	
 	string imageInfoStr=""
 	if(WaveExists($frameWaveName))
@@ -110,53 +110,132 @@ function QILoadTiffByIdx(string frameWaveName, int idx, int refresh_tag_flag, in
 			imageInfoStr=ReplaceStringByKey("FILE", "QIWAVE=1\n", absolutePath, "=", "\n", 0)
 			imageInfoStr=ReplaceStringByKey("RELATIVEPATH", imageInfoStr, relativePath, "=", "\n", 0)
 			//print "tag refreshed"
+			//load_data_flag=1 //force loading data
+			imgidx=""
 		endif
-		//force load data
-		load_data_flag=1
-		imgidx=NaN
 	else
-		imgidx=str2num(StringByKey("IMAGEINDEX", imageInfoStr, "=", "\n", 0))
-	endif
-	
-	if(imgidx!=idx)
-		//print "different idx, forcing reload data"
-		load_data_flag=1
+		imgidx=StringByKey("IMAGEINDEX", imageInfoStr, "=", "\n", 0)
 	endif
 	
 	if(strlen(absolutePath)==0)
 		return -1
 	endif
 	
+	variable total_frames=-1
+	
 	DFREF dfr=GetDataFolderDFR()
-	KillWaves /Z :QITMPIMG_TAG, :QITMPIMG_IMG; AbortOnRTE
+	KillWaves /Z :QITMPIMG_TAG, :QITMPIMG_IMG, :QITMPIMG_IMG_RAW; AbortOnRTE
 	NewDataFolder/O/S QIImgTmp; AbortOnRTE
 	try
+		string winfo=imageInfoStr
+		
 		if(refresh_tag_flag==1)
 			ImageLoad/T=tiff/Q/RTIO absolutePath; AbortOnRTE
-			string winfo=""		
+			total_frames=V_numImages
+					
 			if(V_Flag==1)
-				winfo=QITiffTagInfo(:Tag0:T_Tags)
-				winfo+=imageInfoStr
-				winfo=ReplaceStringByKey("IMAGEINDEX", winfo, num2istr(idx), "=", "\n", 0)
+				winfo += QITiffTagInfo(:Tag0:T_Tags)				
 				MoveWave :Tag0:T_Tags, dfr:QITMPIMG_TAG; AbortOnRTE
 				retVal=0
 			else
 				retVal=-1
 			endif
 		else
-			winfo=ReplaceStringByKey("IMAGEINDEX", imageInfoStr, num2istr(idx), "=", "\n", 0)
+			total_frames=str2num(StringByKey("images", winfo, "=", "\n", 0))
 		endif
 		
-		if(load_data_flag==1)
-			ImageLoad/T=tiff/Q/C=1/S=(idx)/BIGT=1/N=tmpImg/O absolutePath; AbortOnRTE
-			if(V_Flag==1)
-				wave w=$(StringFromList(0, S_waveNames))
-				MoveWave w, dfr:QITMPIMG_IMG; AbortOnRTE
-				retVal=0
+		if(refresh_tag_flag==1 || load_data_flag==1)
+			if(idx>=0)
+				compareidx=AddListItem(num2istr(idx), "", ";", inf)
+				ridx=idx
+				compareidx=AddListItem(num2istr(idx), compareidx, ";", inf)
+				gidx=idx
+				compareidx=AddListItem(num2istr(idx), compareidx, ";", inf)
+				bidx=idx
 			else
-				retVal=-2
+				if(ParamIsDefault(ridx) || numtype(ridx)!=0 || ridx<0 || ridx>total_frames)
+					ridx=-1
+				endif
+				if(ParamIsDefault(gidx) || numtype(gidx)!=0 || gidx<0 || gidx>total_frames)
+					gidx=-1
+				endif
+				if(ParamIsDefault(bidx) || numtype(bidx)!=0 || bidx<0 || bidx>total_frames)
+					bidx=-1
+				endif
+				compareidx=AddListItem(num2istr(ridx), "", ";", inf)
+				compareidx=AddListItem(num2istr(gidx), compareidx, ";", inf)
+				compareidx=AddListItem(num2istr(bidx), compareidx, ";", inf)
 			endif
-			//print "data loaded"
+		endif
+		
+		winfo=ReplaceStringByKey("IMAGEINDEX", winfo, imgidx, "=", "\n", 0)
+		
+		if(load_data_flag==1)
+			variable maxx, maxy
+			
+			maxx=str2num(StringByKey("IMAGEWIDTH", winfo, "=", "\n", 0))
+			maxy=str2num(StringByKey("IMAGELENGTH", winfo, "=", "\n", 0))
+			
+			if(numtype(maxx)!=0 || maxx<=0 || numtype(maxy)!=0 || maxy<0)
+				retVal=-3
+			else
+				Variable wtype=0x10
+				if(ridx>=0)
+					ImageLoad/T=tiff/Q/C=1/S=(ridx)/BIGT=1/N=tmpImg_R/O absolutePath; AbortOnRTE
+					wtype=WaveType(:tmpImg_R)
+				else
+					Make /O/N=(maxx, maxy)/Y=0x10 :tmpImg_R=0
+				endif
+				
+				if(gidx>=0)
+					if(gidx==ridx)
+						Duplicate /O :tmpImg_R, :tmpImg_G						
+					else
+						ImageLoad/T=tiff/Q/C=1/S=(gidx)/BIGT=1/N=tmpImg_G/O absolutePath; AbortOnRTE
+					endif
+					wtype=WaveType(:tmpImg_G)
+				else
+					Make /O/N=(maxx, maxy)/Y=0x10 :tmpImg_G=0
+				endif
+				
+				if(bidx>=0)
+					if(bidx==ridx)
+						Duplicate /O :tmpImg_R, :tmpImg_B
+					elseif(bidx==gidx)
+						Duplicate /O :tmpImg_G, :tmpImg_B
+					else
+						ImageLoad/T=tiff/Q/C=1/S=(bidx)/BIGT=1/N=tmpImg_B/O absolutePath; AbortOnRTE
+					endif
+					wtype=WaveType(:tmpImg_B)
+				else
+					Make /O/N=(maxx, maxy)/Y=0x10 :tmpImg_B=0
+				endif
+				
+				Make /O/N=(maxx, maxy, 3)/Y=(wtype) tmpImg, tmpImg_Raw
+				wave tmpImg_R=:tmpImg_R
+				wave tmpImg_G=:tmpImg_G
+				wave tmpImg_B=:tmpImg_B
+				
+				tmpImg_raw[][][0]=tmpImg_R[p][q]
+				ImageHistModification /I :tmpImg_R
+				Wave M_ImageHistEq
+				tmpImg[][][0]=M_ImageHistEq[p][q]
+				
+				tmpImg_raw[][][1]=tmpImg_G[p][q]
+				ImageHistModification /I :tmpImg_G
+				tmpImg[][][1]=M_ImageHistEq[p][q]
+				
+				tmpImg_raw[][][2]=tmpImg_B[p][q]
+				ImageHistModification /I :tmpImg_B
+				tmpImg[][][2]=M_ImageHistEq[p][q]
+								
+				MoveWave tmpImg, dfr:QITMPIMG_IMG; AbortOnRTE
+				moveWave tmpImg_Raw, dfr:QITMPIMG_IMG_RAW; AbortOnRTE
+				retVal=0
+				
+				imgidx=compareidx
+				winfo=ReplaceStringByKey("IMAGEINDEX", winfo, imgidx, "=", "\n", 0)	
+			endif
 		endif	
 	catch
 		variable err=GetRTError(1)
@@ -180,8 +259,13 @@ function QILoadTiffByIdx(string frameWaveName, int idx, int refresh_tag_flag, in
 			//Make /O /N=(DimSize(dfr:QITMPIMG_IMG, 0), DimSize(dfr:QITMPIMG_IMG, 1)) $frameWaveName
 			//wave w_img=$frameWaveName
 			//Duplicate /O dfr:QITMPIMG_IMG, w_img	; AbortOnRTE
-			Duplicate /O dfr:QITMPIMG_IMG, $frameWaveName	; AbortOnRTE
-			Wave w_img=$frameWaveName
+			Duplicate /O dfr:QITMPIMG_IMG_RAW, $(frameWaveName+"_Raw")	; AbortOnRTE
+			wave w_raw=$(frameWaveName+"_Raw")
+			//Make /O/N=(DimSize(w_raw, 0), DimSize(w_raw, 1), 3)/Y=0x10 $(frameWaveName)
+			//Wave w_img=$frameWaveName
+			Duplicate /O dfr:QITMPIMG_IMG, $(frameWaveName)
+			wave w_img=$(frameWaveName)
+			
 			variable xres=str2num(StringByKey("XRESOLUTION", winfo, "=", "\n", 0))
 			variable yres=str2num(StringByKey("YRESOLUTION", winfo, "=", "\n", 0))
 			string unit=StringByKey("unit", winfo, "=", "\n", 0)
@@ -194,10 +278,12 @@ function QILoadTiffByIdx(string frameWaveName, int idx, int refresh_tag_flag, in
 			endif
 			SetScale/P x 0,1/xres, unit, w_img; AbortOnRTE
 			SetScale/P y 0,1/yres, unit, w_img; AbortOnRTE
+			
+			note /k w_img, winfo; AbortOnRTE
 		endif
-		note /k w_img, winfo; AbortOnRTE
 		
-		KillWaves /Z dfr:QITMPIMG_TAG, dfr:QITMPIMG_IMG; AbortOnRTE
+		
+		KillWaves /Z dfr:QITMPIMG_TAG, dfr:QITMPIMG_IMG, dfr:QITMPIMG_IMG_RAW; AbortOnRTE
 		if(!ParamIsDefault(imginfo))
 			imginfo=winfo
 		endif
@@ -229,7 +315,7 @@ function QIGetIdxByChn(int ColorChn, int ZIdx, int TimeIdx, String DimOrder, Str
 	
 	strswitch(DimOrder)
 		case "XYCZT":
-			if(ColorChn<totalColorChn && ZIdx<totalZ && TimeIdx<totalTimeIdx)
+			if(ColorChn>=0 && ColorChn<totalColorChn && ZIdx<totalZ && TimeIdx<totalTimeIdx)
 				idx=(totalColorChn*totalZ)*TimeIdx + totalColorChn*zIdx + ColorChn
 				if(numtype(idx)!=0 || idx>=totalIdx)
 					idx=-1
@@ -241,7 +327,7 @@ function QIGetIdxByChn(int ColorChn, int ZIdx, int TimeIdx, String DimOrder, Str
 	return idx
 end
 
-function QILoadTiffByChn(string frameWaveName, int ColorChn, int ZIdx, int TimeIdx, int refresh_tag_flag, [string DimOrder])
+function QILoadTiffByChn(string frameWaveName, string ColorChnList, int ZIdx, int TimeIdx, int refresh_tag_flag, [string DimOrder])
 	variable retVal=-1
 	
 	if(ParamIsDefault(DimOrder))
@@ -261,25 +347,55 @@ function QILoadTiffByChn(string frameWaveName, int ColorChn, int ZIdx, int TimeI
 		refresh_tag_flag=1
 	endif
 	
-	Variable idx=-1
+	Variable color_idx=-1
+	
 	if(refresh_tag_flag==1)
-		 retVal=QILoadTiffByIdx(frameWaveName, 0, refresh_tag_flag, 0, imginfo=imageInfoStr)
+ 		retVal=QILoadTiffByIdx(frameWaveName, 0, 1, 0, imginfo=imageInfoStr) //refresh tag info only, no data loaded
 	else
 		retVal=0
 	endif
 	
-	if(retVal==0)
-		idx=QIGetIdxByChn(ColorChn, ZIdx, TimeIdx, DimOrder, imageInfoStr)
+	variable max_channels=str2num(StringByKey("channels", imageInfoStr, "=", "\n"))
+	if(numtype(max_channels)!=0)
+		max_channels=1
 	endif
 	
-	if(idx>=0)
-		retVal=QILoadTiffByIdx(frameWaveName, idx, 0, 0, imginfo=imageInfoStr)
-	else
+	if(retVal==0)
 		retVal=-1
+		variable idx=-1
+		switch(ItemsInList(ColorChnList))
+		case 1: //only a single channel is selected
+			color_idx=str2num(StringFromList(0, ColorChnList))
+			if(color_idx>=0 && color_idx<max_channels)
+				idx=QIGetIdxByChn(color_idx, ZIdx, TimeIdx, DimOrder, imageInfoStr)
+				if(idx>=0)
+					retVal=QILoadTiffByIdx(frameWaveName, idx, 0, 0, imginfo=imageInfoStr)
+				endif
+			endif
+			break
+		case 3: //rgb channels requested.
+			variable ridx, gidx, bidx
+			ridx=str2num(StringFromList(0, ColorChnList))
+			idx=QIGetIdxByChn(ridx, ZIdx, TimeIdx, DimOrder, imageInfoStr)
+			ridx=idx
+			
+			gidx=str2num(StringFromList(1, ColorChnList))
+			idx=QIGetIdxByChn(gidx, ZIdx, TimeIdx, DimOrder, imageInfoStr)
+			gidx=idx
+			
+			bidx=str2num(StringFromList(2, ColorChnList))
+			idx=QIGetIdxByChn(bidx, ZIdx, TimeIdx, DimOrder, imageInfoStr)
+			bidx=idx
+			
+			retVal=QILoadTiffByIdx(frameWaveName, -1, 0, 1, imginfo=imageInfoStr, ridx=ridx, gidx=gidx, bidx=bidx)			
+			break
+		default:
+			retVal=-1
+		endswitch
 	endif
 	
 	if(retVal==0)
-		imageInfoStr=ReplaceStringByKey("CURRENT_CHANNEL", imageInfoStr, num2istr(ColorChn), "=", "\n", 0)
+		imageInfoStr=ReplaceStringByKey("CURRENT_CHANNEL", imageInfoStr, ColorChnList, "=", "\n", 0)
 		imageInfoStr=ReplaceStringByKey("CURRENT_SLICE", imageInfoStr, num2istr(ZIdx), "=", "\n", 0)
 		imageInfoStr=ReplaceStringByKey("CURRENT_FRAME", imageInfoStr, num2istr(TimeIdx), "=", "\n", 0)
 		//imageInfoStr=ReplaceStringByKey("CURRENT_INDEX", imageInfoStr, num2istr(idx), "=", "\n", 0)
@@ -308,7 +424,7 @@ function QIPanel([string graphName, variable refresh])
 	variable totalIdx=str2num(StringByKey("images", imginfo, "=", "\n", 0))
 	variable totalZ=str2num(StringByKey("slices", imginfo, "=", "\n", 0))
 	variable totalTimeIdx=str2num(StringByKey("frames", imginfo, "=", "\n", 0))
-	variable current_colorchn=str2num(StringByKey("CURRENT_CHANNEL", imginfo, "=", "\n", 0))
+	string current_colorchn=StringByKey("CURRENT_CHANNEL", imginfo, "=", "\n", 0)
 	variable current_zidx=str2num(StringByKey("CURRENT_SLICE", imginfo, "=", "\n", 0))
 	variable current_timeidx=str2num(StringByKey("CURRENT_FRAME", imginfo, "=", "\n", 0))
 	
@@ -326,8 +442,8 @@ function QIPanel([string graphName, variable refresh])
 	endif
 	
 	if(refresh==0)
-		if(numtype(current_colorchn)!=0)
-			current_colorchn=0
+		if(strlen(current_colorchn)==0)
+			current_colorchn="0;"
 		endif
 		if(numtype(current_zidx)!=0)
 			current_zidx=0
@@ -336,7 +452,7 @@ function QIPanel([string graphName, variable refresh])
 			current_timeidx=0
 		endif
 	else
-		current_colorchn=0
+		current_colorchn="0;"
 		current_zidx=0
 		current_timeidx=0
 	endif
@@ -358,7 +474,10 @@ function QIPanel([string graphName, variable refresh])
 		
 		TitleBox cords, title="Px=?, Py=?\nx=?, y=?", size={150, 40}
 		Button refresh, title="Refresh/Reload File", size={150, 20}, proc=QIPanel_RefreshFile
-		SetVariable channel, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_colorchn, title="channel#", format="%d / "+num2istr(totalColorChn-1), size={150, 20}, proc=QIPanel_ReloadFrame
+		CheckBox channel_rgb, title="RGB channel enabled", size={150, 20}, proc=QIPanel_ReloadFrame
+		SetVariable channel_r, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="channel#", format="%d / "+num2istr(totalColorChn-1), size={150, 20}, proc=QIPanel_ReloadFrame
+		SetVariable channel_b, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="channel#", format="%d / "+num2istr(totalColorChn-1), size={150, 20}, disable=2, proc=QIPanel_ReloadFrame
+		SetVariable channel_g, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="channel#", format="%d / "+num2istr(totalColorChn-1), size={150, 20}, disable=2, proc=QIPanel_ReloadFrame		
 		SetVariable slice, limits={-1, totalZ, 1}, live=1, value=_NUM:current_zidx, title="slice#", format="%d / "+num2istr(totalZ-1), size={150, 20}, proc=QIPanel_ReloadFrame
 		SetVariable frame, limits={-1, totalTimeIdx, 1}, live=1, value=_NUM:current_timeidx, title="time#", format="%d / "+num2istr(totalTimeIdx-1), size={150, 20}, proc=QIPanel_ReloadFrame
 		Button roi_new, title="New ROI", size={80,20}, proc=QIPanel_ROINew
@@ -367,8 +486,9 @@ function QIPanel([string graphName, variable refresh])
 		Button roi_del, title="Delete ROI", size={80,20}, proc=QIPanel_ROIDelete
 		
 		string userfunc_type="WIN:Procedure;KIND:2;NPARAMS:7"
-		PopupMenu userfunc_list1, size={80, 20}, title="FUNC#1", value=FunctionList("QIF_*", ";", "")
-		Button call_userfunc1, title="@", size={20, 20}
+		Button call_userfunc1, title="call", size={30, 20}
+		PopupMenu userfunc_list1, size={80, 20}, title="#1", value=FunctionList("QIF_*", ";", "")
+		
 	endif
 end
 
@@ -432,7 +552,7 @@ function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
 		refresh=1
 	endif
 	
-	QILoadTiffByChn(fw, channel, slice, frame, refresh)
+	//QILoadTiffByChn(fw, channel, slice, frame, refresh)
 end
 
 Function QIPanel_ReloadFrame(sva) : SetVariableControl
