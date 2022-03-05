@@ -254,9 +254,6 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 					MatrixOp /O tmpImg_G_Adj=scale(tmpImg_G, 0, 65535)
 					MatrixOp /O tmpImg_B_Adj=scale(tmpImg_B, 0, 65535)
 					
-//					MatrixOp /O/NPRM tmpImg_R_Adj=tmpImg_R*(65535/maxVal(tmpImg_R))
-//					MatrixOp /O/NPRM tmpImg_G_Adj=tmpImg_G*(65535/maxVal(tmpImg_G))
-//					MatrixOp /O/NPRM tmpImg_B_Adj=tmpImg_B*(65535/maxVal(tmpImg_B))
 					Concatenate /O {tmpImg_R, tmpImg_G, tmpImg_B}, tmpImg_Raw
 					Concatenate /O {tmpImg_R_Adj, tmpImg_G_Adj, tmpImg_B_Adj}, tmpImg
 				endif
@@ -306,10 +303,11 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 			if(numtype(yres)!=0)
 				yres=1
 			endif
-			SetScale/P x 0,1/xres, unit, w_img; AbortOnRTE
-			SetScale/P y 0,1/yres, unit, w_img; AbortOnRTE
+			SetScale/P x 0,1/xres, unit, w_img, w_raw; AbortOnRTE
+			SetScale/P y 0,1/yres, unit, w_img, w_raw; AbortOnRTE
 			
 			note /k w_img, winfo; AbortOnRTE
+			note /k w_raw, winfo; AbortOnRTE
 		endif
 		
 		
@@ -441,26 +439,70 @@ function QIPanel([string graphName, variable refresh])
 		SetWindow $graphName, userdata(IMAGEWAVE)=GetWavesDataFolder(img, 2)
 		SetWindow $graphName, hook(QIPanel_MouseFunc)=QIPanel_MouseFunc
 		
-		TitleBox cords, title="Px=?, Py=?\nx=?, y=?", size={150, 40}
-		Button refresh, title="Refresh/Reload File", size={150, 20}, proc=QIPanel_RefreshFile
-		CheckBox channel_rgb, title="RGB channel enabled", size={150, 20}, proc=QIPanel_ReloadFrame
-		SetVariable channel, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn, title="Chn#", format="%d/"+num2istr(totalColorChn-1), size={100, 20}, proc=QIPanel_ReloadFrame
-		SetVariable channel_r, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="Chn_R#", format="%d/"+num2istr(totalColorChn-1), size={100, 20}, disable=2, proc=QIPanel_ReloadFrame
-		SetVariable channel_g, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="Chn_G#", format="%d/"+num2istr(totalColorChn-1), size={100, 20}, disable=2, proc=QIPanel_ReloadFrame
-		SetVariable channel_b, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="Chn_B#", format="%d/"+num2istr(totalColorChn-1), size={100, 20}, disable=2, proc=QIPanel_ReloadFrame		
-		SetVariable slice, limits={-1, totalZ, 1}, live=1, value=_NUM:current_zidx, title="slice#", format="%d / "+num2istr(totalZ-1), size={150, 20}, proc=QIPanel_ReloadFrame
-		SetVariable frame, limits={-1, totalTimeIdx, 1}, live=1, value=_NUM:current_timeidx, title="time#", format="%d / "+num2istr(totalTimeIdx-1), size={150, 20}, proc=QIPanel_ReloadFrame
-		Button roi_new, title="New ROI", size={80,20}, proc=QIPanel_ROINew
-		Button roi_edit, title="Edit ROI", size={80,20}, proc=QIPanel_ROIEdit
-		PopupMenu roi_list, size={80,20}, title="ROI#", value=#roi_tracelist
-		Button roi_del, title="Delete ROI", size={80,20}, proc=QIPanel_ROIDelete
+		TitleBox cords, title="Px=?, Py=?\nx=?, y=?", size={150, 40}, pos={0, 0}
+		Button refresh, title="Refresh/Reload File", size={150, 20}, pos={0, 40}, proc=QIPanel_RefreshFile
 		
+		TabControl channel_select value=1,tabLabel(0)="Single",tabLabel(1)="RGB", size={200, 140}, pos={0, 60}, proc=QIPanel_ChannelTab
+		Button channel_setting, title="@", size={20, 20}, pos={5, 90}
+		SetVariable channel, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn, title="Chn#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 90}, proc=QIPanel_ReloadFrame
+		Button channel_setting_r, title="@", size={20, 20}, pos={5, 90}, disable=1
+		SetVariable channel_r, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="Chn_R#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 90}, disable=1, proc=QIPanel_ReloadFrame
+		Button channel_setting_g, title="@", size={20, 20}, pos={5, 110}, disable=1
+		SetVariable channel_g, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="Chn_G#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 110}, disable=1, proc=QIPanel_ReloadFrame
+		Button channel_setting_b, title="@", size={20, 20}, pos={5, 130}, disable=1
+		SetVariable channel_b, limits={-1, totalColorChn, 1}, live=1, value=_NUM:0, title="Chn_B#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 130}, disable=1, proc=QIPanel_ReloadFrame		
+
+		SetVariable slice, limits={-1, totalZ, 1}, live=1, value=_NUM:current_zidx, title="slice#", format="%d / "+num2istr(totalZ-1), size={150, 20}, pos={10, 150}, proc=QIPanel_ReloadFrame
+		SetVariable frame, limits={-1, totalTimeIdx, 1}, live=1, value=_NUM:current_timeidx, title="time#", format="%d / "+num2istr(totalTimeIdx-1), pos={10, 170}, size={150, 20}, proc=QIPanel_ReloadFrame
+		
+		GroupBox roi_op, title="ROI Definition", pos={0, 200}, size={200, 70}
+		Button roi_new, title="New ROI", size={90,20}, pos={5, 220}, proc=QIPanel_ROINew
+		Button roi_edit, title="Edit ROI", size={90, 20}, pos={95, 220}, proc=QIPanel_ROIEdit
+		PopupMenu roi_list, size={90,20}, title="ROI#", pos={5, 240}, value=#roi_tracelist
+		Button roi_del, title="Delete ROI", size={90,20}, pos={95, 240}, proc=QIPanel_ROIDelete
+		
+		GroupBox user_functions, title="User Functions", size={200, 100}, pos={0, 280}
 		string userfunc_type="WIN:Procedure;KIND:2;NPARAMS:7"
-		Button call_userfunc1, title="call", size={30, 20}
-		PopupMenu userfunc_list1, size={80, 20}, title="#1", value=FunctionList("QIF_*", ";", "")
+		Button call_userfunc1, size={40, 20}, title="call", pos={5, 300}
+		PopupMenu call_type, value="--;@1;@*;", size={50, 20}, pos={50, 300} 
+		PopupMenu userfunc_list1, size={100, 20}, pos={95, 300}, value=FunctionList("QIF_*", ";", "")
 		
 	endif
 end
+
+Function QIPanel_ChannelTab(tca) : TabControl
+	STRUCT WMTabControlAction &tca
+
+	switch( tca.eventCode )
+		case 2: // mouse up
+			Variable tab = tca.tab
+			if(tab==1)
+				Button channel_setting, win=$tca.win, disable=1
+				SetVariable channel, win=$tca.win, disable=1
+				Button channel_setting_r, win=$tca.win, disable=0
+				SetVariable channel_r, win=$tca.win, disable=0
+				Button channel_setting_g, win=$tca.win, disable=0
+				SetVariable channel_g, win=$tca.win, disable=0
+				Button channel_setting_b, win=$tca.win, disable=0
+				SetVariable channel_b, win=$tca.win, disable=0
+			else
+				Button channel_setting, win=$tca.win, disable=0
+				SetVariable channel, win=$tca.win, disable=0
+				Button channel_setting_r, win=$tca.win, disable=1
+				SetVariable channel_r, win=$tca.win, disable=1
+				Button channel_setting_g, win=$tca.win, disable=1
+				SetVariable channel_g, win=$tca.win, disable=1
+				Button channel_setting_b, win=$tca.win, disable=1
+				SetVariable channel_b, win=$tca.win, disable=1
+			endif
+			QIPanel_ReloadFrameAction(tca.win)
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
 
 function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
 	string parentwin=GetUserData(panelname, "", "GRAPHNAME")
@@ -484,20 +526,8 @@ function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
 		totalTimeIdx=totalIdx/totalColorChn/totalZ
 	endif
 	
-	ControlInfo /W=$panelname channel_rgb
+	ControlInfo /W=$panelname channel_select
 	Variable single_or_color=V_Value
-	
-	if(single_or_color)
-		SetVariable channel, win=$panelname, disable=2
-		SetVariable channel_r, win=$panelname, disable=0
-		SetVariable channel_g, win=$panelname, disable=0
-		SetVariable channel_b, win=$panelname, disable=0
-	else
-		SetVariable channel, win=$panelname, disable=0
-		SetVariable channel_r, win=$panelname, disable=2
-		SetVariable channel_g, win=$panelname, disable=2
-		SetVariable channel_b, win=$panelname, disable=2
-	endif
 	
 	ControlInfo /W=$panelname channel
 	Variable channel=V_Value
