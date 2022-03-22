@@ -3,7 +3,16 @@
 #include <ImageSlider>
 #include <WMBatchCurveFitIM>
 
-static Structure TIFFTagInfo
+Menu "QLabTools"
+	SubMenu "QIPanel"
+		"LoadTiff", QILoadTiffByIdx(0, DisplayImage=1); QIPanel()
+	End
+End
+
+Constant QIF_INIT=0
+Constant QIF_EVALUATE=1
+
+Structure TIFFTagInfo
 	int32 width
 	int32 height
 	int32 total_image_number
@@ -24,7 +33,7 @@ static Structure TIFFTagInfo
 	int32 loaded_frame
 EndStructure
 
-static Structure ChannelInfo
+Structure ChannelInfo
 	int32 channel_r
 	int32 channel_g
 	int32 channel_b
@@ -146,11 +155,23 @@ end
 
 StrConstant QIMAGEWAVEVERSION="1.0"
 
-function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_flag, variable load_data_flag, STRUCT ChannelInfo &Channels])
+function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, variable load_data_flag, STRUCT ChannelInfo &Channels, variable DisplayImage])
 	Variable refNum
 	Variable retVal=-1
 	string img_loaded_idx="", compareidx=""
 	string imageInfoStr=""
+	
+	String frameWaveName="image0"
+	
+	if(ParamIsDefault(imageName))
+		PROMPT frameWaveName, "Image Wave Base Name:"
+		DoPROMPT "Provide base name for image wave:", frameWaveName
+		if(V_flag==1)
+			return -1
+		endif
+	else
+		frameWaveName=imageName
+	endif
 	
 	if(ParamIsDefault(refresh_tag_flag))
 		refresh_tag_flag=1
@@ -187,6 +208,7 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 			
 			if(V_flag==0)
 				homePath=""
+				relativePath=""
 			else
 				homePath=S_path
 			endif
@@ -205,7 +227,7 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 	variable total_frames=-1
 	
 	DFREF dfr=GetDataFolderDFR()
-	KillWaves /Z :QITMPIMG_TAG, :QITMPIMG_IMG, :QITMPIMG_IMG_RAW; AbortOnRTE
+
 	NewDataFolder/O/S QIImgTmp; AbortOnRTE
 	
 	try
@@ -216,7 +238,7 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 			if(V_Flag==1)
 				QITiffTagInfo(:Tag0:T_Tags, taginfo)
 				StructPut /S taginfo, taginfostr
-				MoveWave :Tag0:T_Tags, dfr:QITMPIMG_TAG; AbortOnRTE
+				Duplicate /O :Tag0:T_Tags, $(frameWaveName+"_Tag"); AbortOnRTE
 				retVal=0
 			else
 				retVal=-1;
@@ -287,7 +309,7 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 		
 		StructPut /S taginfo, taginfostr
 		
-		if(cmpstr(taginfostr, StringByKey("TAGINFO", imageInfoStr, "=", "\n", 0))!=0)
+		if(cmpstr(taginfostr, StringByKey("TAGINFO", imageInfoStr, "=", "\n", 0), 2)!=0)
 		//requested is not the same as loaded data, or force loading data
 			load_data_flag=1
 		endif
@@ -302,7 +324,7 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 				retVal=-3
 			else
 				Variable wtype=0x10
-				
+				Variable chn_count=0
 				if(idx>=0)					
 					ImageLoad/T=tiff/Q/C=1/S=(idx)/BIGT=1/N=tmpImg_Raw/O absolutePath; AbortOnRTE
 					Wave tmpImg_Raw
@@ -313,7 +335,10 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 					
 					if(ridx>=0)
 						ImageLoad/T=tiff/Q/C=1/S=(ridx)/BIGT=1/N=tmpImg_R/O absolutePath; AbortOnRTE
-						wtype=WaveType(:tmpImg_R)
+						Wave tmpImg_R
+						wtype=WaveType(tmpImg_R)
+						Duplicate /O tmpImg_R, tmpImg_Raw
+						chn_count+=1
 					else
 						Make /O/N=(maxx, maxy)/Y=0x10 :tmpImg_R=0; AbortOnRTE
 					endif
@@ -324,7 +349,14 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 						else
 							ImageLoad/T=tiff/Q/C=1/S=(gidx)/BIGT=1/N=tmpImg_G/O absolutePath; AbortOnRTE
 						endif
-						wtype=WaveType(:tmpImg_G)
+						Wave tmpImg_G
+						wtype=WaveType(tmpImg_G)
+						if(chn_count>0)
+							Concatenate {tmpImg_G}, tmpImg_Raw
+						else
+							Duplicate /O tmpImg_G, tmpImg_Raw
+						endif
+						chn_count+=1
 					else
 						Make /O/N=(maxx, maxy)/Y=0x10 :tmpImg_G=0; AbortOnRTE
 					endif
@@ -337,7 +369,14 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 						else
 							ImageLoad/T=tiff/Q/C=1/S=(bidx)/BIGT=1/N=tmpImg_B/O absolutePath; AbortOnRTE
 						endif
-						wtype=WaveType(:tmpImg_B)
+						Wave tmpImg_B
+						wtype=WaveType(tmpImg_B)
+						if(chn_count>0)
+							Concatenate {tmpImg_B}, tmpImg_Raw
+						else
+							Duplicate /O tmpImg_B, tmpImg_Raw
+						endif
+						chn_count+=1
 					else
 						Make /O/N=(maxx, maxy)/Y=0x10 :tmpImg_B=0; AbortOnRTE
 					endif
@@ -351,12 +390,12 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 					Concatenate /O {tmpImg_R_Adj, tmpImg_G_Adj, tmpImg_B_Adj}, tmpImg; AbortOnRTE
 				endif
 				
-				MoveWave tmpImg, dfr:QITMPIMG_IMG; AbortOnRTE
-				MoveWave tmpImg_Raw, dfr:QITMPIMG_IMG_RAW; AbortOnRTE
+				Duplicate /O tmpImg, $(frameWaveName); AbortOnRTE
+				Duplicate /O tmpImg_Raw, $(frameWaveName+"_Raw"); AbortOnRTE
 				retVal=0
 				imageInfoStr=ReplaceStringByKey("TAGINFO", imageInfoStr, taginfostr, "=", "\n", 0)
 			endif
-		endif	
+		endif
 	catch
 		variable err=GetRTError(1)
 		print "The following error encountered during loading image. Please click refresh button and try again, or check your relative path of images to the igor experiment file."
@@ -368,15 +407,11 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 	KillDataFolder :
 	
 	if(retVal==0)
-		if(refresh_tag_flag==1)
-			Duplicate /O dfr:QITMPIMG_TAG, $(frameWaveName+"_Tag"); AbortOnRTE
-		endif
 		
 		if(load_data_flag==1)
-			Duplicate /O dfr:QITMPIMG_IMG_RAW, $(frameWaveName+"_Raw")	; AbortOnRTE
+			
 			wave w_raw=$(frameWaveName+"_Raw")
 			
-			Duplicate /O dfr:QITMPIMG_IMG, $(frameWaveName)
 			wave w_img=$(frameWaveName)
 			
 			variable xres=taginfo.x_resolution
@@ -394,9 +429,12 @@ function QILoadTiffByIdx(string frameWaveName, int idx, [variable refresh_tag_fl
 			
 			note /k w_img, imageInfoStr; AbortOnRTE
 			note /k w_raw, imageInfoStr; AbortOnRTE
+			
+			if(DisplayImage==1)
+				NewImage w_img
+			endif
 		endif
-		
-		KillWaves /Z dfr:QITMPIMG_TAG, dfr:QITMPIMG_IMG, dfr:QITMPIMG_IMG_RAW; AbortOnRTE
+
 	endif
 	
 	return retVal
@@ -443,7 +481,7 @@ function QILoadTiffByChn(string frameWaveName, int single_color_channel, int r, 
 		channels.time_frame=TimeIdx
 		channels.dim_order=DimOrder
 		
-		retVal=QILoadTiffByIdx(frameWaveName, -1, refresh_tag_flag=refresh_tag_flag, Channels=channels)
+		retVal=QILoadTiffByIdx(-1, imageName=frameWaveName, refresh_tag_flag=refresh_tag_flag, Channels=channels)
 	else
 		try
 			if(!ParamIsDefault(taginfo) && !ParamIsDefault(absolutePath))
@@ -490,6 +528,10 @@ function QILoadTiffByChn(string frameWaveName, int single_color_channel, int r, 
 	return retVal
 end
 
+function /T QIPanel_GetDFName(string dfstr, string graphname, string imgname)
+	return dfstr+imgname+"_DF_"+graphname
+end
+
 function QIPanel([string graphName, variable refresh])
 	if(ParamIsDefault(graphName))
 		graphName=WinName(0, 1)
@@ -501,9 +543,14 @@ function QIPanel([string graphName, variable refresh])
 	//get info of the image first
 	string imglist=ImageNameList(graphName, ";")
 	string imgname=StringFromList(0, imglist)
-	DFREF dfr=$(StringByKey("ZWAVEDF", ImageInfo(graphName, imgname, 0), ":", ";"))
+	string dfr_str=StringByKey("ZWAVEDF", ImageInfo(graphName, imgname, 0), ":", ";")
+	DFREF dfr=$dfr_str
 	wave img=dfr:$imgname
 	string imginfo=note(img)
+	
+	string imgdata_dfr_str=QIPanel_GetDFName(dfr_str, graphName, imgname)
+	NewDataFolder /O $imgdata_dfr_str
+	SetWindow $graphname, userdata(IMAGE_GRAPH_DF_NAME)=imgdata_dfr_str
 	
 	if(cmpstr(StringByKey("QIMAGEWAVEVER", imginfo, "=", "\n", 0), QIMAGEWAVEVERSION)!=0)
 		print "the graph does not have the right QImageWave information for loading the data and panel correctly."
@@ -525,10 +572,6 @@ function QIPanel([string graphName, variable refresh])
 	variable current_chn_b=taginfo.loaded_channels[2]
 	variable load_flag=taginfo.load_flag
 	
-	if(load_flag<1 || load_flag>2)
-		load_flag=1
-	endif
-	
 	variable current_zidx=taginfo.loaded_slice
 	variable current_timeidx=taginfo.loaded_frame
 	
@@ -542,17 +585,21 @@ function QIPanel([string graphName, variable refresh])
 		current_timeidx=0
 		load_flag=1
 	endif
-	
+
+	if(load_flag<1 || load_flag>2)
+		load_flag=1
+	endif
+		
 	if(strlen(GetUserData(graphName, "", "QIPANEL"))==0)
 		ModifyGraph /W=$graphName width={Aspect,(DimDelta(img, 0)*DimSize(img, 0))/(DimDelta(img, 1)*DimSize(img, 1))}
 		//QILoadTiffByChn(GetWavesDataFolder(img, 2), current_singlechn, current_chn_r, current_chn_g, current_chn_b, current_zidx, current_timeidx, refresh)
 		DoUpdate
 		imginfo=note(img)
-		string roi_tracelist=StringByKey("ROITRACE", imginfo, "=", "\n", 0)
+		string roi_tracelist=QIPanel_GetROIList(graphName)
 		if(strlen(roi_tracelist)==0)
 			roi_tracelist=";"
 		endif
-		NewPanel /Ext=0 /HOST=$graphName	/N=$(graphName+"QIPanel") /W=(0, 0, 200, 400)
+		NewPanel /K=2 /Ext=0 /HOST=$graphName	/N=$(graphName+"QIPanel") /W=(0, 0, 200, 400)
 		SetWindow $S_name, userdata(GRAPHNAME)=graphName
 		String panelname=S_name
 		SetWindow $graphName, userdata(QIPANEL)=panelname
@@ -583,9 +630,10 @@ function QIPanel([string graphName, variable refresh])
 		
 		GroupBox user_functions, title="User Functions", size={200, 100}, pos={0, 280}
 		string userfunc_type="WIN:Procedure;KIND:2;NPARAMS:7"
-		Button call_userfunc1, size={40, 20}, title="call", pos={5, 300}
-		PopupMenu call_type, value="--;@1;@*;", size={50, 20}, pos={50, 300} 
-		PopupMenu userfunc_list1, size={100, 20}, pos={95, 300}, value=FunctionList("QIF_*", ";", "")
+		Button all_frame_runuserfunc, size={20, 20}, title="@", pos={5, 300}, proc=QIPanel_RunForAllFramesUserfunc1
+		CheckBox single_frame_runuserfunc, title="", size={25, 20}, pos={30, 303}
+		variable popmode=WhichListItem("QIF_PROTOTYPE1", FunctionList("QIF_*", ";", ""), ";")
+		PopupMenu userfunc_list1, size={160, 20}, pos={50, 300}, value=FunctionList("QIF_*", ";", ""), popvalue="QIF_PROTOTYPE1", proc=QIPanel_InitUserFunc1
 		
 		QIPanel_ReloadFrameAction(panelname, refresh=refresh)
 	endif
@@ -715,8 +763,6 @@ function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
 	SetVariable frame, win=$panelname, value=_NUM:frame
 	
 	if(ParamIsDefault(refresh))
-		refresh=0
-	else
 		refresh=1
 	endif
 	
@@ -724,6 +770,11 @@ function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
 		QILoadTiffByChn(fw, channel, -1, -1, -1, slice, frame, refresh)
 	else
 		QILoadTiffByChn(fw, -1, channel_r, channel_g, channel_b, slice, frame, refresh)
+	endif
+	
+	ControlInfo /W=$panelname single_frame_runuserfunc
+	if(V_value==1)
+		QIPanel_CallUserFuncAction(panelname, QIF_EVALUATE)
 	endif
 end
 
@@ -852,11 +903,13 @@ Function QIPanel_ROINew(ba) : ButtonControl
 			string panelname=ba.win
 			string parentwin=GetUserData(panelname, "", "GRAPHNAME")
 			variable edit_flag=str2num(GetUserData(parentwin, "", "ROI_EDIT_MODE"))
-			
+						
 			string imgwave=GetUserData(parentwin, "", "IMAGEWAVE")
 			wave imgw=$imgwave
 			string imginfo=note(imgw)
 			
+			string dfr_str=GetUserData(parentwin, "", "IMAGE_GRAPH_DF_NAME")
+
 			string axis=AxisList(parentwin)
 			string yaxis=StringFromList(0, axis)
 			string xaxis=StringFromList(1, axis)
@@ -864,7 +917,7 @@ Function QIPanel_ROINew(ba) : ButtonControl
 			string yaxistype=StringByKey("AXTYPE", AxisInfo(parentwin, yaxis))			
 			string exec_cmd=""
 			string roi_tracename=NameOfWave(imgw)+"_ROI"
-			string roi_tracenamelist=StringByKey("ROITRACE", imginfo, "=", "\n", 0)
+			string roi_tracenamelist=QIPanel_GetROIList(parentwin)
 			variable roi_tracename_lastidx=str2num(StringFromList(ItemsInList(roi_tracenamelist)-1, roi_tracenamelist))
 			
 			if(numtype(roi_tracename_lastidx)!=0)
@@ -898,19 +951,34 @@ Function QIPanel_ROINew(ba) : ButtonControl
 					break
 				endswitch
 				
+				
+				DFREF old_dfr=GetDataFolderDFR()
+				//NewDataFolder /O/S $dfr_str
+				SetDataFolder $dfr_str
+				
 				exec_cmd+=roi_tracename+"_Y"+num2istr(roi_tracename_lastidx)+", "+roi_tracename+"_X"+num2istr(roi_tracename_lastidx)
 				Execute exec_cmd
 				SetWindow $parentwin, userdata(ROI_EDIT_MODE)="1"
 				Button roi_new, win=$panelname, title="Confirm ROI",fColor=(65535,0,0), disable=0
 				Button roi_edit, win=$panelname, disable=2
 				Button roi_del, win=$panelname, disable=2
-			else//see if there is actually a new ROI created				
+				
+				SetDataFolder old_dfr
+			else//see if there is actually a new ROI created
+				
+				DFREF old_dfr=GetDataFolderDFR()
+				//NewDataFolder /O/S $dfr_str
+				SetDataFolder $dfr_str
+				
 				GraphNormal /W=$parentwin
 				SetWindow $parentwin, userdata(ROI_EDIT_MODE)="0"
 				Button roi_new, win=$panelname, title="New ROI", fColor=(0,0,0)
 				Button roi_edit, win=$panelname, disable=0
 				Button roi_del, win=$panelname, disable=0
 				DoUpdate
+				
+				SetDataFolder old_dfr
+				
 				string tracelist=TraceNameList(parentwin, ";", 1)
 				variable i	
 				
@@ -924,15 +992,15 @@ Function QIPanel_ROINew(ba) : ButtonControl
 					//there is a match in trace, meaning new ROI is created
 					string updated_roilist=""
 					for(i=0; i<=roi_tracename_lastidx; i+=1)
-						wave testw1=$(roi_tracename+"_Y"+num2istr(i))
-						wave testw2=$(roi_tracename+"_X"+num2istr(i))
+						wave testw1=$(dfr_str+":"+roi_tracename+"_Y"+num2istr(i))
+						wave testw2=$(dfr_str+":"+roi_tracename+"_X"+num2istr(i))
 						
 						if(WaveExists(testw1) && WaveExists(testw2) && (i==roi_tracename_lastidx || FindListItem(num2istr(i), roi_tracenamelist)!=-1))
 							updated_roilist=AddListItem(num2istr(i), updated_roilist, ";", inf)
 						endif
 					endfor
 					
-					imginfo=ReplaceStringByKey("ROITRACE", imginfo, updated_roilist, "=", "\n", 0)
+					QIPanel_SetROIList(parentwin, updated_roilist)
 					note /k imgw, imginfo
 					updated_roilist="\"all;"+updated_roilist+"\""
 					PopupMenu roi_list, win=$panelname, value=#updated_roilist					
@@ -988,7 +1056,7 @@ Function QIPanel_ROIEdit(ba) : ButtonControl
 			
 			string roi_tracename=NameOfWave(imgw)+"_ROI"
 			
-			string roi_tracenamelist=StringByKey("ROITRACE", imginfo, "=", "\n", 0)
+			string roi_tracenamelist=QIPanel_GetROIList(parentwin)
 
 			if(numtype(edit_flag)!=0)
 				edit_flag=0
@@ -1051,8 +1119,10 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 			string yaxistype=StringByKey("AXTYPE", AxisInfo(parentwin, yaxis))			
 			string exec_cmd=""
 			
+			string dfr_str=GetUserData(parentwin, "", "IMAGE_GRAPH_DF_NAME")
+			
 			string roi_tracename=NameOfWave(imgw)+"_ROI"
-			string roi_tracenamelist=StringByKey("ROITRACE", imginfo, "=", "\n", 0)
+			string roi_tracenamelist=QIPanel_GetROIList(parentwin)
 
 				
 			if(numtype(edit_flag)!=0)
@@ -1072,8 +1142,8 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 					for(i=starti; i<=endi; i+=1)
 						RemoveFromGraph /W=$parentwin /Z $(roi_tracename+"_Y"+StringFromList(i, roi_tracenamelist))
 						DoUpdate
-						KillWaves /Z $(roi_tracename+"_Y"+StringFromList(i, roi_tracenamelist))
-						KillWaves /Z $(roi_tracename+"_X"+StringFromList(i, roi_tracenamelist))
+						KillWaves /Z $(dfr_str+":"+roi_tracename+"_Y"+StringFromList(i, roi_tracenamelist))
+						KillWaves /Z $(dfr_str+":"+roi_tracename+"_X"+StringFromList(i, roi_tracenamelist))
 						//print "list:", i, roi_tracenamelist
 					endfor
 					if(endi==starti)
@@ -1082,7 +1152,8 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 						roi_tracenamelist=""
 					endif
 					
-					imginfo=ReplaceStringByKey("ROITRACE", imginfo, roi_tracenamelist, "=", "\n", 0)
+					QIPanel_SetROIList(parentwin, roi_tracenamelist)
+					
 					note /k imgw, imginfo
 					if(ItemsInList(roi_tracenamelist)>0)
 						roi_tracenamelist="\"all;"+roi_tracenamelist+"\""
@@ -1101,10 +1172,145 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 	return 0
 End
 
-function QIGetLineProfile()
+function QIPanel_SetROIList(string graphname, string roilist)
+	SetWindow $graphname, userdata(ROITRACE)=roilist
 end
 
-function QIF_lineprofile(wave img, variable chn, variable slice, variable frame, wave roix, wave roiy, variable width)
+function /S QIPanel_GetROIList(string graphname)
+	return GetUserData(graphname, "", "ROITRACE")
+end
+
+function /S QIPanel_GetROIY(wave img, variable idx)
+	String wname=NameOfWave(img)+"_ROI_Y"+num2istr(idx)
+	return wname
+end
+
+function /S QIPanel_GetROIX(wave img, variable idx)
+	String wname=NameOfWave(img)+"_ROI_X"+num2istr(idx)
+	return wname
+end
+
+function QIF_PROTOTYPE1(variable call_flag, string graphname, wave img, wave img_raw, STRUCT ChannelInfo & chninfo)
+//	String winfo=note(img)
+//	String taginfostr=StringByKey("TAGINFO", winfo, "=", "\n", 0)
+//	String absolutePath=StringByKey("FILE", winfo, "=", "\n", 0)
+//	STRUCT TiffTagInfo taginfo
+//	StructGet /S taginfo, taginfostr
+
+	switch(call_flag)
+	case QIF_INIT: //initialization or setup parameters
+		DoAlert 0, "This is when you set up your parameter using global variables etc as you create them"
+		break
+	case QIF_EVALUATE: //call for the current frame, raw image data in img_raw, and scaled gray or RGB image (as displayed) in img
+		break
+	default:
+		break
+	endswitch
+	
+	return 0	
+end
+
+Function QIPanel_InitUserFunc1(pa) : PopupMenuControl
+	STRUCT WMPopupAction &pa
+
+	switch( pa.eventCode )
+		case 2: // mouse up
+			Variable popNum = pa.popNum
+			String popStr = pa.popStr
+			string panelname=pa.win
+			QIPanel_CallUSERFuncAction(panelname, QIF_INIT)
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+
+Function QIPanel_RunForAllFramesUserfunc1(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			string panelname=ba.win
+			string parentwin=GetUserData(panelname, "", "GRAPHNAME")
+			string imgwave=GetUserData(parentwin, "", "IMAGEWAVE")
+			wave imgw=$imgwave			
+			string imginfo=note(imgw)
+			string taginfostr=StringByKey("TAGINFO", imginfo, "=", "\n", 0)
+			STRUCT TiffTagInfo taginfo
+			
+			StructGet /S taginfo, taginfostr
+			
+			variable i
+			variable start_frame=0, end_frame=taginfo.total_time_frames
+
+			PROMPT start_frame, "start from frame:"
+			PROMPT end_frame, "end at frame:"
+			DoPrompt "call user function for frames", start_frame, end_frame
+			
+			if(V_flag!=0)
+				break
+			endif
+						
+			for(i=start_frame; i<=end_frame && i<taginfo.total_time_frames; i+=1)
+				SetVariable frame win=$panelname, value=_NUM:i
+				DoUpdate
+				QIPanel_ReloadFrameAction(panelname)
+				DoUpdate
+				QIPanel_CallUSERFuncAction(panelname, QIF_EVALUATE)
+				DoUpdate
+			endfor
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function QIPanel_CallUSERFuncAction(String panelname, variable call_type)
+	string parentwin=GetUserData(panelname, "", "GRAPHNAME")
+	string imgwave=GetUserData(parentwin, "", "IMAGEWAVE")
+	wave imgw=$imgwave
+	wave imgw_raw=$(imgwave+"_Raw")
+	string dfr_str=GetUserData(parentwin, "", "IMAGE_GRAPH_DF_NAME")
+	string imginfo=note(imgw)
+	string taginfostr=StringByKey("TAGINFO", imginfo, "=", "\n", 0)
+	STRUCT TiffTagInfo taginfo
+	STRUCT ChannelInfo chninfo
+	
+	StructGet /S taginfo, taginfostr
+	ControlInfo /W=$panelname userfunc_list1
+	FUNCREF QIF_PROTOTYPE1 pfunc=$S_Value
+	
+	if(str2num(StringByKey("ISPROTO", FUNCRefInfo(pfunc)))==0)
+		
+		chninfo.channel_r=taginfo.loaded_channels[0]
+		chninfo.channel_g=taginfo.loaded_channels[1]
+		chninfo.channel_b=taginfo.loaded_channels[2]
+		chninfo.channel_single=taginfo.loaded_channels[3]
+		chninfo.slice=taginfo.loaded_slice
+		chninfo.time_frame=taginfo.loaded_frame
+		chninfo.dim_order=""
+		
+		switch(call_type)
+		case QIF_INIT: //init
+			pfunc(QIF_INIT, dfr_str, imgw, imgw_raw, chninfo)
+			break
+		case QIF_EVALUATE: //call for the current frame
+			pfunc(QIF_EVALUATE, dfr_str, imgw, imgw_raw, chninfo)
+			//	DoUpdate
+			//endfor
+			break
+		endswitch
+	endif
+End
+
+
+function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_raw, STRUCT ChannelInfo& chninfo)
 
 	String winfo=note(img)
 	String taginfostr=StringByKey("TAGINFO", winfo, "=", "\n", 0)
@@ -1112,6 +1318,243 @@ function QIF_lineprofile(wave img, variable chn, variable slice, variable frame,
 	STRUCT TiffTagInfo taginfo
 	StructGet /S taginfo, taginfostr
 	
-	QILoadTiffByChn(NameOfWave(img), 0, -1, -1, -1, 0, 0, 0, absolutePath=absolutePath, taginfo=taginfo, saveaswave="test1") 
-	QILoadTiffByChn(NameOfWave(img), -1, 0, 1, -1, 0, 0, 0, absolutePath=absolutePath, taginfo=taginfo, saveaswave="test2")
+	DFREF old_dfr=GetDataFolderDFR()
+	
+	SetDataFolder $DF_name
+	
+	Duplicate /O img_raw, :IMG_FORLINEPROFILE
+	
+	wave roix=$(QIPanel_GetROIX(img, 0))
+	wave roiy=$(QIPanel_GetROIY(img, 0))
+	NVAR roiwidth=$(DF_name+":ROI_WIDTH")
+	variable width
+	if(NVAR_Exists(roiwidth))
+		width=roiwidth
+	else
+		Variable /G $(DF_name+":ROI_WIDTH")
+		NVAR roiwidth=$(DF_name+":ROI_WIDTH")
+	endif
+	if(width<0)
+		width=0
+	endif
+
+	if(WaveExists(roix) && WaveExists(roiy))
+		ImageLineProfile /P=-2/SC xWave=roix, yWave=roiy, srcwave=:IMG_FORLINEPROFILE, width=width
+		if(DimSize(:IMG_FORLINEPROFILE, 2)<=1)
+			Wave lineprofiles=:W_ImageLineProfile
+		else
+			Wave lineprofiles=:M_ImageLineProfile
+		endif
+		Wave W_LineProfileX
+		Wave W_LineProfileY
+		Variable linescale=sqrt((W_LineProfileX[1]-W_LineProfileX[0])^2+(W_LineProfileY[1]-W_LineProfileY[0])^2)
+		
+		variable dimx=DimSize(lineprofiles, 0)
+		variable dimy=DimSize(lineprofiles, 1)
+		if(dimy<1)
+			dimy=1
+		endif
+		
+		variable wtype=WaveType(lineprofiles)
+	endif
+	
+	variable i
+	
+	switch(call_flag)
+	case 0:
+		Make /N=(taginfo.total_time_frames, 5, dimy)/D/O :FIT_PEAK_INFO=NaN, :FIT_CONFIDENCE_INFO=NaN
+		Make /N=(dimx, taginfo.total_time_frames, dimy) /O /Y=(wtype) :FIT_RESULTS=NaN
+		
+		PROMPT width, "width for line profile (in unit of the image"
+		DoPrompt "Set width for line profile", width
+		roiwidth=width
+		
+		print "fit peak info wave is initialized."
+		
+		String topwin=WinName(0, 1)
+		NewPanel /EXT=0 /HOST=$topwin /W=(0, 0, 0.5, 0.5)
+		String plot_panel=S_Name
+		Display /HOST=$plot_panel /W=(0, 0, 1, 0.5)
+
+		Make /FREE/U/I/N=(3, 4) color_wave//={{}, {}, {}}
+		color_wave={{65535,0,0},  {0,65535,0}, {0,0,65535}, {0, 0, 0}}
+		Make /FREE/N=4 color_record={chninfo.channel_r, chninfo.channel_g, chninfo.channel_b, chninfo.channel_single}
+		variable color_idx=0
+						
+		variable axis_start=0
+		variable axis_end=0
+		for(i=0; i<dimy; i+=1)
+			
+			for(;color_idx<4 && color_record[color_idx]<0; color_idx+=1)
+			endfor
+			
+			axis_end=axis_start+floor(10/dimy)/10-0.01
+		
+			Make /N=(dimx) /O /Y=(wtype) $("PROFILE_"+num2istr(i)), $("fit_PROFILE_"+num2istr(i))
+			Make /N=5 /O /D $("fit_PROFILE"+num2istr(i)+"_Coef_estimate")
+			
+			wave w=$("PROFILE_"+num2istr(i))
+			wave fitw=$("fit_PROFILE_"+num2istr(i))
+			wave coef=$("fit_PROFILE"+num2istr(i)+"_Coef_estimate")
+			
+			w=lineprofiles[p][i]
+			SetScale /P x 0, linescale, "um", w, fitw
+			
+			variable intersect, slope, gauss_peak, gauss_width, gauss_position
+			estimate_linear_coef(w, intersect, slope)
+			
+			Duplicate /FREE w, w_debase
+			w_debase-=deltax(w)*p*slope				
+			estimate_gauss_coef(w_debase, gauss_peak, gauss_width, gauss_position)
+			
+			Make /D/N=5 /O :FIT_COEF_ESTIMATE
+			coef[0]=intersect
+			coef[1]=slope
+			coef[2]=gauss_peak
+			coef[3]=gauss_position
+			coef[4]=gauss_width
+			print "estimate for profile", i, " coefs: ", coef
+			
+			string axis="left"+num2istr(i)
+			AppendToGraph /L=$axis w, fitw
+			SetAxis/A=2/N=1 $axis
+			ModifyGraph mode($NameOfWave(w))=3,rgb($NameOfWave(w))=(color_wave[0][color_idx],color_wave[1][color_idx],color_wave[2][color_idx])
+			ModifyGraph rgb($NameOfWave(fitw))=(color_wave[0][color_idx],color_wave[1][color_idx],color_wave[2][color_idx])
+			ModifyGraph standoff($axis)=0,axisEnab($axis)={axis_start,axis_end},freePos($axis)=0
+			
+			axis_start=axis_end+0.02
+			color_idx+=1
+		endfor
+		SetAxis /A/N=1 bottom
+
+		Display /HOST=$plot_panel /W=(0, 0.5, 1, 1)
+		AppendToGraph :FIT_PEAK_INFO[][3][0], :FIT_PEAK_INFO[][3][1], :FIT_PEAK_INFO[][3][2]
+		break
+	case 1:
+		wave pinfo=:FIT_PEAK_INFO
+		wave pconf=:FIT_CONFIDENCE_INFO
+		wave fitresults=:FIT_RESULTS
+		
+		for(i=0; i<dimy; i+=1)
+			wave coef=$("fit_PROFILE"+num2istr(i)+"_Coef_estimate")
+			
+			Make /N=(dimx) /O /Y=(wtype) $("PROFILE_"+num2istr(i)), $("fit_PROFILE_"+num2istr(i))
+			wave w=$("PROFILE_"+num2istr(i))
+			wave fitw=$("fit_PROFILE_"+num2istr(i))
+			
+			w=lineprofiles[p][i]
+			SetScale /P x 0, linescale, "um", w, fitw
+			Make /T/FREE/N=4 T_Constraints; AbortONRTE
+			T_Constraints[0]={"K2 > 0", "K3 > 0", "K3 < "+num2str(rightx(w)), "K4 > 0"}; AbortONRTE
+			try
+				//variable intersect, slope, gauss_peak, gauss_width, gauss_position
+				estimate_linear_coef(w, intersect, slope)
+				
+				Duplicate /FREE w, w_debase
+				w_debase-=deltax(w)*p*slope				
+				estimate_gauss_coef(w_debase, gauss_peak, gauss_width, gauss_position)
+				
+				Make /D/N=5 /O :FIT_COEF_ESTIMATE
+				coef[0]=intersect
+				coef[1]=slope
+				coef[2]=gauss_peak
+				coef[3]=gauss_position
+				coef[4]=gauss_width
+				print "estimate for profile", i, " coefs: ", coef
+				
+				FuncFit /Q linear_base_gauss coef, w /D=fitw /F={0.95, 1} /C=T_Constraints; AbortOnRTE
+				
+				Wave w_sigma=:W_sigma; AbortOnRTE
+
+				pinfo[chninfo.time_frame][0][i]=coef[0]; AbortOnRTE
+				pinfo[chninfo.time_frame][1][i]=coef[1]; AbortOnRTE
+				pinfo[chninfo.time_frame][2][i]=coef[2]; AbortOnRTE
+				pinfo[chninfo.time_frame][3][i]=coef[3]; AbortOnRTE
+				pinfo[chninfo.time_frame][4][i]=coef[4]; AbortOnRTE
+				
+				pconf[chninfo.time_frame][0][i]=w_sigma[0]; AbortOnRTE
+				pconf[chninfo.time_frame][1][i]=w_sigma[1]; AbortOnRTE
+				pconf[chninfo.time_frame][2][i]=w_sigma[2]; AbortOnRTE
+				pconf[chninfo.time_frame][3][i]=w_sigma[3]; AbortOnRTE
+				pconf[chninfo.time_frame][4][i]=w_sigma[4]; AbortOnRTE
+				
+				fitresults[][chninfo.time_frame][i]=fitw[p]; AbortOnRTE
+			catch
+				variable err=GetRTError(1)
+				print "fit encounterred error: ", err
+				print GetErrMessage(err)
+			endtry
+			
+		endfor
+
+		print "fit for frame", chninfo.time_frame, " is done."
+		break
+	default:
+		break
+	endswitch
+	
+	SetDataFolder old_dfr
+end
+
+static Function estimate_linear_coef(wave w, variable & intersect, variable & slope)
+	try
+		Make /D/FREE/N=2 tmpcoef; AbortONRTE
+		CurveFit /Q line kwCWave=tmpcoef w; AbortONRTE
+		//intersect=tmpcoef[0]
+		slope=tmpcoef[1]; AbortONRTE
+		WaveStats /Q w; AbortONRTE
+		intersect=V_min; AbortONRTE
+	catch
+		variable err=GetRTError(1)
+		print "error when estimating linear coef: ", err
+		print GetErrMessage(err)
+	endtry
+End
+
+static Function estimate_gauss_coef(wave w, variable & peak, variable & width, variable & position)
+	try
+		Make /D/FREE/N=4 tmpcoef; AbortONRTE
+		Make /T/FREE/N=4 T_Constraints; AbortONRTE
+		T_Constraints[0]={"K1 > 0", "K2 > 0", "K2 < "+num2str(rightx(w)), "K3 > 0"}; AbortONRTE
+		CurveFit /Q gauss kwCWave=tmpcoef w /C=T_Constraints; AbortONRTE
+		peak=tmpcoef[1]; AbortONRTE
+		position=tmpcoef[2]; AbortONRTE
+		width=tmpcoef[3]; AbortONRTE
+	catch
+		variable err=GetRTError(1)
+		print "error when estimating linear coef: ", err
+		print GetErrMessage(err)
+	endtry
+End
+
+Function linear_base_gauss(w,x) : FitFunc
+	Wave w
+	Variable x
+
+	//CurveFitDialog/ These comments were created by the Curve Fitting dialog. Altering them will
+	//CurveFitDialog/ make the function less convenient to work with in the Curve Fitting dialog.
+	//CurveFitDialog/ Equation:
+	//CurveFitDialog/ f(x) = y0 + slope*x + amplitude*exp(-((x-peak_position)/width)^2)
+	//CurveFitDialog/ End of Equation
+	//CurveFitDialog/ Independent Variables 1
+	//CurveFitDialog/ x
+	//CurveFitDialog/ Coefficients 5
+	//CurveFitDialog/ w[0] = y0
+	//CurveFitDialog/ w[1] = slope
+	//CurveFitDialog/ w[2] = amplitude
+	//CurveFitDialog/ w[3] = peak_position
+	//CurveFitDialog/ w[4] = width
+
+	return w[0] + w[1]*x + w[2]*exp(-((x-w[3])/w[4])^2)
+End
+
+function QIPanel_DisplayLIneProfiles(wave w, variable layer, variable offset)
+	display
+	variable i
+	
+	for(i=0; i<dimsize(w, 1); i+=1)
+		string tracename="fit_result_frame_"+num2istr(i)
+		appendtograph w[][i][layer] /TN=$tracename
+		modifygraph offset($tracename)={0, offset*i}
+	endfor
 end
