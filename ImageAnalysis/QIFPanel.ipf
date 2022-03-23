@@ -4,8 +4,8 @@
 #include <WMBatchCurveFitIM>
 
 Menu "QLabTools"
-	SubMenu "QIPanel"
-		"LoadTiff", QILoadTiffByIdx(0, DisplayImage=1); QIPanel()
+	SubMenu "QIFPanel"
+		"LoadTiff", QIFLoadTiffByIdx(0, DisplayImage=1, refresh_tag_flag=1); QIFPanel()
 	End
 End
 
@@ -155,7 +155,7 @@ end
 
 StrConstant QIMAGEWAVEVERSION="1.0"
 
-function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, variable load_data_flag, STRUCT ChannelInfo &Channels, variable DisplayImage])
+function QIFLoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, variable load_data_flag, STRUCT ChannelInfo &Channels, variable DisplayImage])
 	Variable refNum
 	Variable retVal=-1
 	string img_loaded_idx="", compareidx=""
@@ -174,7 +174,7 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 	endif
 	
 	if(ParamIsDefault(refresh_tag_flag))
-		refresh_tag_flag=1
+		refresh_tag_flag=0
 	endif
 	
 	if(ParamIsDefault(load_data_flag))
@@ -227,7 +227,7 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 	variable total_frames=-1
 	
 	DFREF dfr=GetDataFolderDFR()
-
+	KillWaves /Z :QITMPIMG_TAG, :QITMPIMG_RAW, :QITMPIMG
 	NewDataFolder/O/S QIImgTmp; AbortOnRTE
 	
 	try
@@ -238,7 +238,7 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 			if(V_Flag==1)
 				QITiffTagInfo(:Tag0:T_Tags, taginfo)
 				StructPut /S taginfo, taginfostr
-				Duplicate /O :Tag0:T_Tags, $(frameWaveName+"_Tag"); AbortOnRTE
+				MoveWave :Tag0:T_Tags, dfr:QITMPIMG_TAG //$(frameWaveName+"_Tag"); AbortOnRTE
 				retVal=0
 			else
 				retVal=-1;
@@ -249,7 +249,7 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 			retVal=0
 		endif
 		AbortOnValue retVal==-1, -100
-				
+		
 		variable ridx=-1, gidx=-1, bidx=-1
 		
 		if(!ParamIsDefault(Channels))
@@ -263,7 +263,7 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 			string dimorder=Channels.dim_order
 			
 			if(chn_single>=0)
-				idx=QIGetIdxByChn(chn_single, zidx, tidx, dimorder, tagInfo)
+				idx=QIFGetIdxByChn(chn_single, zidx, tidx, dimorder, tagInfo)
 				
 				taginfo.load_flag=1
 				taginfo.loaded_idx[0]=-1
@@ -277,9 +277,9 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 				taginfo.loaded_slice=zidx
 				taginfo.loaded_frame=tidx
 			else
-				ridx=QIGetIdxByChn(chn_r, zidx, tidx, dimorder, tagInfo)
-				gidx=QIGetIdxByChn(chn_g, zidx, tidx, dimorder, tagInfo)
-				bidx=QIGetIdxByChn(chn_b, zidx, tidx, dimorder, tagInfo)
+				ridx=QIFGetIdxByChn(chn_r, zidx, tidx, dimorder, tagInfo)
+				gidx=QIFGetIdxByChn(chn_g, zidx, tidx, dimorder, tagInfo)
+				bidx=QIFGetIdxByChn(chn_b, zidx, tidx, dimorder, tagInfo)
 				
 				taginfo.load_flag=2
 				taginfo.loaded_idx[0]=ridx
@@ -386,12 +386,19 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 					MatrixOp /O tmpImg_G_Adj=scale(tmpImg_G, 0, 65535); AbortOnRTE
 					MatrixOp /O tmpImg_B_Adj=scale(tmpImg_B, 0, 65535); AbortOnRTE
 					
-					Concatenate /O {tmpImg_R, tmpImg_G, tmpImg_B}, tmpImg_Raw; AbortOnRTE
 					Concatenate /O {tmpImg_R_Adj, tmpImg_G_Adj, tmpImg_B_Adj}, tmpImg; AbortOnRTE
 				endif
+				if(WaveExists(tmpImg))
+					MoveWave tmpImg, dfr:QITMPIMG ; AbortOnRTE
+				else
+					Make /N=(maxx, maxy, 1) dfr:QITMPIMG=NaN
+				endif
+				if(WaveExists(tmpImg_Raw))
+					MoveWave tmpImg_Raw, dfr:QITMPIMG_RAW ; AbortOnRTE //$(frameWaveName+"_Raw"); AbortOnRTE
+				else
+					Make /N=(maxx, maxy, 1) dfr:QITMPIMG_RAW=NaN
+				endif
 				
-				Duplicate /O tmpImg, $(frameWaveName); AbortOnRTE
-				Duplicate /O tmpImg_Raw, $(frameWaveName+"_Raw"); AbortOnRTE
 				retVal=0
 				imageInfoStr=ReplaceStringByKey("TAGINFO", imageInfoStr, taginfostr, "=", "\n", 0)
 			endif
@@ -407,11 +414,14 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 	KillDataFolder :
 	
 	if(retVal==0)
+		if(refresh_tag_flag==1)
+			Duplicate /O :QITMPIMG_TAG, $(frameWaveName+"_Tag")
+		endif
 		
 		if(load_data_flag==1)
-			
+			Duplicate /O :QITMPIMG_RAW, $(frameWaveName+"_Raw")
 			wave w_raw=$(frameWaveName+"_Raw")
-			
+			Duplicate /O :QITMPIMG, $(frameWaveName)
 			wave w_img=$(frameWaveName)
 			
 			variable xres=taginfo.x_resolution
@@ -436,11 +446,11 @@ function QILoadTiffByIdx(int idx, [String imageName, variable refresh_tag_flag, 
 		endif
 
 	endif
-	
+	KillWaves /Z :QITMPIMG_TAG, :QITMPIMG_RAW, :QITMPIMG
 	return retVal
 end
 
-function QIGetIdxByChn(int ColorChn, int ZIdx, int TimeIdx, String DimOrder, STRUCT TiffTagInfo &taginfo)
+function QIFGetIdxByChn(int ColorChn, int ZIdx, int TimeIdx, String DimOrder, STRUCT TiffTagInfo &taginfo)
 	variable totalColorChn= taginfo.total_color_number
 	variable totalIdx= taginfo.total_image_number
 	variable totalZ= taginfo.total_slice_number
@@ -462,7 +472,7 @@ function QIGetIdxByChn(int ColorChn, int ZIdx, int TimeIdx, String DimOrder, STR
 	return idx
 end
 
-function QILoadTiffByChn(string frameWaveName, int single_color_channel, int r, int g, int b, int ZIdx, int TimeIdx, int refresh_tag_flag, [string DimOrder, string absolutePath, STRUCT TiffTagInfo & taginfo, string saveaswave])
+function QIFLoadTiffByChn(string frameWaveName, int single_color_channel, int r, int g, int b, int ZIdx, int TimeIdx, int refresh_tag_flag, [string DimOrder, string absolutePath, STRUCT TiffTagInfo & taginfo, string saveaswave])
 	variable retVal=-1
 	
 	if(ParamIsDefault(DimOrder))
@@ -481,25 +491,25 @@ function QILoadTiffByChn(string frameWaveName, int single_color_channel, int r, 
 		channels.time_frame=TimeIdx
 		channels.dim_order=DimOrder
 		
-		retVal=QILoadTiffByIdx(-1, imageName=frameWaveName, refresh_tag_flag=refresh_tag_flag, Channels=channels)
+		retVal=QIFLoadTiffByIdx(-1, imageName=frameWaveName, refresh_tag_flag=refresh_tag_flag, Channels=channels)
 	else
 		try
 			if(!ParamIsDefault(taginfo) && !ParamIsDefault(absolutePath))
 				if(single_color_channel>=0)
-					variable single_idx=QIGetIdxByChn(single_color_channel, ZIdx, TimeIdx, DimOrder, taginfo)
+					variable single_idx=QIFGetIdxByChn(single_color_channel, ZIdx, TimeIdx, DimOrder, taginfo)
 					if(single_idx>=0)
 						ImageLoad/T=tiff/Q/C=1/S=(single_idx)/BIGT=1/N=$saveaswave/O absolutePath
 						retVal=(V_flag==1)?0:-1
 					endif
 				else
 					Make /FREE/N=3 idx_rgb
-					idx_rgb[0]=QIGetIdxByChn(r, ZIdx, TimeIdx, DimOrder, taginfo)
-					idx_rgb[1]=QIGetIdxByChn(g, ZIdx, TimeIdx, DimOrder, taginfo)
-					idx_rgb[2]=QIGetIdxByChn(b, ZIdx, TimeIdx, DimOrder, taginfo)
+					idx_rgb[0]=QIFGetIdxByChn(r, ZIdx, TimeIdx, DimOrder, taginfo)
+					idx_rgb[1]=QIFGetIdxByChn(g, ZIdx, TimeIdx, DimOrder, taginfo)
+					idx_rgb[2]=QIFGetIdxByChn(b, ZIdx, TimeIdx, DimOrder, taginfo)
 					variable i, count=0
 					for(i=0; i<3; i+=1)
 						if(idx_rgb[i]>=0)
-							variable separate_chn_idx=QIGetIdxByChn(idx_rgb[i], ZIdx, TimeIdx, DimOrder, taginfo)
+							variable separate_chn_idx=QIFGetIdxByChn(idx_rgb[i], ZIdx, TimeIdx, DimOrder, taginfo)
 							if(separate_chn_idx>=0)
 								ImageLoad/T=tiff/Q/C=1/S=(separate_chn_idx)/BIGT=1/N=$saveaswave/O absolutePath
 								if(V_Flag==1)
@@ -528,11 +538,11 @@ function QILoadTiffByChn(string frameWaveName, int single_color_channel, int r, 
 	return retVal
 end
 
-function /T QIPanel_GetDFName(string dfstr, string graphname, string imgname)
+function /T QIFPanel_GetDFName(string dfstr, string graphname, string imgname)
 	return dfstr+imgname+"_DF_"+graphname
 end
 
-function QIPanel([string graphName, variable refresh])
+function QIFPanel([string graphName, variable refresh])
 	if(ParamIsDefault(graphName))
 		graphName=WinName(0, 1)
 	endif
@@ -548,7 +558,7 @@ function QIPanel([string graphName, variable refresh])
 	wave img=dfr:$imgname
 	string imginfo=note(img)
 	
-	string imgdata_dfr_str=QIPanel_GetDFName(dfr_str, graphName, imgname)
+	string imgdata_dfr_str=QIFPanel_GetDFName(dfr_str, graphName, imgname)
 	NewDataFolder /O $imgdata_dfr_str
 	SetWindow $graphname, userdata(IMAGE_GRAPH_DF_NAME)=imgdata_dfr_str
 	
@@ -590,62 +600,62 @@ function QIPanel([string graphName, variable refresh])
 		load_flag=1
 	endif
 		
-	if(strlen(GetUserData(graphName, "", "QIPANEL"))==0)
+	if(strlen(GetUserData(graphName, "", "QIFPanel"))==0)
 		ModifyGraph /W=$graphName width={Aspect,(DimDelta(img, 0)*DimSize(img, 0))/(DimDelta(img, 1)*DimSize(img, 1))}
 		//QILoadTiffByChn(GetWavesDataFolder(img, 2), current_singlechn, current_chn_r, current_chn_g, current_chn_b, current_zidx, current_timeidx, refresh)
 		DoUpdate
 		imginfo=note(img)
-		string roi_tracelist=QIPanel_GetROIList(graphName)
+		string roi_tracelist=QIFPanel_GetROIList(graphName)
 		if(strlen(roi_tracelist)==0)
 			roi_tracelist=";"
 		endif
-		NewPanel /K=2 /Ext=0 /HOST=$graphName	/N=$(graphName+"QIPanel") /W=(0, 0, 200, 400)
+		NewPanel /K=2 /Ext=0 /HOST=$graphName	/N=$(graphName+"QIFPanel") /W=(0, 0, 200, 400)
 		SetWindow $S_name, userdata(GRAPHNAME)=graphName
 		String panelname=S_name
-		SetWindow $graphName, userdata(QIPANEL)=panelname
+		SetWindow $graphName, userdata(QIFPanel)=panelname
 		SetWindow $graphName, userdata(IMAGEWAVE)=GetWavesDataFolder(img, 2)
-		SetWindow $graphName, hook(QIPanel_MouseFunc)=QIPanel_MouseFunc
+		SetWindow $graphName, hook(QIFPanel_MouseFunc)=QIFPanel_MouseFunc
 		
 		TitleBox cords, title="Px=?, Py=?\nx=?, y=?", size={150, 40}, pos={0, 0}
-		Button refresh, title="Refresh/Reload File", size={150, 20}, pos={0, 40}, proc=QIPanel_RefreshFile
+		Button refresh, title="Refresh/Reload File", size={150, 20}, pos={0, 40}, proc=QIFPanel_RefreshFile
 		
-		TabControl channel_select value=(load_flag-1),tabLabel(0)="Single",tabLabel(1)="RGB", size={200, 140}, pos={0, 60}, proc=QIPanel_ChannelTab
+		TabControl channel_select value=(load_flag-1),tabLabel(0)="Single",tabLabel(1)="RGB", size={200, 140}, pos={0, 60}, proc=QIFPanel_ChannelTab
 		Button channel_setting, title="@", size={20, 20}, pos={5, 90}
-		SetVariable channel, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_singlechn, title="Chn#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 90}, proc=QIPanel_ReloadFrame
+		SetVariable channel, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_singlechn, title="Chn#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 90}, proc=QIFPanel_ReloadFrame
 		Button channel_setting_r, title="@", size={20, 20}, pos={5, 90}, disable=1
-		SetVariable channel_r, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn_r, title="Chn_R#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 90}, disable=1, proc=QIPanel_ReloadFrame
+		SetVariable channel_r, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn_r, title="Chn_R#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 90}, disable=1, proc=QIFPanel_ReloadFrame
 		Button channel_setting_g, title="@", size={20, 20}, pos={5, 110}, disable=1
-		SetVariable channel_g, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn_g, title="Chn_G#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 110}, disable=1, proc=QIPanel_ReloadFrame
+		SetVariable channel_g, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn_g, title="Chn_G#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 110}, disable=1, proc=QIFPanel_ReloadFrame
 		Button channel_setting_b, title="@", size={20, 20}, pos={5, 130}, disable=1
-		SetVariable channel_b, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn_b, title="Chn_B#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 130}, disable=1, proc=QIPanel_ReloadFrame		
+		SetVariable channel_b, limits={-1, totalColorChn, 1}, live=1, value=_NUM:current_chn_b, title="Chn_B#", format="%d/"+num2istr(totalColorChn-1), size={150, 20}, pos={25, 130}, disable=1, proc=QIFPanel_ReloadFrame		
 
-		SetVariable slice, limits={-1, totalZ, 1}, live=1, value=_NUM:current_zidx, title="slice#", format="%d / "+num2istr(totalZ-1), size={150, 20}, pos={10, 150}, proc=QIPanel_ReloadFrame
-		SetVariable frame, limits={-1, totalTimeIdx, 1}, live=1, value=_NUM:current_timeidx, title="time#", format="%d / "+num2istr(totalTimeIdx-1), pos={10, 170}, size={150, 20}, proc=QIPanel_ReloadFrame
+		SetVariable slice, limits={-1, totalZ, 1}, live=1, value=_NUM:current_zidx, title="slice#", format="%d / "+num2istr(totalZ-1), size={150, 20}, pos={10, 150}, proc=QIFPanel_ReloadFrame
+		SetVariable frame, limits={-1, totalTimeIdx, 1}, live=1, value=_NUM:current_timeidx, title="time#", format="%d / "+num2istr(totalTimeIdx-1), pos={10, 170}, size={150, 20}, proc=QIFPanel_ReloadFrame
 		
 		GroupBox roi_op, title="ROI Definition", pos={0, 200}, size={200, 70}
-		Button roi_new, title="New ROI", size={90,20}, pos={5, 220}, proc=QIPanel_ROINew
-		Button roi_edit, title="Edit ROI", size={90, 20}, pos={95, 220}, proc=QIPanel_ROIEdit
+		Button roi_new, title="New ROI", size={90,20}, pos={5, 220}, proc=QIFPanel_ROINew
+		Button roi_edit, title="Edit ROI", size={90, 20}, pos={95, 220}, proc=QIFPanel_ROIEdit
 		PopupMenu roi_list, size={90,20}, title="ROI#", pos={5, 240}, value=#roi_tracelist
-		Button roi_del, title="Delete ROI", size={90,20}, pos={95, 240}, proc=QIPanel_ROIDelete
+		Button roi_del, title="Delete ROI", size={90,20}, pos={95, 240}, proc=QIFPanel_ROIDelete
 		
 		GroupBox user_functions, title="User Functions", size={200, 100}, pos={0, 280}
 		string userfunc_type="WIN:Procedure;KIND:2;NPARAMS:7"
-		Button all_frame_runuserfunc, size={20, 20}, title="@", pos={5, 300}, proc=QIPanel_RunForAllFramesUserfunc1
+		Button all_frame_runuserfunc, size={20, 20}, title="@", pos={5, 300}, proc=QIFPanel_RunForAllFramesUserfunc1
 		CheckBox single_frame_runuserfunc, title="", size={25, 20}, pos={30, 303}
 		variable popmode=WhichListItem("QIF_PROTOTYPE1", FunctionList("QIF_*", ";", ""), ";")
-		PopupMenu userfunc_list1, size={160, 20}, pos={50, 300}, value=FunctionList("QIF_*", ";", ""), popvalue="QIF_PROTOTYPE1", proc=QIPanel_InitUserFunc1
+		PopupMenu userfunc_list1, size={160, 20}, pos={50, 300}, value=FunctionList("QIF_*", ";", ""), popvalue="QIF_PROTOTYPE1", proc=QIFPanel_InitUserFunc1
 		
-		QIPanel_ReloadFrameAction(panelname, refresh=refresh)
+		QIFPanel_ReloadFrameAction(panelname, refresh=refresh)
 	endif
 end
 
-Function QIPanel_ChannelTab(tca) : TabControl
+Function QIFPanel_ChannelTab(tca) : TabControl
 	STRUCT WMTabControlAction &tca
 
 	switch( tca.eventCode )
 		case 2: // mouse up
 			Variable tab = tca.tab
-			QIPanel_ReloadFrameAction(tca.win)
+			QIFPanel_ReloadFrameAction(tca.win)
 			break
 		case -1: // control being killed
 			break
@@ -654,7 +664,7 @@ Function QIPanel_ChannelTab(tca) : TabControl
 	return 0
 End
 
-function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
+function QIFPanel_ReloadFrameAction(string panelname, [variable refresh])
 	string parentwin=GetUserData(panelname, "", "GRAPHNAME")
 	string fw=GetUserData(parentwin, "", "IMAGEWAVE")
 	string imginfo=note($fw)
@@ -763,22 +773,22 @@ function QIPanel_ReloadFrameAction(string panelname, [variable refresh])
 	SetVariable frame, win=$panelname, value=_NUM:frame
 	
 	if(ParamIsDefault(refresh))
-		refresh=1
+		refresh=0
 	endif
 	
 	if(single_or_color==0)
-		QILoadTiffByChn(fw, channel, -1, -1, -1, slice, frame, refresh)
+		QIFLoadTiffByChn(fw, channel, -1, -1, -1, slice, frame, refresh)
 	else
-		QILoadTiffByChn(fw, -1, channel_r, channel_g, channel_b, slice, frame, refresh)
+		QIFLoadTiffByChn(fw, -1, channel_r, channel_g, channel_b, slice, frame, refresh)
 	endif
 	
 	ControlInfo /W=$panelname single_frame_runuserfunc
 	if(V_value==1)
-		QIPanel_CallUserFuncAction(panelname, QIF_EVALUATE)
+		QIFPanel_CallUserFuncAction(panelname, QIF_EVALUATE)
 	endif
 end
 
-Function QIPanel_ReloadFrame(sva) : SetVariableControl
+Function QIFPanel_ReloadFrame(sva) : SetVariableControl
 	STRUCT WMSetVariableAction &sva
 
 	switch( sva.eventCode )
@@ -788,7 +798,7 @@ Function QIPanel_ReloadFrame(sva) : SetVariableControl
 			//Variable dval = sva.dval
 			//String sval = sva.sval
 			DoUpdate
-			QIPanel_ReloadFrameAction(sva.win)
+			QIFPanel_ReloadFrameAction(sva.win)
 			DoUpdate
 			break
 		case -1: // control being killed
@@ -798,7 +808,7 @@ Function QIPanel_ReloadFrame(sva) : SetVariableControl
 	return 0
 End
 
-Function QIPanel_MouseFunc(s)
+Function QIFPanel_MouseFunc(s)
 	STRUCT WMWinHookStruct &s
 
 	Variable hookResult = 0
@@ -820,7 +830,7 @@ Function QIPanel_MouseFunc(s)
 	variable cur_y=AxisValFromPixel(s.winName, yaxis, s.mouseLoc.v)
 	string imgwave=GetUserData(s.winName, "", "IMAGEWAVE")
 	wave imgw=$imgwave
-	string panelname=GetUserData(s.winName, "", "QIPANEL")
+	string panelname=GetUserData(s.winName, "", "QIFPanel")
 	
 	switch(s.eventCode)
 		case 0:				// Activate
@@ -837,7 +847,7 @@ Function QIPanel_MouseFunc(s)
 					SetWindow $panelname, hide=1
 					SetDrawlayer /W=$(s.winName) ProgFront
 					SetDrawEnv fname="Arial", fsize=10, textrgb=(65535,0,0), xcoord=abs, ycoord=abs
-					DrawText /W=$(s.winName) 0, 10, "QIPanel hidden"
+					DrawText /W=$(s.winName) 0, 10, "QIFPanel hidden"
 				else
 					SetWindow $panelname, hide=0
 					SetDrawLayer /W=$(s.winName) /K ProgFront
@@ -883,7 +893,7 @@ Function QIPanel_MouseFunc(s)
 					f-=1
 				endif
 				SetVariable frame, win=$panelname, value=_NUM:f
-				QIPanel_ReloadFrameAction(panelname)
+				QIFPanel_ReloadFrameAction(panelname)
 				DoUpdate
 			endif
 			
@@ -894,7 +904,7 @@ Function QIPanel_MouseFunc(s)
 	return hookResult		// 0 if nothing done, else 1
 End
 
-Function QIPanel_ROINew(ba) : ButtonControl
+Function QIFPanel_ROINew(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -917,7 +927,7 @@ Function QIPanel_ROINew(ba) : ButtonControl
 			string yaxistype=StringByKey("AXTYPE", AxisInfo(parentwin, yaxis))			
 			string exec_cmd=""
 			string roi_tracename=NameOfWave(imgw)+"_ROI"
-			string roi_tracenamelist=QIPanel_GetROIList(parentwin)
+			string roi_tracenamelist=QIFPanel_GetROIList(parentwin)
 			variable roi_tracename_lastidx=str2num(StringFromList(ItemsInList(roi_tracenamelist)-1, roi_tracenamelist))
 			
 			if(numtype(roi_tracename_lastidx)!=0)
@@ -1000,7 +1010,7 @@ Function QIPanel_ROINew(ba) : ButtonControl
 						endif
 					endfor
 					
-					QIPanel_SetROIList(parentwin, updated_roilist)
+					QIFPanel_SetROIList(parentwin, updated_roilist)
 					note /k imgw, imginfo
 					updated_roilist="\"all;"+updated_roilist+"\""
 					PopupMenu roi_list, win=$panelname, value=#updated_roilist					
@@ -1016,14 +1026,14 @@ Function QIPanel_ROINew(ba) : ButtonControl
 End
 
 
-Function QIPanel_RefreshFile(ba) : ButtonControl
+Function QIFPanel_RefreshFile(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
 			string panelname=ba.win
-			QIPanel_ReloadFrameAction(panelname, refresh=1)
+			QIFPanel_ReloadFrameAction(panelname, refresh=1)
 			break
 		case -1: // control being killed
 			break
@@ -1033,7 +1043,7 @@ Function QIPanel_RefreshFile(ba) : ButtonControl
 End
 
 
-Function QIPanel_ROIEdit(ba) : ButtonControl
+Function QIFPanel_ROIEdit(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -1056,7 +1066,7 @@ Function QIPanel_ROIEdit(ba) : ButtonControl
 			
 			string roi_tracename=NameOfWave(imgw)+"_ROI"
 			
-			string roi_tracenamelist=QIPanel_GetROIList(parentwin)
+			string roi_tracenamelist=QIFPanel_GetROIList(parentwin)
 
 			if(numtype(edit_flag)!=0)
 				edit_flag=0
@@ -1098,7 +1108,7 @@ Function QIPanel_ROIEdit(ba) : ButtonControl
 	return 0
 End
 
-Function QIPanel_ROIDelete(ba) : ButtonControl
+Function QIFPanel_ROIDelete(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -1122,7 +1132,7 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 			string dfr_str=GetUserData(parentwin, "", "IMAGE_GRAPH_DF_NAME")
 			
 			string roi_tracename=NameOfWave(imgw)+"_ROI"
-			string roi_tracenamelist=QIPanel_GetROIList(parentwin)
+			string roi_tracenamelist=QIFPanel_GetROIList(parentwin)
 
 				
 			if(numtype(edit_flag)!=0)
@@ -1152,7 +1162,7 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 						roi_tracenamelist=""
 					endif
 					
-					QIPanel_SetROIList(parentwin, roi_tracenamelist)
+					QIFPanel_SetROIList(parentwin, roi_tracenamelist)
 					
 					note /k imgw, imginfo
 					if(ItemsInList(roi_tracenamelist)>0)
@@ -1172,20 +1182,20 @@ Function QIPanel_ROIDelete(ba) : ButtonControl
 	return 0
 End
 
-function QIPanel_SetROIList(string graphname, string roilist)
+function QIFPanel_SetROIList(string graphname, string roilist)
 	SetWindow $graphname, userdata(ROITRACE)=roilist
 end
 
-function /S QIPanel_GetROIList(string graphname)
+function /S QIFPanel_GetROIList(string graphname)
 	return GetUserData(graphname, "", "ROITRACE")
 end
 
-function /S QIPanel_GetROIY(wave img, variable idx)
+function /S QIFPanel_GetROIY(wave img, variable idx)
 	String wname=NameOfWave(img)+"_ROI_Y"+num2istr(idx)
 	return wname
 end
 
-function /S QIPanel_GetROIX(wave img, variable idx)
+function /S QIFPanel_GetROIX(wave img, variable idx)
 	String wname=NameOfWave(img)+"_ROI_X"+num2istr(idx)
 	return wname
 end
@@ -1210,7 +1220,7 @@ function QIF_PROTOTYPE1(variable call_flag, string graphname, wave img, wave img
 	return 0	
 end
 
-Function QIPanel_InitUserFunc1(pa) : PopupMenuControl
+Function QIFPanel_InitUserFunc1(pa) : PopupMenuControl
 	STRUCT WMPopupAction &pa
 
 	switch( pa.eventCode )
@@ -1218,7 +1228,7 @@ Function QIPanel_InitUserFunc1(pa) : PopupMenuControl
 			Variable popNum = pa.popNum
 			String popStr = pa.popStr
 			string panelname=pa.win
-			QIPanel_CallUSERFuncAction(panelname, QIF_INIT)
+			QIFPanel_CallUSERFuncAction(panelname, QIF_INIT)
 			break
 		case -1: // control being killed
 			break
@@ -1228,7 +1238,7 @@ Function QIPanel_InitUserFunc1(pa) : PopupMenuControl
 End
 
 
-Function QIPanel_RunForAllFramesUserfunc1(ba) : ButtonControl
+Function QIFPanel_RunForAllFramesUserfunc1(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
@@ -1258,9 +1268,9 @@ Function QIPanel_RunForAllFramesUserfunc1(ba) : ButtonControl
 			for(i=start_frame; i<=end_frame && i<taginfo.total_time_frames; i+=1)
 				SetVariable frame win=$panelname, value=_NUM:i
 				DoUpdate
-				QIPanel_ReloadFrameAction(panelname)
+				QIFPanel_ReloadFrameAction(panelname)
 				DoUpdate
-				QIPanel_CallUSERFuncAction(panelname, QIF_EVALUATE)
+				QIFPanel_CallUSERFuncAction(panelname, QIF_EVALUATE)
 				DoUpdate
 			endfor
 			break
@@ -1271,7 +1281,7 @@ Function QIPanel_RunForAllFramesUserfunc1(ba) : ButtonControl
 	return 0
 End
 
-Function QIPanel_CallUSERFuncAction(String panelname, variable call_type)
+Function QIFPanel_CallUSERFuncAction(String panelname, variable call_type)
 	string parentwin=GetUserData(panelname, "", "GRAPHNAME")
 	string imgwave=GetUserData(parentwin, "", "IMAGEWAVE")
 	wave imgw=$imgwave
@@ -1324,8 +1334,8 @@ function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_
 	
 	Duplicate /O img_raw, :IMG_FORLINEPROFILE
 	
-	wave roix=$(QIPanel_GetROIX(img, 0))
-	wave roiy=$(QIPanel_GetROIY(img, 0))
+	wave roix=$(QIFPanel_GetROIX(img, 0))
+	wave roiy=$(QIFPanel_GetROIY(img, 0))
 	NVAR roiwidth=$(DF_name+":ROI_WIDTH")
 	variable width
 	if(NVAR_Exists(roiwidth))
@@ -1548,7 +1558,7 @@ Function linear_base_gauss(w,x) : FitFunc
 	return w[0] + w[1]*x + w[2]*exp(-((x-w[3])/w[4])^2)
 End
 
-function QIPanel_DisplayLIneProfiles(wave w, variable layer, variable offset)
+function QIFPanel_DisplayLIneProfiles(wave w, variable layer, variable offset)
 	display
 	variable i
 	
