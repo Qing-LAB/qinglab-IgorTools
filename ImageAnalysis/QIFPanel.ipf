@@ -1375,7 +1375,17 @@ function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_
 		Make /N=(taginfo.total_time_frames, 5, dimy)/D/O :FIT_PEAK_INFO=NaN, :FIT_CONFIDENCE_INFO=NaN
 		Make /N=(dimx, taginfo.total_time_frames, dimy) /O /Y=(wtype) :FIT_RESULTS=NaN
 		
-		PROMPT width, "width for line profile (in unit of the image"
+		wave pinfo=:FIT_PEAK_INFO
+		wave pconf=:FIT_CONFIDENCE_INFO
+		wave fitresults=:FIT_RESULTS
+		
+		SetDimLabel 1, 0, BASE_OFFSET, pinfo, pconf
+		SetDimLabel 1, 1, BASE_SLOPE, pinfo, pconf
+		SetDimlabel 1, 2, PEAK_HEIGHT, pinfo, pconf
+		SetDimLabel 1, 3, PEAK_POSITION, pinfo, pconf
+		SetDimLabel 1, 4, PEAK_WIDTH, pinfo, pconf
+		
+		PROMPT width, "width for line profile (in unit of the image)"
 		DoPrompt "Set width for line profile", width
 		roiwidth=width
 		
@@ -1470,23 +1480,23 @@ function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_
 				coef[2]=gauss_peak
 				coef[3]=gauss_position
 				coef[4]=gauss_width
-				print "estimate for profile", i, " coefs: ", coef
+				//print "estimate for profile", i, " coefs: ", coef
 				
 				FuncFit /Q linear_base_gauss coef, w /D=fitw /F={0.95, 1} /C=T_Constraints; AbortOnRTE
 				
 				Wave w_sigma=:W_sigma; AbortOnRTE
 
-				pinfo[chninfo.time_frame][0][i]=coef[0]; AbortOnRTE
-				pinfo[chninfo.time_frame][1][i]=coef[1]; AbortOnRTE
-				pinfo[chninfo.time_frame][2][i]=coef[2]; AbortOnRTE
-				pinfo[chninfo.time_frame][3][i]=coef[3]; AbortOnRTE
-				pinfo[chninfo.time_frame][4][i]=coef[4]; AbortOnRTE
+				pinfo[chninfo.time_frame][%BASE_OFFSET][i]=coef[0]; AbortOnRTE
+				pinfo[chninfo.time_frame][%BASE_SLOPE][i]=coef[1]; AbortOnRTE
+				pinfo[chninfo.time_frame][%PEAK_HEIGHT][i]=coef[2]; AbortOnRTE
+				pinfo[chninfo.time_frame][%PEAK_POSITION][i]=coef[3]; AbortOnRTE
+				pinfo[chninfo.time_frame][%PEAK_WIDTH][i]=coef[4]; AbortOnRTE
 				
-				pconf[chninfo.time_frame][0][i]=w_sigma[0]; AbortOnRTE
-				pconf[chninfo.time_frame][1][i]=w_sigma[1]; AbortOnRTE
-				pconf[chninfo.time_frame][2][i]=w_sigma[2]; AbortOnRTE
-				pconf[chninfo.time_frame][3][i]=w_sigma[3]; AbortOnRTE
-				pconf[chninfo.time_frame][4][i]=w_sigma[4]; AbortOnRTE
+				pconf[chninfo.time_frame][%BASE_OFFSET][i]=w_sigma[0]; AbortOnRTE
+				pconf[chninfo.time_frame][%BASE_SLOPE][i]=w_sigma[1]; AbortOnRTE
+				pconf[chninfo.time_frame][%PEAK_HEIGHT][i]=w_sigma[2]; AbortOnRTE
+				pconf[chninfo.time_frame][%PEAK_POSITION][i]=w_sigma[3]; AbortOnRTE
+				pconf[chninfo.time_frame][%PEAK_WIDTH][i]=w_sigma[4]; AbortOnRTE
 				
 				fitresults[][chninfo.time_frame][i]=fitw[p]; AbortOnRTE
 			catch
@@ -1497,7 +1507,7 @@ function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_
 			
 		endfor
 
-		print "fit for frame", chninfo.time_frame, " is done."
+		//print "fit for frame", chninfo.time_frame, " is done."
 		break
 	default:
 		break
