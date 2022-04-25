@@ -1320,7 +1320,7 @@ Function QIFPanel_CallUSERFuncAction(String panelname, variable call_type)
 End
 
 
-function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_raw, STRUCT ChannelInfo& chninfo)
+function QIF_LPF_LinearAndGauss(variable call_flag, string DF_name, wave img, wave img_raw, STRUCT ChannelInfo& chninfo)
 
 	String winfo=note(img)
 	String taginfostr=StringByKey("TAGINFO", winfo, "=", "\n", 0)
@@ -1454,6 +1454,10 @@ function QIF_lineprofile(variable call_flag, string DF_name, wave img, wave img_
 		wave pinfo=:FIT_PEAK_INFO
 		wave pconf=:FIT_CONFIDENCE_INFO
 		wave fitresults=:FIT_RESULTS
+		if(DimSize(fitresults, 0)!=dimx)
+			Make /N=(dimx, taginfo.total_time_frames, dimy) /O /Y=(wtype) :FIT_RESULTS=NaN
+			wave fitresults=:FIT_RESULTS
+		endif
 		
 		for(i=0; i<dimy; i+=1)
 			wave coef=$("fit_PROFILE"+num2istr(i)+"_Coef_estimate")
@@ -1577,4 +1581,24 @@ function QIFPanel_DisplayLIneProfiles(wave w, variable layer, variable offset)
 		appendtograph w[][i][layer] /TN=$tracename
 		modifygraph offset($tracename)={0, offset*i}
 	endfor
+end
+
+function QIF_LPF_AverageForROI(variable call_flag, string graphname, wave img, wave img_raw, STRUCT ChannelInfo & chninfo)
+//	String winfo=note(img)
+//	String taginfostr=StringByKey("TAGINFO", winfo, "=", "\n", 0)
+//	String absolutePath=StringByKey("FILE", winfo, "=", "\n", 0)
+//	STRUCT TiffTagInfo taginfo
+//	StructGet /S taginfo, taginfostr
+
+	switch(call_flag)
+	case QIF_INIT: //initialization or setup parameters
+		DoAlert 0, "This is when you set up your parameter using global variables etc as you create them"
+		break
+	case QIF_EVALUATE: //call for the current frame, raw image data in img_raw, and scaled gray or RGB image (as displayed) in img
+		break
+	default:
+		break
+	endswitch
+	
+	return 0	
 end
