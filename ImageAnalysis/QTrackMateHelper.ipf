@@ -5,6 +5,7 @@
 Menu "QTrackMateHelper"
 	"Load TrackMate CSV file", QTM_load_track_file()
 	"Generate lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, SPOT_SOURCE_ID, SPOT_TARGET_ID)
+	"Generate Frame Maps", QTM_generate_frame_map("", -1, -1)
 	"Disassemble tracks", QTM_disassemble_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, SPOT_SOURCE_ID, SPOT_TARGET_ID)
 	"Summarize table", QTM_summarize_tbl("", -1, -1)
 	"Velocity histogram per frame", velocity_summary("", 0, 100, 10, 0.02, 500)
@@ -169,6 +170,113 @@ static function find_value(wave w, variable value)
 	endfor
 	
 	return -1
+end
+
+function QTM_generate_frame_map(String dataList, variable density_diameter, variable cell_diameter)
+	
+	if(density_diameter<0 || cell_diameter<0)
+	
+		PROMPT dataList, "List of values to be included in each frame table"
+		PROMPT density_diameter, "Diameter of ROI for density calculation"
+		PROMPT cell_diameter, "Diameter of cells"
+		
+		DoPROMPT "Set up parameters for frame maps", dataList, density_diameter, cell_diameter
+		if(V_flag!=0 || density_diameter<0 || cell_diameter<0)
+			print "Cancelled."
+		endif
+	endif
+	
+	Variable i, j, k
+	
+	variable frametbl_count=0
+	Variable datacolumns=ItemsInList(dataList)
+	Variable datacol_idx
+	String datacol_name
+	
+	String dfName=UniqueName("DataPerFrame", 11, 0)
+	
+	DFREF dfr=GetDataFolderDFR()
+
+	try	
+		NewDataFolder /S $dfName; AbortOnRTE
+		
+		wave FRAME = dfr:FRAME; AbortOnRTE
+		wave POSITION_X = dfr:POSITION_X; AbortOnRTE
+		wave POSITION_Y = dfr:POSITION_Y; AbortOnRTE
+		wave ID = dfr:ID; AbortOnRTE
+		Duplicate /O FRAME, dfr:DENSITY;AbortOnRTE
+		wave DENSITY=dfr:DENSITY;AbortOnRTE
+		DENSITY=NaN
+		
+		do
+			k=0
+			Make /O/FREE/D/N=(1, datacolumns+6) tmp_frame; AbortOnRTE
+			SetDimLabel 1, 0, FRAME, tmp_frame; AbortOnRTE
+			SetDimLabel 1, 1, POS_X, tmp_frame; AbortOnRTE
+			SetDimLabel 1, 2, POS_Y, tmp_frame; AbortOnRTE
+			SetDimLabel 1, 3, SPOT_ID, tmp_frame; AbortOnRTE
+			SetDimLabel 1, 4, SPOT_ID_IDX, tmp_frame; AbortOnRTE
+			SetDimLabel 1, 5, DENSITY, tmp_frame; AbortOnRTE
+			for(j=0; j<datacolumns; j+=1)
+				SetDimLabel 1, j+6, $StringFromList(j, dataList), tmp_frame; AbortOnRTE
+			endfor
+			
+			for(i=0; i<DimSize(FRAME, 0); i+=1)
+				if(FRAME[i]==frametbl_count)
+					tmp_frame[k][%FRAME]=frametbl_count; AbortOnRTE
+					tmp_frame[k][%POS_X]=POSITION_X[i]; AbortOnRTE
+					tmp_frame[k][%POS_Y]=POSITION_Y[i]; AbortOnRTE
+					tmp_frame[k][%SPOT_ID]=ID[i]; AbortOnRTE
+					tmp_frame[k][%SPOT_ID_IDX]=i; AbortOnRTE
+					tmp_frame[k][%DENSITY]=NaN; AbortOnRTE
+					for(j=0; j<datacolumns; j+=1)
+						wave w=dfr:$StringFromList(j, dataList); AbortOnRTE
+						tmp_frame[k][j+6]=w[i]; AbortOnRTE
+					endfor
+					InsertPoints /M=0 k+1, 1, tmp_frame; AbortOnRTE
+					k+=1
+				endif
+			endfor
+			if(k>0)
+				DeletePoints /M=0 k, 1, tmp_frame; AbortOnRTE
+				calculate_density(tmp_frame, density_diameter/2, cell_diameter/2, DENSITY); AbortOnRTE
+				Duplicate /O tmp_frame, $("frame"+num2istr(frametbl_count)); AbortOnRTE
+				frametbl_count+=1
+			endif
+		while(k>0)
+	catch
+		Variable err=GetRTError(1)
+		
+		if(err!=0)
+			print "Error catched:"
+			print GetErrMessage(err)
+			print "when working on item #", i, " in track table"
+		endif	
+	endtry
+	
+	SetDataFolder dfr
+
+end
+
+static function calculate_density(wave table, variable R1, variable r2, wave DENSITY)
+	variable i, j, a
+	
+	for(i=0; i<DimSize(table, 0); i+=1)
+	
+		a=0
+		for(j=0; j<DimSize(table, 0); j+=1)
+		
+			if(i!=j)
+				a+=get_intersect_area_circle(R1, r2, distance(table[i][%POS_X], table[i][%POS_Y], table[j][%POS_X], table[j][%POS_Y]))
+			endif
+			
+		endfor
+		a+=pi/r2^2
+		a/=pi*R1^2
+		
+		table[i][%DENSITY]=a
+		DENSITY[table[i][%SPOT_ID_IDX]]=a
+	endfor
 end
 
 function QTM_disassemble_track(wave trackid_tbl, wave trackid, wave id, wave posx, wave posy, wave frame, wave spot_src, wave spot_tg)
