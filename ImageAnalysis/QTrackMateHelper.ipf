@@ -6,12 +6,11 @@
 Menu "QTools"
 	SubMenu "QTrackMateHelper"
 		"Load TrackMate CSV file", QTM_load_track_file()
-		"Generate Frame Maps", QTM_generate_frame_map("", 50, 30, show_menu=1)
-		"Generate Track lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
+		"Generate TrackID lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
+		"Generate Map per Frame", QTM_generate_frame_map("", 50, 30, show_menu=1)
 		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, SPOT_SOURCE_ID, SPOT_TARGET_ID, show_menu=1)
 		"Plot Frame XY", QTM_Select_Frame()
-		"Summarize table", QTM_summarize_tbl("", -1, -1)
-		"Velocity histogram per frame", velocity_summary("", 0, 100, 10, 0.02, 500)
+		"Summarize", QTM_summarize_tbl("", -1, -1)
 	End
 End
 
@@ -337,22 +336,25 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 end
 
 Function QTM_Select_Frame()
-	Variable minDensity=0.2, maxDensity=0.9
+	Variable minDensity=1, maxDensity=4 //number of cells per ROI circle
 	
-	PROMPT minDensity, "min density"
-	PROMPT maxDensity, "max density"
+	PROMPT minDensity, "min density (number of cells per ROI circle)"
+	PROMPT maxDensity, "max density (number of cells per ROI circle)"
 	DoPrompt "Density color min and max", minDensity, maxDensity
 	
 	WaveBrowser("SelectFrameTable", "Select Frame Table", 100, 100, "Folder Name", "Table Name", 3, "root:", "", "CALLBACKFUNC:QTM_plot_framexy;FUNCPARAM:MIN="+num2str(minDensity)+",MAX="+num2str(maxDensity)+";", nameFilter="frame*")
 End
 
-Function QTM_plot_framexy(String param, String datafolder, String wname, [String use_wave, Variable no_draw])
+Function QTM_plot_framexy(String param, String datafolder, String wname)
 	print param
 	print dataFolder
 	print wname
 	wave w=$(datafolder+wname)
 	
-	if(!ParamIsDefault(use_wave))
+	string use_wave=StringByKey("USE_WAVE", param, "=", ",")
+	variable no_draw=str2num(StringByKey("NO_DRAW", param, "=", ","))
+	
+	if(strlen(use_wave)>0)
 		Duplicate /O w, $use_wave
 		wave w=$use_wave
 	endif
@@ -672,102 +674,5 @@ function QTM_ExtractSummary(wave summary_tbl)
 	distance_summary=summary_tbl[p][%TOTAL_DISTANCE]
 	angle_summary=summary_tbl[p][%TOTAL_ANGLE]
 
-end
-
-function QTM_velocity_summary(String DFName, variable start_frame, variable end_frame, Variable time_interval, Variable velocity_hist_binsize, Variable velocity_hist_binnum)
-	DFREF dfr=GetDataFolderDFR()
-
-	if(strlen(DFName)<=0)
-		String foldername=DFName
-		Variable fr_threshold=10
-		
-		String folderList=DataFolderDir(1)
-		folderList=StringByKey("FOLDERS", folderList, ":", ";")
-		folderList=ReplaceString(",", folderList, ";")
-		PROMPT foldername, "Data Folder Name that contains the tracks", popup folderList
-		PROMPT start_frame, "Start from Frame#"
-		PROMPT end_frame, "End at Frame#"
-		PROMPT time_interval, "Time interval between frames"
-		PROMPT velocity_hist_binsize, "Histogram bin size for velocity"
-		PROMPT velocity_hist_binnum, "Histogram number of bins"
-		
-		DoPROMPT "Please enter the following values", foldername, start_frame, end_frame, time_interval, velocity_hist_binsize, velocity_hist_binnum
-		if(V_flag==0 && DataFolderExists(foldername))
-			DFName=foldername
-		else
-			return -1
-		endif
-	endif
-	
-	try
-	
-		SetDataFolder $DFName; AbortOnRTE
-		variable i, j, k
-		String trackList=WaveList("tr_*", ";", "DF:0");
-		variable track_number=ItemsInList(trackList)
-		Make /D/N=(track_number)/FREE tmp_velocity
-		
-		Make /D/N=(end_frame-start_frame+1, velocity_hist_binnum)/O velocity_histogram_summary=NaN
-		wave vtbl=velocity_histogram_summary
-		
-		for(i=start_frame; i<=end_frame; i+=1)
-			
-			tmp_velocity=NaN
-			
-			for(j=0; j<track_number; j+=1)
-			
-				wave tr=$StringFromList(j, trackList)
-				
-				if(WaveExists(tr))
-					
-					for(k=0; k<DimSize(tr, 0); k+=1)
-					
-						if(tr[k][%FRAME_IDX]==i)
-							
-							if(k-1>=0)
-								
-								Variable x0, y0, x1, y1, t, velocity
-								
-								x0=tr[k-1][%POSX]
-								y0=tr[k-1][%POSY]
-								x1=tr[k][%POSX]
-								y1=tr[k][%POSY]
-								
-								t=tr[k][%FRAME_IDX]-tr[k-1][%FRAME_IDX]
-								t=t * time_interval
-								
-								velocity=distance(x0, y0, x1, y1)/t
-								tmp_velocity[j]=velocity
-								
-							endif
-							
-						endif
-					
-					endfor
-					
-				endif
-			
-			endfor
-			
-			Make/N=(velocity_hist_binnum)/D/FREE tmp_hist
-			Histogram/B={0,velocity_hist_binsize,velocity_hist_binnum} tmp_velocity, tmp_hist
-			variable total_pnt=sum(tmp_hist)
-			tmp_hist/=total_pnt
-			vtbl[i-start_frame][]=tmp_hist[q]
-			SetScale /P y, leftx(tmp_hist), deltax(tmp_hist), "um/min", vtbl
-		endfor
-		
-	catch
-	
-		Variable err=GetRTError(1)
-		
-		if(err!=0)
-			print "Error catched:"
-			print GetErrMessage(err)
-		endif
-		
-	endtry
-	
-	SetDataFolder dfr
 end
 
