@@ -315,12 +315,14 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 					k+=1
 				endif
 			endfor
+			print "Frame #", frametbl_count, " table ready. Calculating speed..."
 			if(k>0)
 				DeletePoints /M=0 k, 1, tmp_frame; AbortOnRTE
 				calculate_density(tmp_frame, density_diameter/2, cell_diameter/2, DENSITY); AbortOnRTE
 				Duplicate /O tmp_frame, $("frame"+num2istr(frametbl_count)); AbortOnRTE
 				frametbl_count+=1
 			endif
+			print "Frame #", frametbl_count, " finished."
 		while(k>0)
 	catch
 		Variable err=GetRTError(1)
@@ -333,6 +335,7 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 	endtry
 	
 	SetDataFolder dfr
+	print "all done."
 
 end
 
