@@ -18,12 +18,13 @@ function QTM_load_track_file()
 	Variable refNum
 
 	Variable f
+	DoAlert /T="Select the correct columns" 0, "Please make sure to select TRACK_ID column from Edge CSV file. Please only select columns that's going to be used, including ID, FRAME, POSITION_X, POSITION_Y, TRACI_ID, SPOT_SOURCE_ID, SPOT_TARGET_ID, and intensity data that you may need."
 	Open /D /R /F="Data Files (*.txt,*.dat,*.csv):.txt,.dat,.csv;" refNum
 	
 	String fullPath = S_fileName
 	
 	if(strlen(fullPath)>0)
-	
+		print "Loading ", fullPath
 		LoadWave /Q/J/W/L={0, 4, 0, 0, 0}/K=0 /D /O fullPath
 		
 	endif
@@ -439,8 +440,8 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 			
 			Make /FREE/L/N=(tr_totallen) tmp_flag=-1, tmp_spot_src=-1, tmp_spot_tg=-1; AbortOnRTE
 			
-			tmp_spot_src = spot_src[tr_ref_start-i+p]; AbortOnRTE
-			tmp_spot_tg = spot_tg[tr_ref_start-i+p]; AbortOnRTE
+			tmp_spot_src = spot_src[tr_ref_start+p]; AbortOnRTE
+			tmp_spot_tg = spot_tg[tr_ref_start+p]; AbortOnRTE
 	
 			FindDuplicates /FREE /DN=tmp_dup_src tmp_spot_src; AbortOnRTE
 			
@@ -465,7 +466,7 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 					Variable tr_counter=0
 					tr[][%ORIG_TRACK_ID]=trackid_tbl[i][%ID]; AbortOnRTE
 					tr[][%SPEED]=NaN; AbortOnRTE
-					
+					print "splitting a new track#", tstbl_count
 					do
 						tmp_flag[tmp_tr_position]=tstbl_count
 						
@@ -535,7 +536,7 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 					DeletePoints tr_counter, inf, tr
 					
 					calculate_speed(tr, avoid_frame_begin, avoid_frame_end, speed_frame_interval, time_interval, id, speed_tbl)
-					
+					print "splitted track#", tstbl_count, " finished."
 					tstbl_count+=1
 				
 				else
