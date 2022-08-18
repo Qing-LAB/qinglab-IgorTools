@@ -8,7 +8,7 @@ Menu "QTools"
 		"Load TrackMate CSV file", QTM_load_track_file()
 		"Generate TrackID lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
 		"Generate Map per Frame", QTM_generate_frame_map("", 50, 30, show_menu=1)
-		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, SPOT_SOURCE_ID, SPOT_TARGET_ID, show_menu=1)
+		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, QTM_SPOT_SOURCE_ID, QTM_SPOT_TARGET_ID, show_menu=1)
 		"Plot Frame XY", QTM_Select_Frame()
 		"Summarize", QTM_summarize_tbl("", -1, -1)
 	End
@@ -125,6 +125,10 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 
 	Redimension/L frame, trackid
 	Redimension/L spot_src, spot_target
+	Duplicate /O spot_src, QTM_SPOT_SOURCE_ID
+	QTM_SPOT_SOURCE_ID=-1
+	Duplicate /O spot_target, QTM_SPOT_TARGET_ID
+	QTM_SPOT_TARGET_ID=-1
 
 	WaveStats /Q trackid
 	variable max_id=V_max, min_id=V_min
@@ -133,7 +137,7 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 	Make /O/D/N=(tbl_len, 13) trackid_tbl=NaN
 	
 	SetDimLabel 1, 0, ID, trackid_tbl //the track ID
-//	SetDimLabel 1, 1, finalID, trackid_tbl //the column saved for later splitting ID, not used
+	SetDimLabel 1, 1, firstNodeIdx, trackid_tbl //this shows where the first node of the track tree is located (relative to the first node in the whole track), in a sorted table, this should be zero
 	SetDimLabel 1, 2, startFrame, trackid_tbl //the frame where this track started
 	SetDimLabel 1, 3, endFrame, trackid_tbl //the frame where this track ended
 	SetDimLabel 1, 4, startPosX, trackid_tbl //the position x where this track started
@@ -149,17 +153,41 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 	Variable refidx=0, tr_id=NaN, new_track_flag=0
 	Variable tbl_counter=-1
 	variable track_to_ID_idx
-	do
-	
+	do	
 		if(refidx>=DimSize(trackid, 0) || trackid[refidx]!=tr_id)
 		//track_id at refidx in trackid table is not the same as previous, or reached beyond the end of tbl
 			if(new_track_flag==0) // this means we are hitting a new track_id
 				if(refidx!=0) //not the first one, we need to then check back one more refidx to close the previous one
-					track_to_ID_idx=find_value(id_tbl, spot_target[refidx-1]) //spot_target gives the ID for the last point, need to
-																							  //look it up in the ID table to find its index				
+					print "New track identified. Track#:", trackid_tbl[tbl_counter][%ID]
+					
+					//there is a chance that the data points are not sorted by frame/time. this part takes care of that
+					Variable startrefidx=trackid_tbl[tbl_counter][%refIdxStart]
+					Make /FREE/D/N=(refidx-startrefidx) tmpframe_src, tmpsrc_id, tmptarget_id, tmpidx
+					
+					tmpsrc_id=spot_src[startrefidx+p]
+					tmptarget_id=spot_target[startrefidx+p]
+					tmpidx=p
+					tmpframe_src=frame[find_value(id_tbl, tmpsrc_id[p])]
+					
+					Sort tmpframe_src, tmpframe_src, tmpsrc_id, tmptarget_id, tmpidx //sorting these columns based on frame (time)
+					////// sorting done
+					trackid_tbl[tbl_counter][%startFrame]=tmpframe_src[0]
+					trackid_tbl[tbl_counter][%firstNodeIdx]=tmpidx[0]
+					
+					//tmpsrc_id[0] gives the ID for the first point, need to
+					//look it up in the ID table to find its index
+					track_to_ID_idx=find_value(id_tbl, tmpsrc_id[0]) 
+					trackid_tbl[tbl_counter][%startPosX]=posx[track_to_ID_idx]
+					trackid_tbl[tbl_counter][%startPosY]=posy[track_to_ID_idx]
+					
+					//tmptarget_id[DimSize(tmptarget_id, 0)-1] gives the ID for the last point, need to
+					//look it up in the ID table to find its index
+					track_to_ID_idx=find_value(id_tbl, tmptarget_id[DimSize(tmptarget_id, 0)-1])					
 					trackid_tbl[tbl_counter][%endFrame]=frame[track_to_ID_idx]
+					
 					trackid_tbl[tbl_counter][%endPosX]=posx[track_to_ID_idx]
 					trackid_tbl[tbl_counter][%endPosY]=posy[track_to_ID_idx]
+					
 					trackid_tbl[tbl_counter][%refIdxEnd]=refidx-1
 					trackid_tbl[tbl_counter][%frameLen]=trackid_tbl[tbl_counter][%endFrame]-trackid_tbl[tbl_counter][%startFrame]+1
 					variable px1, px2, py1, py2
@@ -171,24 +199,22 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 					
 					trackid_tbl[tbl_counter][%totalDistance]=distance(px1, py1, px2, py2)
 					trackid_tbl[tbl_counter][%totalAngle]=angle(px1, py1, px2, py2)
+					
+					QTM_SPOT_SOURCE_ID[startrefidx, refidx-1]=tmpsrc_id[p-startrefidx]
+					QTM_SPOT_TARGET_ID[startrefidx, refidx-1]=tmptarget_id[p-startrefidx]
 				endif
 				
 				if(refidx<DimSize(trackid, 0))
 					tbl_counter+=1
 					tr_id=trackid[refidx]
 					trackid_tbl[tbl_counter][%ID]=tr_id
-//					trackid_tbl[tbl_counter][%finalID]=-1
-					track_to_ID_idx=find_value(id_tbl, spot_src[refidx]) //spot_target gives the ID for the last point, need to
-																							//look it up in the ID table to find its index
-					trackid_tbl[tbl_counter][%startFrame]=frame[track_to_ID_idx]
-					trackid_tbl[tbl_counter][%startPosX]=posx[track_to_ID_idx]
-					trackid_tbl[tbl_counter][%startPosY]=posy[track_to_ID_idx]
+
 					trackid_tbl[tbl_counter][%refIdxStart]=refidx
 					new_track_flag=1
 				endif
 			else //then something is wrong
 				print "this should not happen."
-				print "this could mean that for the previous track, there is only one frame."
+				print "this could mean that for the previous track, there is only one edge."
 				print "refidx=", refidx
 				if(refidx<DimSize(trackid, 0))
 					print "trackid[refidx]=", trackid[refidx]
@@ -315,7 +341,7 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 					k+=1
 				endif
 			endfor
-			print "Frame #", frametbl_count, " table ready. Calculating speed..."
+			print "Frame #", frametbl_count, " table ready. Calculating density..."
 			if(k>0)
 				DeletePoints /M=0 k, 1, tmp_frame; AbortOnRTE
 				calculate_density(tmp_frame, density_diameter/2, cell_diameter/2, DENSITY); AbortOnRTE
