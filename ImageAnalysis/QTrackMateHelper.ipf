@@ -7,11 +7,11 @@ Menu "QTools"
 	SubMenu "QTrackMateHelper"
 		"Load TrackMate CSV file", QTM_load_track_file()
 		"Analyze TrackMate Data", QTM_Analyze_TMData()
-		"Generate TrackID lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
-		"Generate Map per Frame", QTM_generate_frame_map("", 50, 30, show_menu=1)
-		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, QTM_SPOT_SOURCE_ID, QTM_SPOT_TARGET_ID, show_menu=1)
+//		"Generate TrackID lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
+//		"Generate Map per Frame", QTM_generate_frame_map("", 50, 30, show_menu=1)
+//		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, QTM_SPOT_SOURCE_ID, QTM_SPOT_TARGET_ID, show_menu=1)
 		"Plot Frame XY", QTM_Select_Frame()
-		"Summarize", QTM_summarize_tbl("", -1, -1)
+//		"Summarize", QTM_summarize_tbl("", -1, -1)
 	End
 End
 
@@ -179,7 +179,7 @@ function QTM_Analyze_TMData()
 								optionalList=channelList, avoid_frame_begin=avoid_frame_begin, \
 								avoid_frame_end=avoid_frame_end, speed_frame_interval=speed_frame_interval, \
 								time_interval=time_interval)
-		
+			print "All done."
 		catch
 			Variable err=GetRTError(1)
 			if(err!=0)
