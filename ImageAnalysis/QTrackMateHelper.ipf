@@ -6,6 +6,7 @@
 Menu "QTools"
 	SubMenu "QTrackMateHelper"
 		"Load TrackMate CSV file", QTM_load_track_file()
+		"Analyze TrackMate Data", QTM_Analyze_TMData()
 		"Generate TrackID lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
 		"Generate Map per Frame", QTM_generate_frame_map("", 50, 30, show_menu=1)
 		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, QTM_SPOT_SOURCE_ID, QTM_SPOT_TARGET_ID, show_menu=1)
@@ -18,17 +19,181 @@ function QTM_load_track_file()
 	Variable refNum
 
 	Variable f
-	DoAlert /T="Select the correct columns" 0, "Please make sure to select TRACK_ID column from Edge CSV file. Please only select columns that's going to be used, including ID, FRAME, POSITION_X, POSITION_Y, TRACI_ID, SPOT_SOURCE_ID, SPOT_TARGET_ID, and intensity data that you may need."
-	Open /D /R /F="Data Files (*.txt,*.dat,*.csv):.txt,.dat,.csv;" refNum
+	String msgstr="Please select all files from TrackMate analysis."
+	Open /MULT=1 /D /R /F="Data Files (*.txt,*.dat,*.csv):.txt,.dat,.csv;" /M=msgstr refNum
+	String folderName=UniqueName("TrackMateData", 11, 0)
 	
 	String fullPath = S_fileName
-	
-	if(strlen(fullPath)>0)
-		print "Loading ", fullPath
-		LoadWave /Q/J/W/L={0, 4, 0, 0, 0}/K=0 /D /O fullPath
-		
-	endif
+	DFREF dfr=GetDataFolderDFR()
+	try
+		if(strlen(fullPath)>0)
+			NewDataFolder /O/S $folderName
+			Variable selected=ItemsInList(fullPath, "\r")
+			Variable i
+			DoAlert /T="SELECT THE RIGHT COLUMNS" 0, "Please make sure to select TRACK_ID column from Edge CSV file. Please only select columns that's going to be used, including ID, FRAME, POSITION_X, POSITION_Y, TRACI_ID, SPOT_SOURCE_ID, SPOT_TARGET_ID, and intensity data that you may need."
+			
+			for(i=0; i<selected; i+=1)
+				String path=StringFromList(i, fullPath, "\r")
+				print "Loading ", path
+				LoadWave /Q/J/W/L={0, 4, 0, 0, 0}/K=0 /D /O path
+			endfor
+		else
+			print "Cancelled."
+		endif
+	catch
+		Variable err=GetRTError(1)
+		if(err!=0)
+			print "Error when loading file:", GetErrMessage(err)
+		endif
+	endtry
+	SetDataFolder dfr
 end
+
+function QTM_Analyze_TMData()
+	String dataFolderList=StringByKey("FOLDERS", DataFolderDir(1))
+	dataFolderList=ReplaceString(",", dataFolderList, ";")
+	String selectedFolder=StringFromList(0, dataFolderList)
+	PROMPT selectedFolder, "Please select the DataFolder that contains TrackMate Data.", popup dataFolderList
+	
+	DoPROMPT "Select Data Folder", selectedFolder
+	if(V_flag==0)
+		print "Will analyze ", selectedFolder
+		String WList=StringByKey("WAVES", DataFolderDir(2, $selectedFolder))
+		WList=ReplaceString(",", WList, ";")
+		
+		String idw_str, trkid_str, frame_str, posx_str, posy_str, spotsrc_str, spottarget_str
+		if(FindListItem("ID", WList)>=0)
+			idw_str="ID"
+		else
+			idw_str=""
+		endif
+		
+		if(FindListItem("TRACK_ID", WList)>=0)
+			trkid_str="TRACK_ID"
+		else
+			trkid_str=""
+		endif
+		
+		if(FindListItem("FRAME", WList)>=0)
+			frame_str="FRAME"
+		else
+			frame_str=""
+		endif
+		
+		if(FindListItem("FRAME", WList)>=0)
+			frame_str="FRAME"
+		else
+			frame_str=""
+		endif
+		
+		if(FindListItem("POSITION_X", WList)>=0)
+			posx_str="POSITION_X"
+		else
+			posx_str=""
+		endif
+		
+		if(FindListItem("POSITION_Y", WList)>=0)
+			posy_str="POSITION_Y"
+		else
+			posy_str=""
+		endif
+		
+		if(FindListItem("SPOT_SOURCE_ID", WList)>=0)
+			spotsrc_str="SPOT_SOURCE_ID"
+		else
+			spotsrc_str=""
+		endif
+		
+		if(FindListItem("SPOT_TARGET_ID", WList)>=0)
+			spottarget_str="SPOT_TARGET_ID"
+		else
+			spottarget_str=""
+		endif
+		
+		String additional_channel="", channelList=""
+		
+		variable avoid_frame_begin=0, avoid_frame_end=0, speed_frame_interval=1, time_interval=1
+		
+		PROMPT idw_str, "ID", popup WList
+		PROMPT trkid_str, "TRACK_ID", popup WList
+		PROMPT frame_str, "FRAME", popup WList
+		PROMPT posx_str, "POSITION_X", popup WList
+		PROMPT posy_str, "POSITION_Y", popup WList
+		PROMPT spotsrc_str, "SPOT_SOURCE_ID", popup WList
+		PROMPT spottarget_str, "SPOT_TARGET_ID", popup WList
+		PROMPT additional_channel, "Additional waves to be included in tables (use ';' to separate them)"
+		
+		Variable ROI_diameter=50
+		Variable Cell_diameter=25
+		PROMPT ROI_diameter, "Diameter for ROI to calculate local density"
+		PROMPT Cell_diameter, "Average cell diameter"
+		PROMPT avoid_frame_begin, "Number of frames in the beginning of each track to ignore for the additional channels"
+		PROMPT avoid_frame_end, "Number of frames in the end of each track to ignore for the additional channels"
+		PROMPT speed_frame_interval, "Minimum Frame interval for calculating speed"
+		PROMPT time_interval, "Time interval between frames"
+		
+		DoPROMPT "Please identify corresponding waves", idw_str, trkid_str, frame_str, posx_str, posy_str, spotsrc_str, spottarget_str, additional_channel
+		if(V_flag!=0)
+			print "Cancelled."
+			return -1
+		endif
+		
+		DoPROMPT "Please set parameters for analysis", ROI_diameter, cell_diameter, avoid_frame_begin, avoid_frame_end, speed_frame_interval, time_interval
+		if(V_flag!=0)
+			print "Cancelled."
+			return -1
+		endif
+		
+		Variable i
+		for(i=0; i<ItemsInList(additional_channel); i+=1)
+			if(WaveExists($StringFromList(i, additional_channel)))
+				channelList=AddListItem(StringFromList(i, additional_channel), channelList)
+			endif
+		endfor
+		
+		DFREF dfr=GetDataFolderDFR()
+		
+		try
+			SetDataFolder $selectedFolder
+			
+			WAVE TRACK_ID=$trkid_str
+			WAVE POSITION_X=$posx_str
+			WAVE POSITION_Y=$posy_str
+			WAVE FRAME=$frame_str
+			WAVE ID=$idw_str
+			WAVE SPOT_SOURCE_ID=$spotsrc_str
+			WAVE SPOT_TARGET_ID=$spottarget_str
+			
+			print "First generating the lookup table for the original tracks..."
+			QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
+			print "Now will generate cell map for each frame..."
+			QTM_generate_frame_map(channelList, ROI_diameter, Cell_diameter)
+			
+			WAVE QTM_TRACK_TBL
+			WAVE QTM_SPOT_SOURCE_ID
+			WAVE QTM_SPOT_TARGET_ID
+			
+			channelList=AddListItem("QTM_DENSITY", channelList)
+			print "Splitting the tracks based on branches..."
+			QTM_Split_track(QTM_TRACK_TBL, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, QTM_SPOT_SOURCE_ID, QTM_SPOT_TARGET_ID, \
+								optionalList=channelList, avoid_frame_begin=avoid_frame_begin, \
+								avoid_frame_end=avoid_frame_end, speed_frame_interval=speed_frame_interval, \
+								time_interval=time_interval)
+		
+		catch
+			Variable err=GetRTError(1)
+			if(err!=0)
+				print "error during analysis:", GetErrMessage(err)
+			endif
+		endtry
+		
+		SetDataFolder dfr
+		
+	else
+		print "Cancelled."
+	endif
+	
+End
 
 static function distance(variable posx1, variable posy1, variable posx2, variable posy2)
 	return sqrt((posx1-posx2)^2+(posy1-posy2)^2)
@@ -134,21 +299,21 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 	variable max_id=V_max, min_id=V_min
 	variable tbl_len=(max_id-min_id)+1
 	
-	Make /O/D/N=(tbl_len, 13) trackid_tbl=NaN
+	Make /O/D/N=(tbl_len, 13) QTM_TRACK_TBL=NaN
 	
-	SetDimLabel 1, 0, ID, trackid_tbl //the track ID
-	SetDimLabel 1, 1, firstNodeIdx, trackid_tbl //this shows where the first node of the track tree is located (relative to the first node in the whole track), in a sorted table, this should be zero
-	SetDimLabel 1, 2, startFrame, trackid_tbl //the frame where this track started
-	SetDimLabel 1, 3, endFrame, trackid_tbl //the frame where this track ended
-	SetDimLabel 1, 4, startPosX, trackid_tbl //the position x where this track started
-	SetDimLabel 1, 5, startPosY, trackid_tbl //the position y where this track started
-	SetDimLabel 1, 6, endPosX, trackid_tbl //the position x where this track ended
-	SetDimLabel 1, 7, endPosY, trackid_tbl //the position y where this track ended
-	SetDimLabel 1, 8, refIdxStart, trackid_tbl //the index in the "TRACK_ID" referring to the start of the track
-	SetDimLabel 1, 9, refIdxEnd, trackid_tbl //the index in the "TRACK_ID" referring to the end of the track
-	SetDimLabel 1, 10, frameLen, trackid_tbl //total number of frames of the track
-	SetDimLabel 1, 11, totalDistance, trackid_tbl //total distance between the first and last frame
-	SetDimLabel 1, 12, totalAngle, trackid_tbl //angle of the displacement between first and last frame
+	SetDimLabel 1, 0, ID, QTM_TRACK_TBL //the track ID
+	SetDimLabel 1, 1, firstNodeIdx, QTM_TRACK_TBL //this shows where the first node of the track tree is located (relative to the first node in the whole track), in a sorted table, this should be zero
+	SetDimLabel 1, 2, startFrame, QTM_TRACK_TBL //the frame where this track started
+	SetDimLabel 1, 3, endFrame, QTM_TRACK_TBL //the frame where this track ended
+	SetDimLabel 1, 4, startPosX, QTM_TRACK_TBL //the position x where this track started
+	SetDimLabel 1, 5, startPosY, QTM_TRACK_TBL //the position y where this track started
+	SetDimLabel 1, 6, endPosX, QTM_TRACK_TBL //the position x where this track ended
+	SetDimLabel 1, 7, endPosY, QTM_TRACK_TBL //the position y where this track ended
+	SetDimLabel 1, 8, refIdxStart, QTM_TRACK_TBL //the index in the "TRACK_ID" referring to the start of the track
+	SetDimLabel 1, 9, refIdxEnd, QTM_TRACK_TBL //the index in the "TRACK_ID" referring to the end of the track
+	SetDimLabel 1, 10, frameLen, QTM_TRACK_TBL //total number of frames of the track
+	SetDimLabel 1, 11, totalDistance, QTM_TRACK_TBL //total distance between the first and last frame
+	SetDimLabel 1, 12, totalAngle, QTM_TRACK_TBL //angle of the displacement between first and last frame
 	
 	Variable refidx=0, tr_id=NaN, new_track_flag=0
 	Variable tbl_counter=-1
@@ -158,10 +323,10 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 		//track_id at refidx in trackid table is not the same as previous, or reached beyond the end of tbl
 			if(new_track_flag==0) // this means we are hitting a new track_id
 				if(refidx!=0) //not the first one, we need to then check back one more refidx to close the previous one
-					print "New track identified. Track#:", trackid_tbl[tbl_counter][%ID]
+					print "New track identified. Track#:", QTM_TRACK_TBL[tbl_counter][%ID]
 					
 					//there is a chance that the data points are not sorted by frame/time. this part takes care of that
-					Variable startrefidx=trackid_tbl[tbl_counter][%refIdxStart]
+					Variable startrefidx=QTM_TRACK_TBL[tbl_counter][%refIdxStart]
 					Make /FREE/D/N=(refidx-startrefidx) tmpframe_src, tmpsrc_id, tmptarget_id, tmpidx
 					
 					tmpsrc_id=spot_src[startrefidx+p]
@@ -171,34 +336,34 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 					
 					Sort tmpframe_src, tmpframe_src, tmpsrc_id, tmptarget_id, tmpidx //sorting these columns based on frame (time)
 					////// sorting done
-					trackid_tbl[tbl_counter][%startFrame]=tmpframe_src[0]
-					trackid_tbl[tbl_counter][%firstNodeIdx]=tmpidx[0]
+					QTM_TRACK_TBL[tbl_counter][%startFrame]=tmpframe_src[0]
+					QTM_TRACK_TBL[tbl_counter][%firstNodeIdx]=tmpidx[0]
 					
 					//tmpsrc_id[0] gives the ID for the first point, need to
 					//look it up in the ID table to find its index
 					track_to_ID_idx=find_value(id_tbl, tmpsrc_id[0]) 
-					trackid_tbl[tbl_counter][%startPosX]=posx[track_to_ID_idx]
-					trackid_tbl[tbl_counter][%startPosY]=posy[track_to_ID_idx]
+					QTM_TRACK_TBL[tbl_counter][%startPosX]=posx[track_to_ID_idx]
+					QTM_TRACK_TBL[tbl_counter][%startPosY]=posy[track_to_ID_idx]
 					
 					//tmptarget_id[DimSize(tmptarget_id, 0)-1] gives the ID for the last point, need to
 					//look it up in the ID table to find its index
 					track_to_ID_idx=find_value(id_tbl, tmptarget_id[DimSize(tmptarget_id, 0)-1])					
-					trackid_tbl[tbl_counter][%endFrame]=frame[track_to_ID_idx]
+					QTM_TRACK_TBL[tbl_counter][%endFrame]=frame[track_to_ID_idx]
 					
-					trackid_tbl[tbl_counter][%endPosX]=posx[track_to_ID_idx]
-					trackid_tbl[tbl_counter][%endPosY]=posy[track_to_ID_idx]
+					QTM_TRACK_TBL[tbl_counter][%endPosX]=posx[track_to_ID_idx]
+					QTM_TRACK_TBL[tbl_counter][%endPosY]=posy[track_to_ID_idx]
 					
-					trackid_tbl[tbl_counter][%refIdxEnd]=refidx-1
-					trackid_tbl[tbl_counter][%frameLen]=trackid_tbl[tbl_counter][%endFrame]-trackid_tbl[tbl_counter][%startFrame]+1
+					QTM_TRACK_TBL[tbl_counter][%refIdxEnd]=refidx-1
+					QTM_TRACK_TBL[tbl_counter][%frameLen]=QTM_TRACK_TBL[tbl_counter][%endFrame]-QTM_TRACK_TBL[tbl_counter][%startFrame]+1
 					variable px1, px2, py1, py2
 					
-					px1=trackid_tbl[tbl_counter][%startPosX]
-					px2=trackid_tbl[tbl_counter][%endPosX]
-					py1=trackid_tbl[tbl_counter][%startPosY]
-					py2=trackid_tbl[tbl_counter][%endPosY]
+					px1=QTM_TRACK_TBL[tbl_counter][%startPosX]
+					px2=QTM_TRACK_TBL[tbl_counter][%endPosX]
+					py1=QTM_TRACK_TBL[tbl_counter][%startPosY]
+					py2=QTM_TRACK_TBL[tbl_counter][%endPosY]
 					
-					trackid_tbl[tbl_counter][%totalDistance]=distance(px1, py1, px2, py2)
-					trackid_tbl[tbl_counter][%totalAngle]=angle(px1, py1, px2, py2)
+					QTM_TRACK_TBL[tbl_counter][%totalDistance]=distance(px1, py1, px2, py2)
+					QTM_TRACK_TBL[tbl_counter][%totalAngle]=angle(px1, py1, px2, py2)
 					
 					QTM_SPOT_SOURCE_ID[startrefidx, refidx-1]=tmpsrc_id[p-startrefidx]
 					QTM_SPOT_TARGET_ID[startrefidx, refidx-1]=tmptarget_id[p-startrefidx]
@@ -207,9 +372,9 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 				if(refidx<DimSize(trackid, 0))
 					tbl_counter+=1
 					tr_id=trackid[refidx]
-					trackid_tbl[tbl_counter][%ID]=tr_id
+					QTM_TRACK_TBL[tbl_counter][%ID]=tr_id
 
-					trackid_tbl[tbl_counter][%refIdxStart]=refidx
+					QTM_TRACK_TBL[tbl_counter][%refIdxStart]=refidx
 					new_track_flag=1
 				endif
 			else //then something is wrong
@@ -234,7 +399,7 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 		endif
 	while(refidx<=DimSize(trackid, 0))
 	
-	DeletePoints /M=0 tbl_counter+1, inf, trackid_tbl
+	DeletePoints /M=0 tbl_counter+1, inf, QTM_TRACK_TBL
 end
 
 static function branch_number(wave f, variable position, variable maxidx)
@@ -311,6 +476,9 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 		Make /O/D/N=(DimSize(FRAME, 0)) dfr:QTM_DENSITY;AbortOnRTE
 		wave DENSITY=dfr:QTM_DENSITY;AbortOnRTE
 		DENSITY=NaN
+		String notestr=""
+		notestr = ReplaceStringByKey("ROI_DIAMETER", num2str(density_diameter), notestr)
+		notestr = ReplaceStringByKey("CELL_DIAMETER", num2str(cell_diameter), notestr)
 		
 		do
 			k=0
@@ -346,8 +514,10 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 				DeletePoints /M=0 k, 1, tmp_frame; AbortOnRTE
 				calculate_density(tmp_frame, density_diameter/2, cell_diameter/2, DENSITY); AbortOnRTE
 				Duplicate /O tmp_frame, $("frame"+num2istr(frametbl_count)); AbortOnRTE
+				note /k $("frame"+num2istr(frametbl_count)), notestr ; AbortOnRTE
 				frametbl_count+=1
 			endif
+			
 			print "Frame #", frametbl_count, " finished."
 		while(k>0)
 	catch
@@ -359,7 +529,7 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 			print "when working on item #", i, " in track table"
 		endif	
 	endtry
-	
+	note /k DENSITY, notestr
 	SetDataFolder dfr
 	print "all done."
 
@@ -408,7 +578,7 @@ Function QTM_plot_framexy(String param, String datafolder, String wname)
 End
 
 //this breaks off tracks that have branches and separate them into individual tracks
-function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wave posy, wave frame, wave spot_src, wave spot_tg, [string optionalList, variable show_menu])
+function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wave posy, wave frame, wave spot_src, wave spot_tg, [string optionalList, variable avoid_frame_begin, variable avoid_frame_end, variable speed_frame_interval, variable time_interval, variable show_menu])
 
 	Variable i
 	
@@ -418,10 +588,21 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 	
 	DFREF dfr=GetDataFolderDFR()
 	
-	Variable avoid_frame_begin=0
-	Variable avoid_frame_end=0
-	Variable speed_frame_interval=1
-	Variable time_interval=30 //sec
+	if(ParamIsDefault(avoid_frame_begin))
+		avoid_frame_begin=0
+	endif
+	
+	if(ParamIsDefault(avoid_frame_end))
+		avoid_frame_end=0
+	endif
+	
+	if(ParamIsDefault(speed_frame_interval))
+		speed_frame_interval=1
+	endif
+	
+	if(ParamIsDefault(time_interval))
+		time_interval=30
+	endif
 	
 	if(show_menu==1)
 		PROMPT optionalList, "Wave list to be included for track records"
