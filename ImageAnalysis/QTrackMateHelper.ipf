@@ -7,11 +7,8 @@ Menu "QTools"
 	SubMenu "QTrackMateHelper"
 		"Load TrackMate CSV file", QTM_load_track_file()
 		"Analyze TrackMate Data", QTM_Analyze_TMData()
-//		"Generate TrackID lookup table", QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
-//		"Generate Map per Frame", QTM_generate_frame_map("", 50, 30, show_menu=1)
-//		"Split branched tracks", QTM_Split_track(trackid_tbl, TRACK_ID, ID, POSITION_X, POSITION_Y, FRAME, QTM_SPOT_SOURCE_ID, QTM_SPOT_TARGET_ID, show_menu=1)
 		"Plot Frame XY", QTM_Select_Frame()
-//		"Summarize", QTM_summarize_tbl("", -1, -1)
+		"Generate Histogram", QTM_Generate_Histogram()
 	End
 End
 
@@ -167,7 +164,7 @@ function QTM_Analyze_TMData()
 			print "First generating the lookup table for the original tracks..."
 			QTM_trackid_lookuptbl(TRACK_ID, POSITION_X, POSITION_Y, FRAME, ID, SPOT_SOURCE_ID, SPOT_TARGET_ID)
 			print "Now will generate cell map for each frame..."
-			QTM_generate_frame_map(channelList, ROI_diameter, Cell_diameter)
+			QTM_generate_frame_map(channelList, ROI_diameter, Cell_diameter, FRAME, POSITION_X, POSITION_Y, ID)
 			
 			WAVE QTM_TRACK_TBL
 			WAVE QTM_SPOT_SOURCE_ID
@@ -194,6 +191,94 @@ function QTM_Analyze_TMData()
 	endif
 	
 End
+
+function QTM_Generate_Histogram()
+	String dataFolderList=StringByKey("FOLDERS", DataFolderDir(1))
+	dataFolderList=ReplaceString(",", dataFolderList, ";")
+	String selectedFolder=StringFromList(0, dataFolderList)
+	PROMPT selectedFolder, "Please select the DataFolder that contains TrackMate and QTrackMateHelper analysis Data.", popup dataFolderList
+	
+	DoPROMPT "Select Data Folder", selectedFolder
+	DFREF sel_df=$selectedFolder
+	
+	if(V_flag==0)
+	
+		DFREF dfr=GetDataFolderDFR()
+		try
+			print "Will generate histogram for ", selectedFolder
+			String WList=StringByKey("WAVES", DataFolderDir(2, $selectedFolder))
+			WList=ReplaceString(",", WList, ";")
+			
+			String frame_str, qtm_speed_str, qtm_density_str, frame_bin_str, speed_bin_str, density_bin_str
+			if(FindListItem("FRAME", WList)>=0)
+				frame_str="FRAME"
+			else
+				frame_str=""
+			endif
+			
+			if(FindListItem("QTM_SPEED", WList)>=0)
+				qtm_speed_str="QTM_SPEED"
+			else
+				qtm_speed_str=""
+			endif
+			
+			if(FindListItem("QTM_DENSITY", WList)>=0)
+				qtm_density_str="QTM_DENSITY"
+			else
+				qtm_density_str=""
+			endif
+			
+			if(FindListItem("FRAME_HIST_BIN", WList)>=0)
+				frame_bin_str="FRAME_HIST_BIN"
+			else
+				frame_bin_str=""
+			endif
+			
+			if(FindListItem("SPEED_HIST_BIN", WList)>=0)
+				speed_bin_str="SPEED_HIST_BIN"
+			else
+				speed_bin_str=""
+			endif
+			
+			if(FindListItem("DENSITY_HIST_BIN", WList)>=0)
+				density_bin_str="DENSITY_HIST_BIN"
+			else
+				density_bin_str=""
+			endif
+			
+			PROMPT frame_str, "Frame # for each cell", popup WList
+			PROMPT qtm_speed_str, "QTM_SPEED result for each cell", popup WList
+			PROMPT qtm_density_str, "QTMP_DENSITY result for each cell", popup WList
+			PROMPT frame_bin_str, "Histogram BIN setting for Frame", popup WList
+			PROMPT speed_bin_str, "Histogram BIN setting for speed", popup WList
+			PROMPT density_bin_str, "Histogram BIN setting for density", popup WList
+			
+			DoPROMPT "Please selcect the correct waves:", frame_str, qtm_speed_str, qtm_density_str, frame_bin_str, speed_bin_str, density_bin_str
+			if(V_flag==0)
+				SetDataFolder $selectedFolder; AbortOnRTE
+				
+				Wave frame=$frame_str; AbortOnRTE
+				wave speed=$qtm_speed_str; AbortOnRTE
+				Wave density=$qtm_density_str; AbortOnRTE
+				Wave frame_bin=$frame_bin_str; AbortOnRTE
+				Wave speed_bin=$speed_bin_str; AbortOnRTE
+				Wave density_bin=$density_bin_str; AbortOnRTE
+				
+				QTM_Hist_Summary(frame, speed, density, frame_bin, speed_bin, density_bin); AbortOnRTE
+			endif
+		
+		catch
+			Variable err=GetRTError(1)
+			
+			if(err!=0)
+				print "Error catched:"
+				print GetErrMessage(err)
+			endif	
+		endtry
+		SetDataFolder dfr
+	endif
+end
+
 
 static function distance(variable posx1, variable posy1, variable posx2, variable posy2)
 	return sqrt((posx1-posx2)^2+(posy1-posy2)^2)
@@ -440,7 +525,7 @@ end
 
 //this function creates a new datafolder that contains frame by frame all the x, y and density information and other
 //information as noted in one place
-function QTM_generate_frame_map(String dataList, variable density_diameter, variable cell_diameter, [variable show_menu])
+function QTM_generate_frame_map(String dataList, variable density_diameter, variable cell_diameter, wave FRAME, wave POSITION_X, wave POSITION_Y, wave ID, [variable show_menu])
 	
 	if(density_diameter<0 || cell_diameter<0 || show_menu==1)
 	
@@ -469,16 +554,17 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 	try	
 		NewDataFolder /S $dfName; AbortOnRTE
 		
-		wave FRAME = dfr:FRAME; AbortOnRTE
-		wave POSITION_X = dfr:POSITION_X; AbortOnRTE
-		wave POSITION_Y = dfr:POSITION_Y; AbortOnRTE
-		wave ID = dfr:ID; AbortOnRTE
+//		wave FRAME = dfr:FRAME; AbortOnRTE
+//		wave POSITION_X = dfr:POSITION_X; AbortOnRTE
+//		wave POSITION_Y = dfr:POSITION_Y; AbortOnRTE
+//		wave ID = dfr:ID; AbortOnRTE
 		Make /O/D/N=(DimSize(FRAME, 0)) dfr:QTM_DENSITY;AbortOnRTE
 		wave DENSITY=dfr:QTM_DENSITY;AbortOnRTE
 		DENSITY=NaN
 		String notestr=""
 		notestr = ReplaceStringByKey("ROI_DIAMETER", num2str(density_diameter), notestr)
 		notestr = ReplaceStringByKey("CELL_DIAMETER", num2str(cell_diameter), notestr)
+		variable max_frame=WaveMax(FRAME)
 		
 		do
 			k=0
@@ -518,7 +604,7 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 				frametbl_count+=1
 			endif
 			
-			print "Frame #", frametbl_count, " finished."
+			print "Frame #", frametbl_count, "out of ", max_frame, "is finished."
 		while(k>0)
 	catch
 		Variable err=GetRTError(1)
@@ -604,6 +690,8 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 		time_interval=30
 	endif
 	
+	variable max_trackid=WaveMax(trackid)
+	
 	if(show_menu==1)
 		PROMPT optionalList, "Wave list to be included for track records"
 		PROMPT avoid_frame_begin, "Number of frames at the beginning of track to avoid filling numbers"
@@ -628,7 +716,7 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 		NewDataFolder /S $dfName; AbortOnRTE
 		
 		for(i=0; i<DimSize(trackid_tbl, 0); i+=1)
-			print "working on track record #", i, "track id is: ", trackid_tbl[i][%ID]
+			print "working on track record #", i, "out of ", DimSize(trackid_tbl, 0), "records. ", "track id is: ", trackid_tbl[i][%ID], "/", max_trackid
 
 			Variable tr_ref_start=trackid_tbl[i][%refIdxStart]; AbortOnRTE
 			Variable tr_ref_end=trackid_tbl[i][%refIdxEnd]; AbortOnRTE
@@ -878,12 +966,67 @@ function QTM_summarize_tbl(String datafolder, variable distance_threshold, varia
 	SetDataFolder dfr
 end
 
-function QTM_ExtractSummary(wave summary_tbl)
+static function normalize_hist_by_area(wave h)
 
-	Make /D/N=(DimSize(summary_tbl, 0))/O distance_summary, angle_summary
+	variable i, j
+	variable s
 	
-	distance_summary=summary_tbl[p][%TOTAL_DISTANCE]
-	angle_summary=summary_tbl[p][%TOTAL_ANGLE]
+	for(i=0; i<DimSize(h, 0); i+=1)
+		
+		s=0
+		for(j=0; j<DimSize(h, 1); j+=1)
+			s+=h[i][j]
+		endfor
+		
+		h[i][]/=s
+		
+	endfor
 
+end
+
+function QTM_Hist_Summary(wave frame, wave speed, wave density, wave frame_bin, wave speed_bin, wave density_bin)
+	
+	String dfName=UniqueName("Histograms", 11, 0)
+	DFREF dfr=GetDataFolderDFR()
+	try
+		NewDataFolder /O/S $dfName; AbortOnRTE
+		Duplicate /O frame_bin, HIST_BIN_FRAME; AbortOnRTE
+		Duplicate /O speed_bin, HIST_BIN_SPEED; AbortOnRTE
+		Duplicate /O density_bin, HIST_BIN_DENSITY; AbortOnRTE
+		Make /FREE/D/N=(DimSize(frame, 0)) tmp_frame
+		tmp_frame=frame
+		
+		JointHistogram /BINS={0, 0} /XBWV=HIST_BIN_FRAME /YBWV=HIST_BIN_SPEED /DEST=HIST2D_FRAME_SPEED tmp_frame, speed; AbortOnRTE
+		Duplicate /O HIST2D_FRAME_SPEED, HIST2D_NORM_FRAME_SPEED; AbortOnRTE
+		normalize_hist_by_area(HIST2D_NORM_FRAME_SPEED); AbortOnRTE
+		
+		JointHistogram /BINs={0, 0} /XBWV=HIST_BIN_FRAME /YBWV=HIST_BIN_DENSITY /DEST=HIST2D_FRAME_DENSITY tmp_frame, density; AbortOnRTE
+		Duplicate /O HIST2D_FRAME_DENSITY, HIST2D_NORM_FRAME_DENSITY; AbortOnRTE
+		normalize_hist_by_area(HIST2D_NORM_FRAME_DENSITY); AbortOnRTE
+		
+		JointHistogram /BINS={0, 0} /XBWV=HIST_BIN_DENSITY /YBWV=HIST_BIN_SPEED /DEST=HIST2D_DENSITY_SPEED density, speed; AbortOnRTE
+		Duplicate /O HIST2D_DENSITY_SPEED, HIST2D_NORM_DENSITY_SPEED; AbortOnRTE
+		normalize_hist_by_area(HIST2D_NORM_DENSITY_SPEED); AbortOnRTE
+		
+		JointHistogram /BINS={0, 0, 0} /XBWV=HIST_BIN_FRAME /YBWV=HIST_BIN_SPEED /ZBWV=HIST_BIN_DENSITY /DEST=HIST3D_FRAME_SPEED_DENSITY tmp_frame, speed, density; AbortOnRTE
+		variable i
+		for(i=0; i<DimSize(HIST3D_FRAME_SPEED_DENSITY, 2); i+=1)
+			Make /D/O/N=(DimSize(HIST3D_FRAME_SPEED_DENSITY, 0), DimSize(HIST3D_FRAME_SPEED_DENSITY, 1)) $("HIST2D_FRAME_SPEED_BYDENSITY"+num2istr(i)), $("HIST2D_NORM_FRAME_SPEED_BYDENSITY"+num2istr(i)); AbortOnRTE
+			Wave hist=$("HIST2D_FRAME_SPEED_BYDENSITY"+num2istr(i)); AbortOnRTE
+			Wave hist_n=$("HIST2D_NORM_FRAME_SPEED_BYDENSITY"+num2istr(i)); AbortOnRTE
+			hist[][]=HIST3D_FRAME_SPEED_DENSITY[p][q][i]; AbortOnRTE
+			hist_n=hist; AbortOnRTE
+			normalize_hist_by_area(hist_n); AbortOnRTE
+		endfor
+	catch
+		Variable err=GetRTError(1)
+		
+		if(err!=0)
+			print "Error catched:"
+			print GetErrMessage(err)
+		endif	
+	endtry
+	SetDataFolder dfr
+	print "Done."
 end
 
