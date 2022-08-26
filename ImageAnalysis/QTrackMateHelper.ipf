@@ -9,6 +9,8 @@ Menu "QTools"
 		"Analyze TrackMate Data", QTM_Analyze_TMData()
 		"Plot Frame XY", QTM_Select_Frame()
 		"Generate Histogram", QTM_Generate_Histogram()
+		"Summarize All data in Frame Data Folder", QTM_Choose_FrameDF()
+		"Extract value from track by frames", QTM_Choose_TrackDF()
 	End
 End
 
@@ -51,7 +53,7 @@ function QTM_Analyze_TMData()
 	dataFolderList=ReplaceString(",", dataFolderList, ";")
 	String selectedFolder=StringFromList(0, dataFolderList)
 	PROMPT selectedFolder, "Please select the DataFolder that contains TrackMate Data.", popup dataFolderList
-	
+
 	DoPROMPT "Select Data Folder", selectedFolder
 	if(V_flag==0)
 		print "Will analyze ", selectedFolder
@@ -143,9 +145,9 @@ function QTM_Analyze_TMData()
 		
 		Variable i
 		for(i=0; i<ItemsInList(additional_channel); i+=1)
-			if(WaveExists($StringFromList(i, additional_channel)))
+			//if(WaveExists($StringFromList(i, additional_channel)))
 				channelList=AddListItem(StringFromList(i, additional_channel), channelList)
-			endif
+			//endif
 		endfor
 		
 		DFREF dfr=GetDataFolderDFR()
@@ -193,6 +195,13 @@ function QTM_Analyze_TMData()
 End
 
 function QTM_Generate_Histogram()
+	String BINWList=WaveList("*_HIST_BIN", ";", "")
+	print "Found histogram bin waves as:", BINWList
+	if(strlen(BINWList)==0)
+		print "No bin waves are found. This needs to be set up first with names as *_HIST_BIN. quitting now."
+		return -1
+	endif
+	
 	String dataFolderList=StringByKey("FOLDERS", DataFolderDir(1))
 	dataFolderList=ReplaceString(",", dataFolderList, ";")
 	String selectedFolder=StringFromList(0, dataFolderList)
@@ -228,19 +237,19 @@ function QTM_Generate_Histogram()
 				qtm_density_str=""
 			endif
 			
-			if(FindListItem("FRAME_HIST_BIN", WList)>=0)
+			if(FindListItem("FRAME_HIST_BIN", BINWList)>=0)
 				frame_bin_str="FRAME_HIST_BIN"
 			else
 				frame_bin_str=""
 			endif
 			
-			if(FindListItem("SPEED_HIST_BIN", WList)>=0)
+			if(FindListItem("SPEED_HIST_BIN", BINWList)>=0)
 				speed_bin_str="SPEED_HIST_BIN"
 			else
 				speed_bin_str=""
 			endif
 			
-			if(FindListItem("DENSITY_HIST_BIN", WList)>=0)
+			if(FindListItem("DENSITY_HIST_BIN", BINWList)>=0)
 				density_bin_str="DENSITY_HIST_BIN"
 			else
 				density_bin_str=""
@@ -249,20 +258,22 @@ function QTM_Generate_Histogram()
 			PROMPT frame_str, "Frame # for each cell", popup WList
 			PROMPT qtm_speed_str, "QTM_SPEED result for each cell", popup WList
 			PROMPT qtm_density_str, "QTMP_DENSITY result for each cell", popup WList
-			PROMPT frame_bin_str, "Histogram BIN setting for Frame", popup WList
-			PROMPT speed_bin_str, "Histogram BIN setting for speed", popup WList
-			PROMPT density_bin_str, "Histogram BIN setting for density", popup WList
+			PROMPT frame_bin_str, "Histogram BIN setting for Frame", popup BINWList
+			PROMPT speed_bin_str, "Histogram BIN setting for speed", popup BINWList
+			PROMPT density_bin_str, "Histogram BIN setting for density", popup BINWList
 			
 			DoPROMPT "Please selcect the correct waves:", frame_str, qtm_speed_str, qtm_density_str, frame_bin_str, speed_bin_str, density_bin_str
 			if(V_flag==0)
-				SetDataFolder $selectedFolder; AbortOnRTE
-				
-				Wave frame=$frame_str; AbortOnRTE
-				wave speed=$qtm_speed_str; AbortOnRTE
-				Wave density=$qtm_density_str; AbortOnRTE
+				//the following is in the current datafolder
 				Wave frame_bin=$frame_bin_str; AbortOnRTE
 				Wave speed_bin=$speed_bin_str; AbortOnRTE
 				Wave density_bin=$density_bin_str; AbortOnRTE
+			
+				SetDataFolder $selectedFolder; AbortOnRTE
+				//the following is in the selected folder
+				Wave frame=$frame_str; AbortOnRTE
+				wave speed=$qtm_speed_str; AbortOnRTE
+				Wave density=$qtm_density_str; AbortOnRTE
 				
 				QTM_Hist_Summary(frame, speed, density, frame_bin, speed_bin, density_bin); AbortOnRTE
 			endif
@@ -589,7 +600,11 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 					tmp_frame[k][%DENSITY]=NaN; AbortOnRTE
 					for(j=0; j<datacolumns; j+=1)
 						wave w=dfr:$StringFromList(j, dataList); AbortOnRTE
-						tmp_frame[k][j+6]=w[i]; AbortOnRTE
+						if(WaveExists(w))
+							tmp_frame[k][j+6]=w[i]; AbortOnRTE
+						else
+							tmp_frame[i][j+6]=NaN; AbortOnRTE
+						endif
 					endfor
 					InsertPoints /M=0 k+1, 1, tmp_frame; AbortOnRTE
 					k+=1
@@ -621,6 +636,22 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 
 end
 
+Function QTMFilter_framewave(theNameWithPath, ListContents)
+	String theNameWithPath
+	Variable ListContents
+	Variable numItems = ItemsInList(theNameWithPath, ":")
+	
+	return stringmatch(StringFromList(numItems-1, theNameWithPath, ":"), "frame*")
+end
+
+Function QTMFilter_trackwave(theNameWithPath, ListContents)
+	String theNameWithPath
+	Variable ListContents
+	Variable numItems = ItemsInList(theNameWithPath, ":")
+	
+	return stringmatch(StringFromList(numItems-1, theNameWithPath, ":"), "tr_*")
+end
+
 Function QTM_Select_Frame()
 	Variable minDensity=1, maxDensity=4 //number of cells per ROI circle
 	
@@ -628,7 +659,10 @@ Function QTM_Select_Frame()
 	PROMPT maxDensity, "max density (number of cells per ROI circle)"
 	DoPrompt "Density color min and max", minDensity, maxDensity
 	
-	WaveBrowser("SelectFrameTable", "Select Frame Table", 100, 100, "Folder Name", "Table Name", 3, "root:", "", "CALLBACKFUNC:QTM_plot_framexy;FUNCPARAM:MIN="+num2str(minDensity)+",MAX="+num2str(maxDensity)+";", nameFilter="frame*")
+	WaveBrowser("SelectFrameTable", "Select Frame Table", \
+				100, 100, "Folder Name", "Table Name", 3, "root:", "", \
+				"CALLBACKFUNC:QTM_plot_framexy;FUNCPARAM:MIN="+num2str(minDensity)+",MAX="+num2str(maxDensity)+";", \
+				nameFilter="QTMFilter_framewave")
 End
 
 Function QTM_plot_framexy(String param, String datafolder, String wname)
@@ -1030,3 +1064,231 @@ function QTM_Hist_Summary(wave frame, wave speed, wave density, wave frame_bin, 
 	print "Done."
 end
 
+Function QTM_Choose_FrameDF()
+	WaveBrowser("FrameFolderSelector", "Select Frame Data Folder", 100, 100, \
+				"Folder Name", "Any wave for frame data", 3, "root:", "", \
+				"CALLBACKFUNC:QTM_Extract_Frame_Values;FUNCPARAM:", \
+				showWhat="WAVES", nameFilter="QTMFilter_framewave")
+End
+
+Function QTM_Extract_Frame_Values(String param, String datafolder, String wname)
+	DFREF dfr=GetDataFolderDFR()
+
+	try
+		
+		SetDataFolder $datafolder
+		
+		String wlist=WaveList("frame*", ";", "")
+		Variable wlistNum=ItemsInList(wlist)
+		
+		print "working in DataFolder: ", datafolder
+		print "total ", wlistNum, " frames are detected."
+		Wave w=$StringFromList(0, wlist)
+		
+		if(WaveExists(w))
+			Variable dimCol=DimSize(w, 1)
+			Variable i
+			String colList=""
+			for(i=dimCol-1; i>=0; i-=1)
+				colList=AddListItem(num2istr(i)+":"+GetDimLabel(w, 1, i), colList, ";")
+			endfor
+			
+			Variable colidx=0
+			PROMPT colidx, "Select column for processing", popup colList
+			String procFuncList=FunctionList("QTMFRAMEPROC*", ";", "KIND:2;NPARAMS:5")
+			String procFunc=StringFromList(0, procFuncList)
+			PROMPT procFunc, "Select processing function", popup procFuncList
+			
+			DoPROMPT "Select column and processing function", colidx, procFunc			
+			
+			if(V_Flag==0)
+				colidx-=1
+				print "column ", colidx, " selected."
+				if(str2num(StringFromList(0, StringFromList(colidx, colList, ";"), ":"))!=colidx)
+					print "the order of column name is messed up, please check again."
+				else
+					FUNCREF QTMFRAMEPROC_Average fRef=$procFunc
+					String fparam=fRef(0, colidx, wlistNum, "", w)
+					if(strlen(fparam)==0)
+						print "init of processing function returned null string. process cancelled."
+					else
+						for(i=0; i<wlistNum; i+=1)
+							Wave w=$StringFromList(i, wlist)
+							fRef(1, colidx, wlistNum, fparam, w)
+						endfor
+					endif
+				endif
+			endif			
+		endif
+	catch
+	endtry
+	
+	SetDataFolder dfr
+End
+
+Function /S QTMFRAMEPROC_Average(Variable initState, Variable colIdx, Variable totalFrames, String Param, Wave frameData)
+	if(initState==0) //init step
+		print "Will calculate histogram of the selected column #", colIdx, GetDimLabel(frameData, 1, colIdx)
+		String wname="root:FrameAvgCol"+num2istr(colIdx)
+		PROMPT wname, "Save final result to wave"
+		DoPROMPT "Save result to", wname
+		if(V_Flag==0)
+			Make /O/D/N=(totalFrames, 4) $wname
+			Wave w=$wname
+			if(WaveExists(w))
+				SetDimLabel 1, 0, AVERAGE, w
+				SetDimLabel 1, 1, MINIMUM, w
+				SetDimLabel 1, 2, MAXIMUM, w
+				SetDimLabel 1, 3, STDEV, w
+				return wname
+			else
+				return ""
+			endif
+		else
+			return ""
+		endif
+	else
+		Wave w=$Param
+		if(WaveExists(w))
+			Variable fr=frameData[0][%FRAME]
+			Make /FREE/N=(DimSize(frameData, 0)) tmpData=frameData[p][colIdx]
+			
+			WaveTransform /O zapNaNs tmpData
+			WaveStats /Q tmpData
+			
+			w[fr][%AVERAGE]=V_avg
+			w[fr][%MINIMUM]=V_min
+			w[fr][%MAXIMUM]=V_max
+			w[fr][%STDEV]=V_sdev
+		endif
+	endif
+End
+
+Function /S QTMFRAMEPROC_Histogram(Variable initState, Variable colIdx, Variable totalFrames, String Param, Wave frameData)
+	Variable bin_start=0
+	Variable bin_size=1
+	Variable bin_number=100
+	PROMPT bin_start, "Histogram bin start"
+	PROMPT bin_size, "Histogram bin size"
+	PROMPT bin_number, "Histogram bin number"
+	
+	if(initState==0) //init step
+		String setParam=""
+		print "Will calculate histogram of the selected column #", colIdx, GetDimLabel(frameData, 1, colIdx)
+		String wname="root:FrameHistCol"+num2istr(colIdx)
+		PROMPT wname, "Save final result to wave"
+		
+		
+		DoPROMPT "Save result to", wname, bin_start, bin_size, bin_number
+		
+		if(V_Flag==0)
+			Make /O/D/N=(totalFrames, bin_number) $wname
+			Wave w=$wname
+			if(WaveExists(w))
+				SetScale /P y bin_start, bin_size, "", w
+				sprintf setParam, "WAVE:%s;BINSTART:%e;BINSIZE:%e;BINNUMBER:%d", wname, bin_start, bin_size, bin_number
+				return setParam
+			else
+				return ""
+			endif
+		else
+			return ""
+		endif
+	else
+		Wave w=$StringByKey("WAVE", Param, ":", ";")
+		bin_start=str2num(StringByKey("BINSTART", Param, ":", ";"))
+		bin_size=str2num(StringByKey("BINSIZE", Param, ":", ";"))
+		bin_number=str2num(StringByKey("BINNUMBER", Param, ":", ";"))
+		
+		if(WaveExists(w))
+			Variable fr=frameData[0][%FRAME]
+			Make /FREE/D/N=(DimSize(frameData, 0)) tmpData=frameData[p][colIdx]
+			Make /FREE/D/N=(bin_number) tmpHist
+			
+			Histogram /B={bin_start, bin_size, bin_number} /DEST=tmpHist tmpData
+			w[fr][]=tmpHist[q]
+		endif
+	endif
+End
+
+Function QTM_Choose_TrackDF()
+	WaveBrowser("TrackFolderSelector", "Select Track Data Folder", 100, 100, \
+				"Folder Name", "Any wave for track data", 3, "root:", "", \
+				"CALLBACKFUNC:QTM_Extract_Value_byTrack;FUNCPARAM:", \
+				showWhat="WAVES", nameFilter="QTMFilter_trackwave")
+End
+
+Function QTM_Extract_Value_byTrack(String param, String datafolder, String wname)
+
+	DFREF dfr=GetDataFolderDFR()
+
+	try
+		
+		SetDataFolder $datafolder
+		
+		String wlist=WaveList("tr_*", ";", "")
+		Variable wlistNum=ItemsInList(wlist)
+		
+		print "working in DataFolder: ", datafolder
+		print "total ", wlistNum, " tracks are detected."
+		Wave w=$StringFromList(0, wlist)
+		
+		if(WaveExists(w))
+			Variable dimCol=DimSize(w, 1)
+			Variable i, j
+			String colList=""
+			for(i=dimCol-1; i>=0; i-=1)
+				colList=AddListItem(num2istr(i)+":"+GetDimLabel(w, 1, i), colList, ";")
+			endfor
+			
+			Variable colidx=0
+			PROMPT colidx, "Select column for processing", popup colList
+			Variable totalFrames=100
+			PROMPT totalFrames, "Total frames to count"
+						
+			DoPROMPT "Select column to process", colidx, totalFrames
+			
+			if(V_Flag==0)
+				colidx-=1
+				print "column ", colidx, " selected."
+				if(str2num(StringFromList(0, StringFromList(colidx, colList, ";"), ":"))!=colidx)
+					print "the order of column name is messed up, please check again."
+				else
+					Make /N=(totalFrames, 3)/D/O ExtractedValuesFromTrackByFrame=NaN
+					Make /N=(totalFrames, wlistNum)/D/FREE tmpw=NaN
+					Wave w=ExtractedValuesFromTrackByFrame
+					
+					for(i=0; i<wlistNum; i+=1)
+						wave tr=$StringFromList(i, wlist)
+						if(WaveExists(tr))
+							Variable dimx=DimSize(tr, 0)
+							for(j=0; j<dimx; j+=1)
+								Variable fr=tr[j][%FRAME_IDX]
+								Variable val=tr[j][colidx]								
+								if(numtype(val)==0 && fr>=0 && fr<DimSize(tmpw, 0))
+									if(numtype(tmpw[fr][i])==0)
+										print "error: a duplicated value was found for track", i, " on frame ", fr
+									else
+										tmpw[fr][i]=Val
+									endif
+								endif								
+							endfor
+						endif
+					endfor
+					
+					for(i=0; i<DimSize(tmpw, 0); i+=1)
+						Make /FREE/O/N=(wlistNum)/D tmpwfr=tmpw[i][p]
+						WaveStats /Q tmpwfr
+						w[i][0]=V_avg
+						w[i][1]=V_sdev
+						w[i][2]=V_npnts
+					endfor
+					
+				endif
+			endif			
+		endif
+	catch
+	endtry
+	
+	SetDataFolder dfr
+End
