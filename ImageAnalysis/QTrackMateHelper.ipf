@@ -28,13 +28,24 @@ function QTM_load_track_file()
 		if(strlen(fullPath)>0)
 			NewDataFolder /O/S $folderName
 			Variable selected=ItemsInList(fullPath, "\r")
-			Variable i
+			Variable i, j
 			DoAlert /T="SELECT THE RIGHT COLUMNS" 0, "Please make sure to select TRACK_ID column from Edge CSV file. Please only select columns that's going to be used, including ID, FRAME, POSITION_X, POSITION_Y, TRACI_ID, SPOT_SOURCE_ID, SPOT_TARGET_ID, and intensity data that you may need."
 			
 			for(i=0; i<selected; i+=1)
 				String path=StringFromList(i, fullPath, "\r")
 				print "Loading ", path
 				LoadWave /Q/J/W/L={0, 4, 0, 0, 0}/K=0 /D /O path
+				print "Loaded waves:", S_waveNames
+				
+				for(j=0; j<ItemsInList(S_waveNames); j+=1)
+					wave w=$StringFromList(j, S_waveNames)
+					note /k w, path
+				endfor
+			endfor
+			
+			String wlist=WaveList("*", ";", "")
+			for(i=0; i<ItemsInList(wlist); i+=1)
+				
 			endfor
 		else
 			print "Cancelled."
@@ -563,7 +574,7 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 	DFREF dfr=GetDataFolderDFR()
 
 	try	
-		NewDataFolder /S $dfName; AbortOnRTE
+		NewDataFolder /O/S $dfName; AbortOnRTE
 		
 //		wave FRAME = dfr:FRAME; AbortOnRTE
 //		wave POSITION_X = dfr:POSITION_X; AbortOnRTE
@@ -573,8 +584,8 @@ function QTM_generate_frame_map(String dataList, variable density_diameter, vari
 		wave DENSITY=dfr:QTM_DENSITY;AbortOnRTE
 		DENSITY=NaN
 		String notestr=""
-		notestr = ReplaceStringByKey("ROI_DIAMETER", num2str(density_diameter), notestr)
-		notestr = ReplaceStringByKey("CELL_DIAMETER", num2str(cell_diameter), notestr)
+		notestr = ReplaceStringByKey("ROI_DIAMETER", notestr, num2str(density_diameter))
+		notestr = ReplaceStringByKey("CELL_DIAMETER", notestr, num2str(cell_diameter))
 		variable max_frame=WaveMax(FRAME)
 		
 		do
@@ -849,6 +860,7 @@ function QTM_Split_track(wave trackid_tbl, wave trackid, wave id, wave posx, wav
 										endif
 									endfor						
 									
+									note /k tr, "TIME_INTERVAL:"+num2str(time_interval)
 									tr_counter+=1
 									
 									break
@@ -1018,9 +1030,26 @@ static function normalize_hist_by_area(wave h)
 
 end
 
-function QTM_Hist_Summary(wave frame, wave speed, wave density, wave frame_bin, wave speed_bin, wave density_bin)
+function QTM_Hist_Summary(wave frame, wave speed, wave density, wave frame_bin, wave speed_bin, wave density_bin, [variable UniqueDF])
 	
-	String dfName=UniqueName("Histograms", 11, 0)
+	String dfName=""
+	
+	if(ParamIsDefault(UniqueDF))		
+		DoAlert 1, "Generate unique name for datafolder? If select no, we will overwrite existing one with name 'Histograms'"
+		if(V_flag==1)
+			UniqueDF=1
+		else
+			UniqueDF=0
+		endif
+	endif
+	
+	if(UniqueDF==1)
+		dfName=UniqueName("Histograms", 11, 0)
+	else
+		dfName="Histograms"
+	endif
+	
+	
 	DFREF dfr=GetDataFolderDFR()
 	try
 		NewDataFolder /O/S $dfName; AbortOnRTE
@@ -1128,7 +1157,7 @@ End
 
 Function /S QTMFRAMEPROC_Average(Variable initState, Variable colIdx, Variable totalFrames, String Param, Wave frameData)
 	if(initState==0) //init step
-		print "Will calculate histogram of the selected column #", colIdx, GetDimLabel(frameData, 1, colIdx)
+		print "Will calculate average of the selected column #", colIdx, GetDimLabel(frameData, 1, colIdx)
 		String wname="root:FrameAvgCol"+num2istr(colIdx)
 		PROMPT wname, "Save final result to wave"
 		DoPROMPT "Save result to", wname
@@ -1187,6 +1216,7 @@ Function /S QTMFRAMEPROC_Histogram(Variable initState, Variable colIdx, Variable
 			if(WaveExists(w))
 				SetScale /P y bin_start, bin_size, "", w
 				sprintf setParam, "WAVE:%s;BINSTART:%e;BINSIZE:%e;BINNUMBER:%d", wname, bin_start, bin_size, bin_number
+				note /k w, setParam
 				return setParam
 			else
 				return ""
