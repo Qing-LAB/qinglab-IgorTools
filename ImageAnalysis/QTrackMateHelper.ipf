@@ -302,11 +302,11 @@ function QTM_Generate_Histogram()
 end
 
 
-static function distance(variable posx1, variable posy1, variable posx2, variable posy2)
+function QTM_distance(variable posx1, variable posy1, variable posx2, variable posy2)
 	return sqrt((posx1-posx2)^2+(posy1-posy2)^2)
 end
 
-static function angle(variable posx1, variable posy1, variable posx2, variable posy2)
+function QTM_angle(variable posx1, variable posy1, variable posx2, variable posy2)
 	variable theta=atan((posy2-posy1)/(posx2-posx1))
 	
 	if(posx2-posx1<0)
@@ -350,7 +350,7 @@ static function calculate_density(wave table, variable R1, variable r2, wave DEN
 		for(j=0; j<DimSize(table, 0); j+=1)
 		
 			if(i!=j)
-				a+=get_intersect_area_circle(R1, r2, distance(table[i][%POS_X], table[i][%POS_Y], table[j][%POS_X], table[j][%POS_Y]))
+				a+=get_intersect_area_circle(R1, r2, QTM_distance(table[i][%POS_X], table[i][%POS_Y], table[j][%POS_X], table[j][%POS_Y]))
 			endif
 			
 		endfor
@@ -377,7 +377,7 @@ static function calculate_speed(wave tr, variable avoid_frame_begin, variable av
 		endfor
 		if(j>=0)
 			variable deltaT=time_interval*(tr[i][%FRAME_IDX]-tr[j][%FRAME_IDX])
-			variable dist=distance(tr[i][%POSX], tr[i][%POSY], tr[j][%POSX], tr[j][%POSY])
+			variable dist=QTM_distance(tr[i][%POSX], tr[i][%POSY], tr[j][%POSX], tr[j][%POSY])
 			tr[i][%SPEED]= dist / deltaT
 			
 			variable idx=find_value(id, tr[i][%SPOT_ID])
@@ -469,8 +469,8 @@ function QTM_trackid_lookuptbl(wave trackid, wave posx, wave posy, wave frame, w
 					py1=QTM_TRACK_TBL[tbl_counter][%startPosY]
 					py2=QTM_TRACK_TBL[tbl_counter][%endPosY]
 					
-					QTM_TRACK_TBL[tbl_counter][%totalDistance]=distance(px1, py1, px2, py2)
-					QTM_TRACK_TBL[tbl_counter][%totalAngle]=angle(px1, py1, px2, py2)
+					QTM_TRACK_TBL[tbl_counter][%totalDistance]=QTM_distance(px1, py1, px2, py2)
+					QTM_TRACK_TBL[tbl_counter][%totalAngle]=QTM_angle(px1, py1, px2, py2)
 					
 					QTM_SPOT_SOURCE_ID[startrefidx, refidx-1]=tmpsrc_id[p-startrefidx]
 					QTM_SPOT_TARGET_ID[startrefidx, refidx-1]=tmptarget_id[p-startrefidx]
@@ -965,8 +965,8 @@ function QTM_summarize_tbl(String datafolder, variable distance_threshold, varia
 					print "warning: missing frame found. frame idx check failed for track#", i, " at ", j; AbortOnRTE
 					break
 				endif
-				if(distance(w[j][%POSX], w[j][%POSY], w[j-1][%POSX], w[j-1][%POSY])>distance_threshold)
-					print "warning: distance threshold faild for track#", i, "at ", j, ", cell moves too far", distance(w[j][%POSX], w[j][%POSY], w[j-1][%POSX], w[j-1][%POSY])
+				if(QTM_distance(w[j][%POSX], w[j][%POSY], w[j-1][%POSX], w[j-1][%POSY])>distance_threshold)
+					print "warning: distance threshold faild for track#", i, "at ", j, ", cell moves too far", QTM_distance(w[j][%POSX], w[j][%POSY], w[j-1][%POSX], w[j-1][%POSY])
 				endif
 			endfor
 			
@@ -992,8 +992,8 @@ function QTM_summarize_tbl(String datafolder, variable distance_threshold, varia
 				y1=w[lastidx][%POSY]; AbortOnRTE
 				tbl[i][%END_POSY]=y1; AbortOnRTE
 				
-				tbl[i][%TOTAL_DISTANCE]=distance(x0, y0, x1, y1); AbortOnRTE
-				tbl[i][%TOTAL_ANGLE]=angle(x0, y0, x1, y1); AbortOnRTE
+				tbl[i][%TOTAL_DISTANCE]=QTM_distance(x0, y0, x1, y1); AbortOnRTE
+				tbl[i][%TOTAL_ANGLE]=QTM_angle(x0, y0, x1, y1); AbortOnRTE
 				
 				track_count+=1
 			endif
