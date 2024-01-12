@@ -50,7 +50,7 @@ Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, va
 	for(; i<DimSize(w, 0) && w[i][0]<t; i+=1)
 	endfor
 	
-	Make /O /D /N=(1, 4, 1) CellSummary // id, centerx, centery, ERKTR
+	Make /O /D /N=(1, 6, 1) CellSummary // id, centerx, centery, ERKTR
 	for(; i<DimSize(w, 0) && w[i][0]==t; i+=1)
 		if(c!=0)
 			InsertPoints /M=0 DimSize(CellSummary, 0), 1, CellSummary
@@ -59,6 +59,8 @@ Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, va
 		CellSummary[c][1][0]=w[i][4]
 		CellSummary[c][2][0]=w[i][5]
 		CellSummary[c][3][0]=w[i][7]
+		CellSummary[c][4][0]=w[i][2]
+		CellSummary[c][5][0]=w[i][6]
 		c+=1
 	endfor
 	total_cell=c
@@ -91,6 +93,8 @@ Function TrackERKTR(wave w, variable start_timeindex, variable end_timeindex, va
 					CellSummary[c][1][s]=w[r][4]
 					CellSummary[c][2][s]=w[r][5]
 					CellSummary[c][3][s]=w[r][7]
+					CellSummary[c][4][s]=w[r][2]
+					CellSummary[c][5][s]=w[r][6]
 				endif
 			endif
 		endfor
