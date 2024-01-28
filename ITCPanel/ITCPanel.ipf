@@ -318,7 +318,7 @@ Function ITC_init()
 	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 590, 410) as "DAC list"
 		
 	debugstr=" "
-	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,419},fixedSize=1,frame=2,size={470,22},fColor=(32768,0,0)
+	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,416},fixedSize=1,frame=2,size={470,25},fColor=(32768,0,0)
 	
 	GroupBox itc_grp_rtdac win=ITCPanel,title="RealTime DACs (V)",pos={600, 60}, size={195,75}
 	SetVariable itc_sv_rtdac0 win=ITCPanel, title="DAC0", pos={610, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="0"
@@ -1347,9 +1347,30 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 				Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 				String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
 				SVAR usrfuncname=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction")
+
+				SVAR TaskRecordingCount=$WBPkgGetName(fPath, WBPkgDFStr, "TaskRecordingCount")
+			
+				int64 cycle_count, total_count
+				sscanf TaskRecordingCount, "%x,%x", total_count, cycle_count
+				 
+			
+				NVAR SamplingRate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")
+				NVAR RecordingSize=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingSize")
+			
+				WAVE adcdata=$WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
+				WAVE dacdata=$WBPkgGetName(fPath, WBPkgDFWave, "DACData")
+				
+				WAVE selectedadcchn=$WBPkgGetName(fPath, WBPkgDFWave, "SelectedADCChn")
+				WAVE selecteddacchn=$WBPkgGetName(fPath, WBPkgDFWave, "SelectedDACChn")
+				
+				Variable selectedadc_number=DimSize(selectedadcchn, 0)
+				Variable selecteddac_number=DimSize(selecteddacchn, 0)
+		
+				Variable userfunc_ret=0
+				
 				if(checked)
 					checked=0
-					String funclist="_none_;_create_new_;"+FunctionList("*", ";", "KIND:2,NPARAMS:7,VALTYPE:1,WIN:Procedure")
+					String funclist="_none_;_create_new_;"+FunctionList("ITCUSERFunc_*", ";", "KIND:2,NPARAMS:9,VALTYPE:1")
 					String selected_func=""
 					PROMPT selected_func, "Select real-time data process function", popup funclist
 					DoPrompt "select function", selected_func
@@ -1375,26 +1396,31 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 									checked=0
 								endif
 							while(checked==-1)
-							
-							usrfuncname=""
 							checked=0
 							break
 						default:
-							usrfuncname=selected_func
 							checked=1
 						endswitch
 					endif
 				endif
 				if(!checked)
-					usrfuncname=""
+					userfunc_ret=0
+					if(strlen(usrfuncname)>0)
+						FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
+						if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+							itc_update_taskinfo()
+							userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_DISABLE); AbortOnRTE
+						endif
+					endif
+					usrfuncname = ""					
 				else
-					Variable userfunc_ret=0
+					usrfuncname=selected_func
+					userfunc_ret=0
 					String tmpstr=""
 					FUNCREF prototype_userdataprocessfunc refFunc=$usrfuncname
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-						Make /FREE /N=0 tmpwave
-						userfunc_ret=refFunc(tmpwave, 0, 0, 0, 0, 0, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
-
+						itc_update_taskinfo()
+						userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_FIRSTCALL); AbortOnRTE
 						if(userfunc_ret!=0) //user function cannot init properly
 							sprintf tmpstr, "User function %s cannot initialize properly with return code %d... user function is removed.", usrfuncname, userfunc_ret
 							itc_updatenb(tmpstr)
@@ -1574,6 +1600,7 @@ Function itc_btnproc_startacq(ba) : ButtonControl
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
+			itc_update_taskinfo()
 			itc_start_task()
 			break
 		case -1: // control being killed
@@ -2434,6 +2461,7 @@ Constant ITCUSERFUNC_START_BEFOREINIT=200
 Constant ITCUSERFUNC_START_AFTERINIT=300
 Constant ITCUSERFUNC_CYCLESYNC=400
 Constant ITCUSERFUNC_STOP=500
+Constant ITCUSERFUNC_DISABLE=-999
 
 Constant ITCSTATUS_MASK=0xff
 Constant ITCSTATUS_ALLOWINIT=0x100
@@ -2441,51 +2469,64 @@ Constant ITCSTATUS_INITDONE=0x200
 Constant ITCSTATUS_FUNCALLED_BEFOREINIT=0x400
 Constant ITCSTATUS_FUNCALLED_AFTERINIT=0x800
 
-Function prototype_userdataprocessfunc(wave adcdata, int64 total_count, int64 cycle_count, int length, int adc_chnnum, double samplingrate, int flag)
+Function prototype_userdataprocessfunc(wave adcdata, wave dacdata, int64 total_count, int64 cycle_count, int length, int adc_chnnum, int dac_chnnum, double samplingrate, int flag)
 //Please modify the code as needed 
 //and set as user data process function from the ITCPanel
 	Variable ret_val=0
 	
-	switch(flag)
-	case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
-		/////////////////////////////
-		//User code here
-		/////////////////////////////
-		ret_val=0 //if ret_val is set to non-zero, user function will not be set and an error will be generated
-		break
-	case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
-		/////////////////////////////
-		//User code here
-		/////////////////////////////
-		break // ret_val is not checked in idle call
-	case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
-		//ATTENTION: At this point, no adcdata has been initalized so the length information is not valid
-		/////////////////////////////
-		//User code here
-		/////////////////////////////
-		ret_val=0 //set ret_val to non-zero to hold initialization of the card, otherwise, set to zero
-		break
-	case ITCUSERFUNC_START_AFTERINIT: //called after user clicked "start recording", and after initializing the card
-		/////////////////////////////
-		//User code here
-		/////////////////////////////
-		ret_val=0
-		break
-	case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
-		/////////////////////////////
-		//User code here
-		/////////////////////////////
-		ret_val=0 //if need to stop recording by the user function, return a non-zero value
-		break
-	case ITCUSERFUNC_STOP: //called when the user requested to stop the recording
-		/////////////////////////////
-		//User code here
-		/////////////////////////////
-		break //ret_val is not checked for this call
-	default:
-		ret_val=-1 //this should not happen
-		break
-	endswitch
+	try
+		switch(flag)
+		case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			ret_val=0 //if ret_val is set to non-zero, user function will not be set and an error will be generated
+			break
+		case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			break // ret_val is not checked in idle call
+		case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
+			//ATTENTION: At this point, no adcdata has been initalized so the length information is not valid
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			ret_val=0 //set ret_val to non-zero to hold initialization of the card, otherwise, set to zero
+			break
+		case ITCUSERFUNC_START_AFTERINIT: //called after user clicked "start recording", and after initializing the card
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			ret_val=0
+			break
+		case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			ret_val=0 //if need to stop recording by the user function, return a non-zero value
+			break
+		case ITCUSERFUNC_STOP: //called when the user requested to stop the recording
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			break //ret_val is not checked for this call
+		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			//ret_val is not checked for this call
+			break
+		default:
+			ret_val=-1 //this should not happen
+			break
+		endswitch
+	catch
+		Variable err = GetRTError(1)		// Gets error code and clears error
+		String errMessage = GetErrMessage(err)
+		Printf "user function encountered the following error: %s\r", errMessage
+		ret_val=-1
+	endtry
 	
 	return ret_val
 End
@@ -2584,7 +2625,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, 0, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
+					refFunc(adcdata, dacdata, total_count, 0, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
 				endif
 			endif
 			break
@@ -2598,7 +2639,7 @@ Function itc_bgTask(s)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 					//Attention: at this point, no adcdata wave have been initialized
-					userfunc_ret=refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
+					userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
 					if(userfunc_ret>0) //user function can decide when to allow init
 						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
 							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
@@ -2659,7 +2700,7 @@ Function itc_bgTask(s)
 				if(strlen(UserFunc)>0)
 					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-						userfunc_ret=refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
+						userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
 					endif
 				endif
 				
@@ -2875,7 +2916,7 @@ Function itc_bgTask(s)
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								userfunc_ret=refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
+								userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
 								if(userfunc_ret!=0) //user function returned non-zero code, will stop the recording
 									sprintf tmpstr, "Error: User function returned code %d. Recording is terminated.", userfunc_ret
 									itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -2933,8 +2974,10 @@ Function itc_bgTask(s)
 #else
 			itcstatus=LIH_Status()
 #endif
+			Variable delta_time=(s.curRunTicks - LastIdleTicks)*1000/60.15
+			LastIdleTicks=s.curRunTicks
 			tMicroSec=stopMSTimer(tRefNum)
-			sprintf tmpstr, "Len(%6d, %2d, %2d),time(%4d ms),status(%d)", availablelen, availablelen-upload_len, availablelen-saved_len, tMicroSec/1000, itcstatus
+			sprintf tmpstr, "Len(%6d, %2d, %2d),exec_time(%4d ms),time_gap(%4d ms),status(%d),", availablelen, availablelen-upload_len, availablelen-saved_len, tMicroSec/1000, delta_time, itcstatus
 			DebugStr+=tmpstr
 
 			break
@@ -2942,7 +2985,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, total_count, cycle_count, RecordingSize, selectedadc_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
+					refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
 				endif
 			endif
 			Status=4
@@ -2977,6 +3020,464 @@ Function itc_bgTask(s)
 	endtry	
 	tMicroSec=stopMSTimer(tRefNum)
 	return 0
+End
+
+Constant MaxDepositionRawRecordingLength = 600 // sec
+
+Function PostSlackChannel(String token, String channel, String message, String notify_person)
+	String URL = "https://slack.com/api/chat.postMessage"
+	String postData = "channel="+URLEncode(channel)+"&text=@"+URLEncode(notify_person)+"%20"+URLEncode(message)+"&pretty=1"
+	URLRequest /DSTR = postData url=URL, method = post, headers = token
+End
+
+Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, variable adc_chnnum, variable dac_chnnum)
+	Variable max_cycle_count = round(MaxDepositionRawRecordingLength / (len/samplingrate)) // this is the number of cycles in half an hour that will be recorded with all raw data
+	String deposit_folder_name = UniqueName("DepositRecord", 11, 0)
+	DFREF dfr = GetDataFolderDFR()
+	
+	try
+		NewDataFolder /O/S root:$deposit_folder_name
+		
+		Variable chnnum=adc_chnnum+dac_chnnum+1
+		
+		String raw_record_name = "root:"+deposit_folder_name+":"+deposit_folder_name+"_raw"
+		String history_record_name = "root:"+deposit_folder_name+":"+deposit_folder_name+"_history"
+		String history_view_name = "root:"+deposit_folder_name+":HISTORY_VIEW"
+		
+		Make /O/N=(len*max_cycle_count, chnnum+1)/D $raw_record_name=NaN
+		Wave rawwave=$raw_record_name
+		Note /K rawwave
+		Note rawwave, "0;0"
+		
+		
+		Make /O/N=(13, chnnum, max_cycle_count)/D $history_record_name = NaN, $history_view_name = NaN
+
+		Wave historywave=$history_record_name
+		wave hist_view=$history_view_name
+		Note /K historywave
+		Note historywave, "0;0"
+		
+		SetDimLabel 0, 0, CYCLEINDEX, historywave, hist_view
+		SetDimLabel 0, 1, TIMESTAMP, historywave, hist_view
+		SetDimLabel 0, 2, MEANVALUE, historywave, hist_view
+		SetDimLabel 0, 3, SDEV, historywave, hist_view
+		SetDimLabel 0, 4, MAXVALUE, historywave, hist_view
+		SetDimLabel 0, 5, MINVALUE, historywave, hist_view
+		SetDimLabel 0, 6, MEANL1, historywave, hist_view
+		SetDimLabel 0, 7, MEANL2, historywave, hist_view
+		SetDimLabel 0, 8, SKEWNESS, historywave, hist_view
+		SetDimLabel 0, 9, KURTOSIS, historywave, hist_view
+		SetDimLabel 0, 10, PULSE_HIGH, historywave, hist_view
+		SetDimLabel 0, 11, PULSE_LOW, historywave, hist_view
+		SetDimLabel 0, 12, PULSE_WIDTH, historywave, hist_view
+		
+		Variable i
+		for(i=0; i<adc_chnnum; i+=1)
+			SetDimLabel 1, i, ADC_CHANNELS, historywave, hist_view
+			SetDimLabel 1, i, ADC_CHANNELS, rawwave
+		endfor
+		for(i=adc_chnnum; i<adc_chnnum+dac_chnnum; i+=1)
+			SetDimLabel 1, i, DAC_CHANNELS, historywave, hist_view
+			SetDimLabel 1, i, DAC_CHANNELS, rawwave
+		endfor
+		SetDimLabel 1, adc_chnnum+dac_chnnum, COND_CALC, historywave, rawwave, hist_view
+		SetDimLabel 1, adc_chnnum+dac_chnnum+1, TIMESTAMP, rawwave
+				
+		SetDimLabel 2, -1, RECORD_TIME, historywave, hist_view
+		
+		SetScale /P z, 0, len/samplingrate, "s", historywave, hist_view
+		SetScale /P x, 0, 1/samplingrate, "s", rawwave
+		
+		SetWindow ITCPanel, userdata(DepositRecord_FOLDER)=deposit_folder_name
+		SetWindow ITCPanel, userdata(DepositRecord_RAW)=raw_record_name
+		SetWindow ITCPanel, userdata(DepositRecord_HISTORY)=history_record_name
+		SetWindow ITCPanel, userdata(DepositRecord_HISTORYVIEW)=history_view_name
+		
+		Variable /G control_count
+		Variable /G pulse_flag
+		
+	catch
+	endtry
+	
+	SetDataFolder dfr
+		
+End
+
+Function DepositionPanelInit()
+	String PanelName=GetUserData("ITCPanel", "", "DepositionPanel")
+	if(strlen(PanelName)>0)
+		if(WinType(PanelName) == 7)
+			return 0
+		endif
+	endif
+	print("Deposition panel initialized.")
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
+	WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
+	WAVE /T dacchnlist=$WBPkgGetName(fPath, WBPkgDFWave, "DAC_Channel"); AbortONRTE
+	WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
+	WAVE selecteddacchn=$WBPkgGetName(fPath, WBPkgDFWave, "selecteddacchn"); AbortOnRTE
+	String adcchn_list="\"", dacchn_list="\""
+	Variable i
+	for(i=0; i<DimSize(selectedchn, 0); i+=1)
+		adcchn_list = adcchn_list+chnlist[selectedchn[i]]+";"
+	endfor
+	for(i=0; i<DimSize(selecteddacchn, 0); i+=1)
+		dacchn_list = dacchn_list+dacchnlist[selecteddacchn[i]]+";"
+	endfor
+	adcchn_list+="\""
+	dacchn_list+="\""
+	
+	NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,200,500)
+	String depositpanel_name = S_name
+	SetWindow ITCPanel, userdata(DepositionPanel)="ITCPanel#"+depositpanel_name
+	
+	ValDisplay depositpanel_total_cycle_time,title="total_cycle_time (ms)",value=_NUM:NaN,size={200,20}
+	//currently pulse wave used for dac channels are limited to be stored at root folder
+	PopupMenu depositpanel_pulse_wave,title="deposit_wave",size={200,20},value=WaveList("*",";","DIMS:1;")
+	SetVariable depositpanel_pulse_width,title="pulse_width (ms)",value=_NUM:50,size={200,20},limits={10,100,1}
+	SetVariable depositpanel_pre_pulse_time,title="pre_pulse_time (ms)",value=_NUM:20,size={200,20},limits={20,50,1}
+	SetVariable depositpanel_post_pulse_delay,title="post_pulse_delay (ms)",value=_NUM:50,size={200,20},limits={20,50,1}
+	ValDisplay depositpanel_post_pulse_samplelen,title="post_pulse_sample_len",value=_NUM:NaN,size={200,20}
+	
+	PopupMenu depositpanel_tunneling_chn,title="tunneling_current_channel",size={200,20},value=#adcchn_list
+	PopupMenu depositpanel_bias_chn,title="tunneling_bias_chn",size={200,20},value=#dacchn_list
+	
+	SetVariable depositpanel_rest_bias,title="rest_bias (V)",value=_NUM:0,size={200,20},limits={-1.5,1.5,0.01}
+	SetVariable depositpanel_deposit_bias,title="deposit_bias (V)",value=_NUM:0,size={200,20},limits={-1.5,1.5,0.01}
+	SetVariable depositpanel_removal_bias,title="removal_bias (V)",value=_NUM:0,size={200,20},limits={-1.5,1.5,0.01}
+	Button depositpanel_newRTplot,title="new RT plot",size={200,20},proc=DepositionPanel_Btn_NewRTPlot
+	SetVariable depositpanel_target_conductance,title="target_cond (nS)",value=_NUM:1,size={200,20},limits={0.001,100,0.01}
+	SetVariable depositionpanel_histlen, title="tracking history len (s)", value=_NUM:120,size={200,20},limits={10, MaxDepositionRawRecordingLength, 1}
+	Button depositpanel_autodep,title="start autodeposition",size={200,20},fColor=(0,32768,0),proc=DepositionPanel_Btn_autodep
+	Valdisplay depositpanel_cond, title="Conductance monitor (nS):",value=_NUM:NaN,size={200,20}
+	Valdisplay depositpanel_pulse, title="Active pulse potental (V):", value=_NUM:NaN,size={200,20}
+	Valdisplay depositpanel_pulsedelaycount, title="Count down to next decision:", value=_NUM:NaN,size={200,20}
+End
+
+Function DepositionPanelExit()
+	String depositpanel_name = GetUserData("ITCPanel", "", "DepositionPanel")
+	if(strlen(depositpanel_name)>0)
+		KillWindow /Z $(depositpanel_name)
+		SetWindow ITCPanel, userdata(DepositionPanel)=""
+	endif
+End
+
+Function DepositionPanel_KillRTPlot()
+	String RTPlotName=GetUserData("ITCPanel", "", "DepositionPanel_RTPlot")
+	if(strlen(RTPlotName)>0)
+		KillWindow /Z $RTPlotName
+		SetWindow ITCPanel, userdata(DepositionPanel_RTPlot)=""
+	endif	
+End
+
+
+Function DepositionPanel_Btn_NewRTPlot(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			try
+				DepositionPanel_KillRTPlot()
+				
+				ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace1name; AbortOnRTE
+				Variable chn1=V_value-1
+				ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace2name; AbortOnRTE
+				Variable chn2=V_value-2
+				
+				if(chn1>=0 && chn2>=0)
+				
+					Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
+					String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
+					String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData"); AbortOnRTE
+					WAVE datawave=$dataname; AbortOnRTE
+					dataname=StringFromList(ItemsInList(dataname, ":")-1, dataname, ":"); AbortOnRTE
+					WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
+					WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
+					WAVE /T chnunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit"); AbortOnRTE
+					
+					String ylabel = chnlist[selectedchn[chn1]]+" (\\E"+chnunit[selectedchn[chn1]]+")"; AbortOnRTE
+					String xlabel = chnlist[selectedchn[chn2]]+" (\\E"+chnunit[selectedchn[chn2]]+")"; AbortOnRTE
+					
+					Display /N=RealTime_XY_plot /B /L datawave[][chn1] vs datawave[][chn2]; AbortOnRTE
+					String RTPlotName = S_name; AbortOnRTE
+					Label bottom xlabel; AbortOnRTE
+					Label left ylabel; AbortOnRTE
+					ModifyGraph axThick=2,standoff(left)=0,freePos(left)=0,freePos(bottom)=0,standoff(bottom)=0; AbortOnRTE
+					
+					SetWindow ITCPanel, userdata(DepositionPanel_RTPlot)=RTPlotName				
+				endif
+			catch
+				Variable err = GetRTError(1)		// Gets error code and clears error
+				String errMessage = GetErrMessage(err)
+				Printf "RTPlot encountered the following error: %s\r", errMessage
+			endtry
+		
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function DepositionPanel_Btn_autodep(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			try
+				String panel_name = GetUserData("ITCPanel", "", "DepositionPanel")
+				String deposit_folder_name = GetUserData("ITCPanel","","DepositRecord_FOLDER")
+				String raw_record_name = GetUserData("ITCPanel","","DepositRecord_RAW")
+				String history_record_name = GetUserData("ITCPanel","","DepositRecord_HISTORY")
+				Variable autodep_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_AUTODEP_ENABLED"))
+				
+				if(autodep_status == 1)
+					autodep_status = 0
+					SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
+					Button depositpanel_autodep,win=$panel_name,title="start autodeposition",size={200,20},fColor=(0,32768,0)
+				else
+					autodep_status = 1
+					Button depositpanel_autodep,win=$panel_name,title="stop autodeposition",size={200,20},fColor=(32768,0,0)
+					SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="1"
+				endif
+			catch
+				Variable err = GetRTError(1)		// Gets error code and clears error
+				String errMessage = GetErrMessage(err)
+				Printf "RTPlot encountered the following error: %s\r", errMessage
+			endtry
+		
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+
+Function DepositionPanelPulseGenerator(wave w, int length, int pre_pulse_len, int pulse_len, double rest_bias, double pulse_bias)
+	Make /N=(length) /D dacwave
+	dacwave = rest_bias
+	variable i
+	for(i=pre_pulse_len; i<length && i<pre_pulse_len+pulse_len; i+=1)
+		dacwave[i]=pulse_bias
+	endfor
+	duplicate dacwave, w
+End
+
+Function Deposition_CopyHistoryRecord(wave hist_record, wave hist_fordisp, variable hist_endidx, variable hist_len)
+End
+
+Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 total_count, int64 cycle_count, int length, int adc_chnnum, int dac_chnnum, double samplingrate, int flag)
+//Please modify the code as needed 
+//and set as user data process function from the ITCPanel
+	Variable ret_val=0
+	Variable total_cycle_time=length/samplingrate
+	
+	String panel_name=GetUserData("ITCPanel","","DepositionPanel")
+
+	try
+		if(WinType(panel_name)==7)
+			ControlInfo /W=$(panel_name) depositpanel_target_conductance
+			Variable target_conductance = V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_pulse_width
+			Variable pulse_width = V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_pre_pulse_time
+			Variable pre_pulse_time = V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_post_pulse_delay
+			Variable post_pulse_delay = V_Value			
+			
+			ControlInfo /W=$(panel_name) depositpanel_rest_bias
+			Variable rest_bias = V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_deposit_bias
+			Variable deposit_bias = V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_rest_bias
+			Variable oxidize_bias = V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_pulse_wave
+			if(strlen(S_Value)>0)
+				wave pulse_wave = $S_Value
+			else
+				Make /FREE /N=(length) /D tmp_wave = rest_bias
+				wave pulse_wave = tmp_wave
+			endif
+			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_chn
+			Variable tunneling_current_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositpanel_bias_chn
+			Variable tunneling_bias_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositionpanel_histlen
+			Variable hist_len_time = V_Value
+			Variable hist_len = hist_len_time / (length/samplingrate)
+			
+			String hist_view_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORYVIEW")
+			Wave hist_view = $hist_view_name
+			
+		endif
+			
+		switch(flag)
+		case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			DepositionPanelInit()
+			DepositionPanelPrepareDataFolder(length, samplingrate, adc_chnnum, dac_chnnum)
+			ret_val=0 //if ret_val is set to non-zero, user function will not be set and an error will be generated
+			break
+		case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			
+			break // ret_val is not checked in idle call
+		case ITCUSERFUNC_START_BEFOREINIT: //called after user clicked "start recording", before initializing the card
+			//ATTENTION: At this point, no adcdata has been initalized so the length information is not valid
+			/////////////////////////////
+			//User code here
+			/////////////////////////////			
+			ret_val=0 //set ret_val to non-zero to hold initialization of the card, otherwise, set to zero
+			break
+		case ITCUSERFUNC_START_AFTERINIT: //called after user clicked "start recording", and after initializing the card
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			print "Initial call for DepositionPanel: total count=", total_count, "recording length = ", length, "sampling rate = ", samplingrate
+			print "If actual sampling rate does not match, stop and restart again."
+			DepositionPanelInit()
+			ret_val=0
+			hist_view=NaN
+			break
+		case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			
+			ValDisplay depositpanel_total_cycle_time win=$panel_name,value=_NUM:(round(total_cycle_time*1000))
+			
+			Variable pulse_sample_start=round(samplingrate*(pre_pulse_time+pulse_width+post_pulse_delay)/1000)
+			Variable pulse_sample_len = length - pulse_sample_start
+			
+			ValDisplay depositpanel_post_pulse_samplelen win=$panel_name,value=_NUM:(pulse_sample_len)
+			
+			Make /FREE/D/N=(DimSize(adcdata, 0)) cond_calc=adcdata[p][tunneling_current_chn] / dacdata[p][tunneling_bias_chn]
+			Make /FREE/D/N=(pulse_sample_len,adc_chnnum+dac_chnnum+1) tmp_stat
+			
+			tmp_stat[][0,adc_chnnum-1] = adcdata[pulse_sample_start+p][q];AbortOnRTE
+			tmp_stat[][adc_chnnum,adc_chnnum+dac_chnnum-1] = dacdata[pulse_sample_start+p][q-adc_chnnum];AbortOnRTE
+			tmp_stat[][adc_chnnum+dac_chnnum] = cond_calc[pulse_sample_start+p];AbortOnRTE
+			
+			String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER")
+			String raw_record_name = GetUserData("ITCPanel", "", "DepositRecord_RAW")
+			String history_record_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORY")
+			
+			wave rawwave = $raw_record_name
+			wave historywave = $history_record_name
+			
+			Variable timestamp_ticks = ticks
+			
+			Variable raw_startidx, raw_endidx, raw_base
+			Variable hist_startidx, hist_endidx
+			
+			String raw_idx_str=note(rawwave)
+			String hist_idx_str=note(historywave)
+			
+			raw_startidx=str2num(StringFromList(0, raw_idx_str))
+			raw_endidx=str2num(StringFromList(1, raw_idx_str))
+			raw_base = raw_endidx*length
+			
+			hist_startidx=str2num(StringFromList(0, hist_idx_str))
+			hist_endidx=str2num(StringFromList(1, hist_idx_str))
+			
+			
+			rawwave[raw_base, raw_base+length-1][0,adc_chnnum-1] = adcdata[p-raw_base][q];AbortOnRTE
+			rawwave[raw_base, raw_base+length-1][adc_chnnum, adc_chnnum+dac_chnnum-1] = dacdata[p-raw_base][q-adc_chnnum];AbortOnRTE
+			rawwave[raw_base, raw_base+length-1][adc_chnnum+dac_chnnum] = cond_calc[p-raw_base];AbortOnRTE
+			rawwave[raw_base, raw_base+length-1][adc_chnnum+dac_chnnum+1] = total_count*length/samplingrate+(p-raw_base)/samplingrate; AbortOnRTE
+
+			raw_endidx+=1
+			Variable max_raw_idx = round(DimSize(rawwave, 0)/length)
+			if(raw_endidx >= max_raw_idx)
+				raw_endidx = 0
+			endif
+			if(raw_endidx==raw_startidx)
+				raw_startidx+=1
+			endif
+			if(raw_startidx >= max_raw_idx)
+				raw_startidx = 0
+			endif
+			
+			note /k rawwave
+			note rawwave, num2istr(raw_startidx)+";"+num2istr(raw_endidx)
+			
+			WaveStats /Q /PCST /Z tmp_stat
+			Wave M_WaveStats
+			historywave[%CYCLEINDEX][][hist_endidx]=cycle_count;AbortOnRTE
+			historywave[%TIMESTAMP][][hist_endidx]=timestamp_ticks/60;AbortOnRTE
+			historywave[%MEANVALUE][][hist_endidx]=M_WaveStats[%avg][q];AbortOnRTE
+			historywave[%SDEV][][hist_endidx]=M_WaveStats[%sdev][q];AbortOnRTE
+			historywave[%MAXVALUE][][hist_endidx]=M_WaveStats[%max][q];AbortOnRTE
+			historywave[%MINVALUE][][hist_endidx]=M_WaveStats[%min][q];AbortOnRTE
+			historywave[%MEANL1][][hist_endidx]=M_WaveStats[%meanL1][q];AbortOnRTE
+			historywave[%MEANL2][][hist_endidx]=M_WaveStats[%meanL2][q];AbortOnRTE
+			historywave[%SKEWNESS][][hist_endidx]=M_WaveStats[%skew][q];AbortOnRTE
+			historywave[%KURTOSIS][][hist_endidx]=M_WaveStats[%kurt][q];AbortOnRTE
+			
+			WaveStats /Q pulse_wave
+			historywave[%PULSE_HIGH][][hist_endidx]=V_max;AbortOnRTE
+			historywave[%PULSE_LOW][][hist_endidx]=V_min;AbortOnRTE
+			historywave[%PULSE_WIDTH][][hist_endidx]=pulse_width;AbortOnRTE
+			
+			if(hist_endidx<hist_len)
+				hist_view[][][0, hist_endidx]=historywave[p][q][r]
+			else
+				hist_view[][][0, hist_len-1] = historywave[p][q][hist_endidx-hist_len+1+r]
+			endif
+			
+			hist_endidx+=1
+			if(hist_endidx>=DimSize(historywave, 2))
+				InsertPoints /M=2 /V=(NaN) DimSize(historywave, 2), round(MaxDepositionRawRecordingLength / (length/samplingrate)), historywave;AbortOnRTE
+			endif
+			
+			note /k historywave
+			note historywave, "0;"+num2str(hist_endidx)
+			
+			ret_val=0 //if need to stop recording by the user function, return a non-zero value
+			break
+		case ITCUSERFUNC_STOP: //called when the user requested to stop the recording
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
+			DepositionPanel_KillRTPlot()			
+			break //ret_val is not checked for this call
+		
+		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
+			DepositionPanelExit()
+			break
+			
+		default:
+			ret_val=-1 //this should not happen
+			break
+		endswitch
+	catch
+		Variable err = GetRTError(1)		// Gets error code and clears error
+		String errMessage = GetErrMessage(err)
+		Printf "user function encountered the following error: %s\r", errMessage
+		ret_val=-1
+	endtry
+	
+	return ret_val
 End
 
 
