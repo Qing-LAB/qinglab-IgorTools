@@ -1659,8 +1659,9 @@ Function itc_rtgraph_init(left, top, right, bottom)
 	SetVariable rtgraph_minx win=ITCPanel#rtgraphpanel,title="MinX",value=_NUM:0,size={120,20},limits={-inf, inf, 0},disable=2,proc=rtgraph_svproc_setxaxis
 	SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel,title="MaxX",value=_NUM:(DimSize($wname, 0)*DimDelta($wname,0)),size={120,20},limits={-inf, inf, 0},disable=2,proc=rtgraph_svproc_setxaxis
 	CheckBox rtgraph_autox win=ITCPanel#rtgraphpanel,title="AutoX",size={120,20}	,value=1,proc=rtgraph_cbproc_autox
+	
+	PopupMenu rtgraph_viewmode win=ITCPanel#rtgraphpanel,title="ViewMode",value="None;Single;Split;Y1vsY2;Y2vsY1;Custom;",mode=3,size={150,20},proc=rtgraph_popproc_viewmode
 
-	CheckBox rtgraph_split win=ITCPanel#rtgraphpanel,title="Split Display",size={120,20},value=ch2_split, disable=ch2_disable, proc=rtgraph_cbproc_split
 	Button rtgraph_showinfo win=ITCPanel#rtgraphpanel,title="Show info cursors",size={120,20},proc=rtgraph_btnproc_showinfo,userdata(status)="0"
 	Display /HOST=ITCPanel /N=rtgraph /W=(left, top, right, bottom);
 
@@ -1683,15 +1684,34 @@ Function rtgraph_popproc_trace(pa) : PopupMenuControl
 					SetVariable rtgraph_miny2 win=ITCPanel#rtgraphpanel, disable=2
 					SetVariable rtgraph_maxy2 win=ITCPanel#rtgraphpanel, disable=2
 					CheckBox rtgraph_autoy2 win=ITCPanel#rtgraphpanel, value=1, disable=2
-					CheckBox rtgraph_split win=ITCPanel#rtgraphpanel, value=0, disable=2
+					PopupMenu rtgraph_viewmode win=ITCPanel#rtgraphpanel, mode=2
+
 				else
 					PopupMenu rtgraph_trace2color win=ITCPanel#rtgraphpanel, disable=0
 					SetVariable rtgraph_miny2 win=ITCPanel#rtgraphpanel, disable=2
 					SetVariable rtgraph_maxy2 win=ITCPanel#rtgraphpanel, disable=2
 					CheckBox rtgraph_autoy2 win=ITCPanel#rtgraphpanel, disable=0,value=1
-					CheckBox rtgraph_split win=ITCPanel#rtgraphpanel, value=1, disable=0
+					PopupMenu rtgraph_viewmode win=ITCPanel#rtgraphpanel, mode=3
+
 				endif
 			endif
+			rtgraph_update_display()
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function rtgraph_popproc_viewmode(pa) : PopupMenuControl
+	STRUCT WMPopupAction &pa
+
+	switch( pa.eventCode )
+		case 2: // mouse up
+			Variable popNum = pa.popNum
+			String popStr = pa.popStr
+			
 			rtgraph_update_display()
 			break
 		case -1: // control being killed
@@ -1726,22 +1746,29 @@ Function rtgraph_cbproc_autoy(cba) : CheckBoxControl
 			String controlname_miny="rtgraph_miny"+tracenumstr
 			String controlname_maxy="rtgraph_maxy"+tracenumstr
 			String axisname
-			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_split
-			if(V_value==0 && tracenum!=1)
-				axisname="right"+tracenumstr
-			else
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_viewmode
+			Variable viewmode = V_value
+			if(viewmode==2)
+				if(tracenum!=1)
+					axisname="right"+tracenumstr
+				else
+					axisname="left"+tracenumstr
+				endif
+			elseif(viewmode==3)
 				axisname="left"+tracenumstr
 			endif
 			
-			if(checked)
-				SetVariable $controlname_miny win=ITCPanel#rtgraphpanel, disable=2
-				SetVariable $controlname_maxy win=ITCPanel#rtgraphpanel, disable=2
-				SetAxis /W=ITCPanel#rtgraph /A/N=2 $axisname
-			else
-				GetAxis /W=ITCPanel#rtgraph /Q $axisname
-				SetVariable $controlname_miny win=ITCPanel#rtgraphpanel, value=_NUM:V_min, disable=0
-				SetVariable $controlname_maxy win=ITCPanel#rtgraphpanel, value=_NUM:V_max, disable=0
-				SetAxis /W=ITCPanel#rtgraph $axisname, V_min, V_max
+			if(viewmode==2 || viewmode ==3)
+				if(checked)
+					SetVariable $controlname_miny win=ITCPanel#rtgraphpanel, disable=2
+					SetVariable $controlname_maxy win=ITCPanel#rtgraphpanel, disable=2
+					SetAxis /W=ITCPanel#rtgraph /A/N=2 $axisname
+				else
+					GetAxis /W=ITCPanel#rtgraph /Q $axisname
+					SetVariable $controlname_miny win=ITCPanel#rtgraphpanel, value=_NUM:V_min, disable=0
+					SetVariable $controlname_maxy win=ITCPanel#rtgraphpanel, value=_NUM:V_max, disable=0
+					SetAxis /W=ITCPanel#rtgraph $axisname, V_min, V_max
+				endif
 			endif
 			
 			break
@@ -1773,18 +1800,21 @@ Function rtgraph_cbproc_autox(cba) : CheckBoxControl
 	switch( cba.eventCode )
 		case 2: // mouse up
 			Variable checked = cba.checked
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_viewmode
+			Variable viewmode = V_value
 			
-			if(checked)
-				SetVariable rtgraph_minx win=ITCPanel#rtgraphpanel, disable=2
-				SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel, disable=2
-				SetAxis /W=ITCPanel#rtgraph /A/N=1 $("bottom1")
-			else
-				GetAxis /W=ITCPanel#rtgraph /Q $("bottom1")
-				SetVariable rtgraph_minx win=ITCPanel#rtgraphpanel, value=_NUM:V_min, disable=0
-				SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel, value=_NUM:V_max, disable=0
-				SetAxis /W=ITCPanel#rtgraph $("bottom1"), V_min, V_max
+			if(viewmode == 2 || viewmode == 3)
+				if(checked)
+					SetVariable rtgraph_minx win=ITCPanel#rtgraphpanel, disable=2
+					SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel, disable=2
+					SetAxis /W=ITCPanel#rtgraph /A/N=1 $("bottom1")
+				else
+					GetAxis /W=ITCPanel#rtgraph /Q $("bottom1")
+					SetVariable rtgraph_minx win=ITCPanel#rtgraphpanel, value=_NUM:V_min, disable=0
+					SetVariable rtgraph_maxx win=ITCPanel#rtgraphpanel, value=_NUM:V_max, disable=0
+					SetAxis /W=ITCPanel#rtgraph $("bottom1"), V_min, V_max
+				endif
 			endif
-			
 			break
 		case -1: // control being killed
 			break
@@ -1814,14 +1844,20 @@ Function rtgraph_svproc_setyaxis(sva) : SetVariableControl
 			miny=V_value
 			ControlInfo  /W=ITCPanel#rtgraphpanel $controlname_maxy
 			maxy=V_value
-			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_split
-			if(V_value==0 && tracenum!=1)
-				axisname="right"+tracenumstr
-			else
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_viewmode
+			Variable viewmode = V_value
+			if(viewmode==2)
+				if(tracenum!=1)
+					axisname="right"+tracenumstr
+				else
+					axisname="left"+tracenumstr
+				endif
+				SetAxis /W=ITCPanel#rtgraph $axisname, miny, maxy
+			elseif(viewmode==3)
 				axisname="left"+tracenumstr
+				SetAxis /W=ITCPanel#rtgraph $axisname, miny, maxy
 			endif
-				
-			SetAxis /W=ITCPanel#rtgraph $axisname, miny, maxy
+			
 			break
 		case 3: // Live update			
 			break
@@ -1848,7 +1884,12 @@ Function rtgraph_svproc_setxaxis(sva) : SetVariableControl
 			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxx
 			maxx=V_value
 			
-			SetAxis /W=ITCPanel#rtgraph $("bottom1"), minx, maxx
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_viewmode
+			Variable viewmode = V_value
+			
+			if(viewmode == 2 || viewmode == 3)
+				SetAxis /W=ITCPanel#rtgraph $("bottom1"), minx, maxx
+			endif
 			break
 		case 3: // Live update
 
@@ -1886,15 +1927,21 @@ End
 Function rtgraph_update_display()
 
 	try
-		Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
-		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
-		String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
+		Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
+		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
+		String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData"); AbortOnRTE
 		WAVE datawave=$dataname; AbortOnRTE
-		dataname=StringFromList(ItemsInList(dataname, ":")-1, dataname, ":")
+		String dacdataname=WBPkgGetName(fPath, WBPkgDFWave, "DACData"); AbortOnRTE
+		WAVE dacdatawave=$dataname; AbortOnRTE
+		dataname=StringFromList(ItemsInList(dataname, ":")-1, dataname, ":"); AbortOnRTE
 		WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
 		WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
 		WAVE /T chnunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit"); AbortOnRTE
-		String chnname
+		SVAR UserFunc=$WBPkgGetName(fPath, WBPkgDFStr, "UserDataProcessFunction"); AbortOnRTE
+		NVAR SamplingRate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate"); AbortOnRTE
+		NVAR RecordingSize=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingSize"); AbortOnRTE
+		
+		String chnname_1, chnname_2
 		
 		do
 			String tracelist=TraceNameList("ITCPanel#rtgraph", ";", 1)
@@ -1904,126 +1951,179 @@ Function rtgraph_update_display()
 			endif
 		while(n>0)
 		
-		String xaxis="bottom1", yaxis="left1"
-		Variable chn
+		Variable split = 0
+		ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_viewmode;AbortOnRTE
+		Variable viewmode = V_value
 		
-		//first trace
-		ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace1name; AbortOnRTE
-		chn=V_value-1
-		ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_trace1color; AbortOnRTE
-		Variable r=V_red, g=V_green, b=V_blue
-		ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_autoy1; AbortOnRTE
-		Variable autoy=V_value
-		Variable miny, maxy
-		if(autoy==1)
-			miny=NaN
-			maxy=NaN
-		else
-			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_miny1; AbortOnRTE
-			miny=V_value
-			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxy1; AbortOnRTE
-			maxy=V_Value	
-		endif
-		ControlInfo  /W=ITCPanel#rtgraphpanel  rtgraph_autox; AbortOnRTE
-		Variable autox=V_value
-		Variable minx, maxx
-		if(autox==1)
-			minx=NaN
-			maxx=NaN
-		else
-			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_minx; AbortOnRTE
-			minx=V_value
-			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxx; AbortOnRTE
-			maxx=V_value
-		endif
-	
-		ControlInfo  /W=ITCPanel#rtgraphpanel  rtgraph_split; AbortOnRTE
-		Variable split=V_value
+		TextBox /W=ITCPanel#rtgraph/K/N=RTTextBox0
 		
-		chnname=chnlist[selectedchn[chn]]; AbortOnRTE
-		AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis /B=$xaxis datawave[][chn]; AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos($yaxis)=0,lblPos($yaxis)=60,notation($yaxis)=0,ZisZ($yaxis)=1,fsize=12; AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph freePos($xaxis)=0,lblPos($xaxis)=40,notation($xaxis)=0,fsize=12,ZisZ=1; AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph rgb($dataname)=(r, g, b); AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph margin(left)=80; AbortOnRTE
-		if(split)
-			ModifyGraph /W=ITCPanel#rtgraph margin(right)=25; AbortOnRTE
-		else
-			ModifyGraph /W=ITCPanel#rtgraph margin(right)=80; AbortOnRTE
-		endif
-
-		Label /W=ITCPanel#rtgraph $yaxis chnname+" (\\E"+chnunit[selectedchn[chn]]+")"; AbortOnRTE
-		Label /W=ITCPanel#rtgraph $xaxis "time (\\U)"; AbortOnRTE
-		
-		if(autox==1)
-			SetAxis /W=ITCPanel#rtgraph /A=2/N=1 $xaxis; AbortOnRTE
-		else
-			SetAxis /W=ITCPanel#rtgraph $xaxis, minx, maxx; AbortOnRTE
-		endif
-		ModifyGraph /W=ITCPanel#rtgraph lowTrip($xaxis)=0.01; AbortOnRTE
-		
-		if(autoy==1)
-			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 $yaxis; AbortOnRTE
-		else
-			SetAxis /W=ITCPanel#rtgraph $yaxis, miny, maxy; AbortOnRTE
-		endif
-		ModifyGraph /W=ITCPanel#rtgraph lowTrip($yaxis)=0.01; AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph tlblRGB($yaxis)=(r, g, b); AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis)=(r, g, b); AbortOnRTE
-		
-		if(split==1)
-			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0.52,1}; AbortOnRTE
-			yaxis="left2"
-		else
-			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0,1}; AbortOnRTE
-			yaxis="right2"
-		endif
-		
-		//second trace
-		ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace2name; AbortOnRTE
-		chn=V_value-2
-		if(chn<0) //_none_ is selected
+		if(viewmode == 1) //None
+			TextBox /W=ITCPanel#rtgraph/C/N=RTTextBox0/F=0/Z=1/A=MC/X=0.00/Y=0.00 "\\Z18Real-time display disabled"
 			return 0
 		endif
 		
-		ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_trace2color; AbortOnRTE
-		r=V_red; g=V_green; b=V_blue
-		ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_autoy2; AbortOnRTE
-		autoy=V_value
-		if(autoy==1)
-			miny=NaN
-			maxy=NaN
-		else
-			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_miny2; AbortOnRTE
-			miny=V_value
-			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxy2; AbortOnRTE
-			maxy=V_Value	
+		if(viewmode == 2 || viewmode == 3 || viewmode == 4 || viewmode == 5)
+		
+			if(viewmode == 3)
+				split = 1
+			endif
+		
+			String xaxis="bottom1", yaxis_1="left1"
+			Variable chn_1, chn_2
+			
+			//first trace
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace1name; AbortOnRTE
+			chn_1=V_value-1
+			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_trace1color; AbortOnRTE
+			Variable r1=V_red, g1=V_green, b1=V_blue
+			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_autoy1; AbortOnRTE
+			Variable autoy_1=V_value
+			Variable miny_1, maxy_1
+			if(autoy_1==1)
+				miny_1=NaN
+				maxy_1=NaN
+			else
+				ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_miny1; AbortOnRTE
+				miny_1=V_value
+				ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxy1; AbortOnRTE
+				maxy_1=V_Value	
+			endif
+			ControlInfo  /W=ITCPanel#rtgraphpanel  rtgraph_autox; AbortOnRTE
+			Variable autox_1=V_value
+			Variable minx_1, maxx_1
+			if(autox_1==1)
+				minx_1=NaN
+				maxx_1=NaN
+			else
+				ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_minx; AbortOnRTE
+				minx_1=V_value
+				ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxx; AbortOnRTE
+				maxx_1=V_value
+			endif
+				
+			chnname_1=chnlist[selectedchn[chn_1]]; AbortOnRTE			
+			
+			String yaxis_2=""
+			
+			//second trace
+			ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace2name; AbortOnRTE
+			chn_2=V_value-2
+			
+			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_trace2color; AbortOnRTE
+			Variable r2=V_red, g2=V_green, b2=V_blue
+			ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_autoy2; AbortOnRTE
+			Variable autoy_2=V_value
+			Variable miny_2, maxy_2
+			if(autoy_2==1)
+				miny_2=NaN
+				maxy_2=NaN
+			else
+				ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_miny2; AbortOnRTE
+				miny_2=V_value
+				ControlInfo  /W=ITCPanel#rtgraphpanel rtgraph_maxy2; AbortOnRTE
+				maxy_2=V_Value	
+			endif
+			
+			chnname_2=chnlist[selectedchn[chn_2]]; AbortOnRTE
+			
+			if(viewmode == 2 || viewmode == 3) //single or split view of selected trace(s)
+				AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis_1 /B=$xaxis datawave[][chn_1]; AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos($yaxis_1)=0,lblPos($yaxis_1)=60,notation($yaxis_1)=0,ZisZ($yaxis_1)=1,fsize=12; AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph freePos($xaxis)=0,lblPos($xaxis)=40,notation($xaxis)=0,fsize=12,ZisZ=1; AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph rgb($dataname)=(r1, g1, b1); AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph margin(left)=80; AbortOnRTE
+				if(split)
+					ModifyGraph /W=ITCPanel#rtgraph margin(right)=25; AbortOnRTE
+				else
+					ModifyGraph /W=ITCPanel#rtgraph margin(right)=80; AbortOnRTE
+				endif
+		
+				Label /W=ITCPanel#rtgraph $yaxis_1 chnname_1+" (\\E"+chnunit[selectedchn[chn_1]]+")"; AbortOnRTE
+				Label /W=ITCPanel#rtgraph $xaxis "time (\\U)"; AbortOnRTE
+				
+				if(autox_1==1)
+					SetAxis /W=ITCPanel#rtgraph /A=2/N=1 $xaxis; AbortOnRTE
+				else
+					SetAxis /W=ITCPanel#rtgraph $xaxis, minx_1, maxx_1; AbortOnRTE
+				endif
+				ModifyGraph /W=ITCPanel#rtgraph lowTrip($xaxis)=0.01; AbortOnRTE
+				
+				if(autoy_1==1)
+					SetAxis /W=ITCPanel#rtgraph /A=2/N=2 $yaxis_1; AbortOnRTE
+				else
+					SetAxis /W=ITCPanel#rtgraph $yaxis_1, miny_1, maxy_1; AbortOnRTE
+				endif
+				ModifyGraph /W=ITCPanel#rtgraph lowTrip($yaxis_1)=0.01; AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph tlblRGB($yaxis_1)=(r1, g1, b1); AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis_1)=(r1, g1, b1); AbortOnRTE
+				
+				if(chn_2>=0)
+					if(split==1)
+						ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis_1)={0.52,1}; AbortOnRTE
+						yaxis_2="left2"
+					else
+						ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis_1)={0,1}; AbortOnRTE
+						yaxis_2="right2"
+					endif
+				
+					if(split==1)
+						AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis_2 /B=$xaxis datawave[][chn_2]; AbortOnRTE
+					else
+						AppendToGraph /W=ITCPanel#rtgraph /R=$yaxis_2 /B=$xaxis datawave[][chn_2]; AbortOnRTE
+					endif
+					ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos($yaxis_2)=0,lblPos($yaxis_2)=60,notation($yaxis_2)=0,ZisZ($yaxis_2)=1,fsize=12; AbortOnRTE
+					ModifyGraph /W=ITCPanel#rtgraph rgb($(dataname+"#1"))=(r2, g2, b2); AbortOnRTE
+					
+					Label /W=ITCPanel#rtgraph $yaxis_2 chnname_2+" (\\E"+chnunit[selectedchn[chn_2]]+")"; AbortOnRTE
+					
+					if(autoy_2==1)
+						SetAxis /W=ITCPanel#rtgraph /A=2/N=2 $yaxis_2; AbortOnRTE
+					else
+						SetAxis /W=ITCPanel#rtgraph $yaxis_2, miny_2, maxy_2; AbortOnRTE
+					endif
+					ModifyGraph /W=ITCPanel#rtgraph lowTrip($yaxis_2)=0.01; AbortOnRTE
+					
+					if(split==1)
+						ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis_2)={0,0.48}; AbortOnRTE
+					else
+						ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis_2)={0,1}; AbortOnRTE
+					endif
+					ModifyGraph /W=ITCPanel#rtgraph tlblRGB($yaxis_2)=(r2, g2, b2); AbortOnRTE
+					ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis_2)=(r2, g2, b2); AbortOnRTE
+				endif
+			endif
+			
+			if(chn_2>=0 && (viewmode == 4 || viewmode == 5)) //Y1 vs Y2 or Y2 vs Y1
+				if(viewmode == 4)
+					AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis_1 /B=$xaxis datawave[][chn_1] vs datawave[][chn_2]
+				endif
+				if(viewmode == 5)
+					AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis_1 /B=$xaxis datawave[][chn_2] vs datawave[][chn_1]
+				endif
+				ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos($yaxis_1)=0,lblPos($yaxis_1)=60,notation($yaxis_1)=0,ZisZ($yaxis_1)=1,fsize=12; AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph freePos($xaxis)=0,lblPos($xaxis)=40,notation($xaxis)=0,fsize=12,ZisZ=1; AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph rgb($dataname)=(r1, g1, b1); AbortOnRTE
+				ModifyGraph /W=ITCPanel#rtgraph margin(left)=80,margin(right)=80; AbortOnRTE
+				
+				if(viewmode == 4)
+					Label /W=ITCPanel#rtgraph $yaxis_1 chnname_1+" (\\E"+chnunit[selectedchn[chn_1]]+")"; AbortOnRTE
+					Label /W=ITCPanel#rtgraph $xaxis chnname_2+" (\\E"+chnunit[selectedchn[chn_2]]+")"; AbortOnRTE
+				endif
+				if(viewmode == 5)
+					Label /W=ITCPanel#rtgraph $yaxis_1 chnname_2+" (\\E"+chnunit[selectedchn[chn_2]]+")"; AbortOnRTE
+					Label /W=ITCPanel#rtgraph $xaxis chnname_1+" (\\E"+chnunit[selectedchn[chn_1]]+")"; AbortOnRTE
+				endif
+			endif
 		endif
 		
-		chnname=chnlist[selectedchn[chn]]; AbortOnRTE
-		if(split)
-			AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis /B=$xaxis datawave[][chn]; AbortOnRTE
-		else
-			AppendToGraph /W=ITCPanel#rtgraph /R=$yaxis /B=$xaxis datawave[][chn]; AbortOnRTE
+		if(viewmode == 6) //custome display
+			if(strlen(UserFunc)>0)
+				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
+				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
+					refFunc(datawave, dacdatawave, 0, 0, RecordingSize, 0, 0, SamplingRate, ITCUSERFUNC_CUSTOMDISPLAY); AbortOnRTE
+				endif
+			endif
 		endif
-		ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos($yaxis)=0,lblPos($yaxis)=60,notation($yaxis)=0,ZisZ($yaxis)=1,fsize=12; AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph rgb($(dataname+"#1"))=(r, g, b); AbortOnRTE
-		
-		Label /W=ITCPanel#rtgraph $yaxis chnname+" (\\E"+chnunit[selectedchn[chn]]+")"; AbortOnRTE
-		if(autoy==1)
-			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 $yaxis; AbortOnRTE
-		else
-			SetAxis /W=ITCPanel#rtgraph $yaxis, miny, maxy; AbortOnRTE
-		endif
-		ModifyGraph /W=ITCPanel#rtgraph lowTrip($yaxis)=0.01; AbortOnRTE
-		
-		if(split==1)
-			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0,0.48}; AbortOnRTE
-		else
-			ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis)={0,1}; AbortOnRTE
-		endif
-		ModifyGraph /W=ITCPanel#rtgraph tlblRGB($yaxis)=(r, g, b); AbortOnRTE
-		ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis)=(r, g, b); AbortOnRTE
 	catch
 		String tmpstr
 		sprintf tmpstr, "Error when updating the real time plot. V_AbortCode: %d. ", V_AbortCode
@@ -2461,6 +2561,7 @@ Constant ITCUSERFUNC_START_BEFOREINIT=200
 Constant ITCUSERFUNC_START_AFTERINIT=300
 Constant ITCUSERFUNC_CYCLESYNC=400
 Constant ITCUSERFUNC_STOP=500
+Constant ITCUSERFUNC_CUSTOMDISPLAY=600
 Constant ITCUSERFUNC_DISABLE=-999
 
 Constant ITCSTATUS_MASK=0xff
@@ -2512,6 +2613,12 @@ Function prototype_userdataprocessfunc(wave adcdata, wave dacdata, int64 total_c
 			/////////////////////////////
 			break //ret_val is not checked for this call
 		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
+			/////////////////////////////
+			//User code here
+			/////////////////////////////
+			//ret_val is not checked for this call
+			break
+		case ITCUSERFUNC_CUSTOMDISPLAY: //called by GUI controller where user can use the ITCPanel#rtgraph to display customized content
 			/////////////////////////////
 			//User code here
 			/////////////////////////////
@@ -3465,7 +3572,14 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
 			DepositionPanelExit()
 			break
-			
+		case ITCUSERFUNC_CUSTOMDISPLAY: //called by GUI controller where user can use the ITCPanel#rtgraph to display customized content
+			AppendToGraph /W=ITCPanel#rtgraph /L /B hist_view[%MEANVALUE][%COND_CALC][] vs hist_view[%TIMESTAMP][%COND_CALC][]
+			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left)=0,lblPos(left)=60,notation(left)=0,ZisZ(left)=1,fsize=12; AbortOnRTE
+			ModifyGraph /W=ITCPanel#rtgraph freePos(left)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
+			ModifyGraph /W=ITCPanel#rtgraph margin(left)=80; AbortOnRTE
+			print("display updated.")
+			//ret_val is not checked for this call
+			break
 		default:
 			ret_val=-1 //this should not happen
 			break
