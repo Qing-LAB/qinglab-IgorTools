@@ -1403,6 +1403,7 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 						endswitch
 					endif
 				endif
+				
 				if(!checked)
 					userfunc_ret=0
 					if(strlen(usrfuncname)>0)
@@ -1412,7 +1413,8 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 							userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_DISABLE); AbortOnRTE
 						endif
 					endif
-					usrfuncname = ""					
+					usrfuncname = ""
+					itc_update_parameter_control(0)			
 				else
 					usrfuncname=selected_func
 					userfunc_ret=0
@@ -1428,6 +1430,7 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 							usrfuncname=""
 						endif
 					endif
+					itc_update_parameter_control(1)
 				endif
 				CheckBox itc_cb_userfunc win=ITCPanel, value=checked
 			catch
@@ -2024,8 +2027,6 @@ Function rtgraph_update_display()
 				maxy_2=V_Value	
 			endif
 			
-			chnname_2=chnlist[selectedchn[chn_2]]; AbortOnRTE
-			
 			if(viewmode == 2 || viewmode == 3) //single or split view of selected trace(s)
 				AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis_1 /B=$xaxis datawave[][chn_1]; AbortOnRTE
 				ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos($yaxis_1)=0,lblPos($yaxis_1)=60,notation($yaxis_1)=0,ZisZ($yaxis_1)=1,fsize=12; AbortOnRTE
@@ -2058,6 +2059,8 @@ Function rtgraph_update_display()
 				ModifyGraph /W=ITCPanel#rtgraph alblRGB($yaxis_1)=(r1, g1, b1); AbortOnRTE
 				
 				if(chn_2>=0)
+					chnname_2=chnlist[selectedchn[chn_2]]; AbortOnRTE
+					
 					if(split==1)
 						ModifyGraph /W=ITCPanel#rtgraph axisEnab($yaxis_1)={0.52,1}; AbortOnRTE
 						yaxis_2="left2"
@@ -2094,6 +2097,7 @@ Function rtgraph_update_display()
 			endif
 			
 			if(chn_2>=0 && (viewmode == 4 || viewmode == 5)) //Y1 vs Y2 or Y2 vs Y1
+				chnname_2=chnlist[selectedchn[chn_2]]; AbortOnRTE
 				if(viewmode == 4)
 					AppendToGraph /W=ITCPanel#rtgraph /L=$yaxis_1 /B=$xaxis datawave[][chn_1] vs datawave[][chn_2]
 				endif
@@ -2142,20 +2146,13 @@ Function itc_rtgraph_quit()
 	HideInfo /W=ITCPanel
 End
 
-Function itc_update_controls(runstatus)
-	Variable runstatus
+Function itc_update_parameter_control(variable enable)
 	Variable i, cb_disable
-	
-	if(runstatus==0)
-	//not running
-		Button itc_btn_start,win=ITCPanel,title="Start Acquisition",fcolor=(0,65535,0),userdata(status)="0"
-		itc_set_saverecording(flag=0)
-		Button itc_btn_recording win=ITCPanel,disable=2
-		SetVariable itc_sv_recordnum win=ITCPanel,disable=2
+	if(enable==0)
 	
 		SetVariable itc_sv_samplingrate win=ITCPanel,disable=0
 		SetVariable itc_sv_recordinglen win=ITCPanel,disable=0
-	
+		
 		for(i=0; i<8; i+=1)
 			string param=GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param")
 			cb_disable=str2num(StringByKey("DISABLE", GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param"), "=", ";"))
@@ -2173,6 +2170,68 @@ Function itc_update_controls(runstatus)
 		Button itc_btn_setsealtest win=ITCPanel,disable=0
 		Button itc_btn_displastrecord win=ITCPanel,disable=0
 		Button itc_btn_updatedacdata win=ITCPanel,disable=0
+	else
+	
+		SetVariable itc_sv_samplingrate win=ITCPanel,disable=2
+		SetVariable itc_sv_recordinglen win=ITCPanel,disable=2
+
+		CheckBox itc_cb_adc0  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc1  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc2  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc3  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc4  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc5  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc6  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc7  win=ITCPanel,disable=2
+		CheckBox itc_cb_adc16 win=ITCPanel,disable=2
+	
+		CheckBox itc_cb_dac0  win=ITCPanel,disable=2
+		CheckBox itc_cb_dac1  win=ITCPanel,disable=2
+		CheckBox itc_cb_dac2  win=ITCPanel,disable=2
+		CheckBox itc_cb_dac3  win=ITCPanel,disable=2
+		CheckBox itc_cb_dac8  win=ITCPanel,disable=2
+
+		Button itc_btn_telegraph win=ITCPanel,disable=2
+		Button itc_btn_setsealtest win=ITCPanel,disable=2
+		Button itc_btn_displastrecord win=ITCPanel,disable=0
+		Button itc_btn_updatedacdata win=ITCPanel,disable=0
+	endif
+
+End
+
+Function itc_update_controls(runstatus)
+	Variable runstatus
+	
+	if(runstatus==0)
+	//not running
+		Button itc_btn_start,win=ITCPanel,title="Start Acquisition",fcolor=(0,65535,0),userdata(status)="0"
+		itc_set_saverecording(flag=0)
+		Button itc_btn_recording win=ITCPanel,disable=2
+		SetVariable itc_sv_recordnum win=ITCPanel,disable=2
+	
+		
+	
+		itc_update_parameter_control(0)
+		
+//		SetVariable itc_sv_samplingrate win=ITCPanel,disable=0
+//		SetVariable itc_sv_recordinglen win=ITCPanel,disable=0
+//		for(i=0; i<8; i+=1)
+//			string param=GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param")
+//			cb_disable=str2num(StringByKey("DISABLE", GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param"), "=", ";"))
+//			CheckBox $("itc_cb_adc"+num2istr(i)) win=ITCPanel,disable=cb_disable
+//		endfor
+//		CheckBox itc_cb_adc16 win=ITCPanel,disable=0
+//	
+//		CheckBox itc_cb_dac0  win=ITCPanel,disable=0
+//		CheckBox itc_cb_dac1  win=ITCPanel,disable=0
+//		CheckBox itc_cb_dac2  win=ITCPanel,disable=0
+//		CheckBox itc_cb_dac3  win=ITCPanel,disable=0
+//		CheckBox itc_cb_dac8  win=ITCPanel,disable=0	
+//		
+//		Button itc_btn_telegraph win=ITCPanel,disable=0
+//		Button itc_btn_setsealtest win=ITCPanel,disable=0
+//		Button itc_btn_displastrecord win=ITCPanel,disable=0
+//		Button itc_btn_updatedacdata win=ITCPanel,disable=0
 		
 		GroupBox itc_grp_rtdac win=ITCPanel,disable=0
 		SetVariable itc_sv_rtdac0 win=ITCPanel,disable=0
@@ -2215,29 +2274,31 @@ Function itc_update_controls(runstatus)
 		Button itc_btn_recording win=ITCPanel,disable=0
 		SetVariable itc_sv_recordnum win=ITCPanel,disable=0
 	
-		SetVariable itc_sv_samplingrate win=ITCPanel,disable=2
-		SetVariable itc_sv_recordinglen win=ITCPanel,disable=2
-	
-		CheckBox itc_cb_adc0  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc1  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc2  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc3  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc4  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc5  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc6  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc7  win=ITCPanel,disable=2
-		CheckBox itc_cb_adc16 win=ITCPanel,disable=2
-	
-		CheckBox itc_cb_dac0  win=ITCPanel,disable=2
-		CheckBox itc_cb_dac1  win=ITCPanel,disable=2
-		CheckBox itc_cb_dac2  win=ITCPanel,disable=2
-		CheckBox itc_cb_dac3  win=ITCPanel,disable=2
-		CheckBox itc_cb_dac8  win=ITCPanel,disable=2
+		itc_update_parameter_control(1)
+		
+//		SetVariable itc_sv_samplingrate win=ITCPanel,disable=2
+//		SetVariable itc_sv_recordinglen win=ITCPanel,disable=2
 
-		Button itc_btn_telegraph win=ITCPanel,disable=2
-		Button itc_btn_setsealtest win=ITCPanel,disable=2
-		Button itc_btn_displastrecord win=ITCPanel,disable=0
-		Button itc_btn_updatedacdata win=ITCPanel,disable=0
+//		CheckBox itc_cb_adc0  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc1  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc2  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc3  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc4  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc5  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc6  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc7  win=ITCPanel,disable=2
+//		CheckBox itc_cb_adc16 win=ITCPanel,disable=2
+//	
+//		CheckBox itc_cb_dac0  win=ITCPanel,disable=2
+//		CheckBox itc_cb_dac1  win=ITCPanel,disable=2
+//		CheckBox itc_cb_dac2  win=ITCPanel,disable=2
+//		CheckBox itc_cb_dac3  win=ITCPanel,disable=2
+//		CheckBox itc_cb_dac8  win=ITCPanel,disable=2
+//
+//		Button itc_btn_telegraph win=ITCPanel,disable=2
+//		Button itc_btn_setsealtest win=ITCPanel,disable=2
+//		Button itc_btn_displastrecord win=ITCPanel,disable=0
+//		Button itc_btn_updatedacdata win=ITCPanel,disable=0
 
 		GroupBox itc_grp_rtdac win=ITCPanel,disable=1
 		SetVariable itc_sv_rtdac0 win=ITCPanel,disable=1
@@ -3131,13 +3192,31 @@ End
 
 Constant MaxDepositionRawRecordingLength = 600 // sec
 
-Function PostSlackChannel(String token, String channel, String message, String notify_person)
+Function DepositPanel_PostSlackChannel(String token, String channel, String message, String notify_person)
 	String URL = "https://slack.com/api/chat.postMessage"
 	String postData = "channel="+URLEncode(channel)+"&text=@"+URLEncode(notify_person)+"%20"+URLEncode(message)+"&pretty=1"
 	URLRequest /DSTR = postData url=URL, method = post, headers = token
 End
 
+Constant MIN_PULSE_WIDTH=10
+Constant MAX_PULSE_WIDTH=50
+Constant MIN_PRE_PULSE_TIME=35
+Constant MAX_PRE_PULSE_TIME=100
+Constant MIN_POST_PULSE_DELAY=10
+Constant MAX_POST_PULSE_DELAY=50
+Constant MIN_POST_PULSE_SAMPLELEN=10
+
 Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, variable adc_chnnum, variable dac_chnnum)
+	Variable retVal=0
+	
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
+	WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
+	WAVE /T dacchnlist=$WBPkgGetName(fPath, WBPkgDFWave, "DAC_Channel"); AbortONRTE
+	WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
+	WAVE selecteddacchn=$WBPkgGetName(fPath, WBPkgDFWave, "selecteddacchn"); AbortOnRTE
+	
+
 	Variable max_cycle_count = round(MaxDepositionRawRecordingLength / (len/samplingrate)) // this is the number of cycles in half an hour that will be recorded with all raw data
 	String deposit_folder_name = UniqueName("DepositRecord", 11, 0)
 	DFREF dfr = GetDataFolderDFR()
@@ -3145,24 +3224,21 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 	try
 		NewDataFolder /O/S root:$deposit_folder_name
 		
-		Variable chnnum=adc_chnnum+dac_chnnum+1
+		Variable chnnum=adc_chnnum+dac_chnnum+2 // all channels plus two conductance calculation
 		
 		String raw_record_name = "root:"+deposit_folder_name+":"+deposit_folder_name+"_raw"
 		String history_record_name = "root:"+deposit_folder_name+":"+deposit_folder_name+"_history"
+		String raw_record_file_idx = "root:"+deposit_folder_name+":"+deposit_folder_name+"_rawidx"
 		String history_view_name = "root:"+deposit_folder_name+":HISTORY_VIEW"
 		
-		Make /O/N=(len*max_cycle_count, chnnum+1)/D $raw_record_name=NaN
+		Make /O/N=(len, chnnum+1)/D $raw_record_name=NaN //rawwave has one more colume for time stamp
 		Wave rawwave=$raw_record_name
-		Note /K rawwave
-		Note rawwave, "0;0"
-		
 		
 		Make /O/N=(13, chnnum, max_cycle_count)/D $history_record_name = NaN, $history_view_name = NaN
+		Make /O/N=(len)/T=(strlen("raw_")+8+strlen("_")+8+strlen(".ibw")) $raw_record_file_idx
 
 		Wave historywave=$history_record_name
 		wave hist_view=$history_view_name
-		Note /K historywave
-		Note historywave, "0;0"
 		
 		SetDimLabel 0, 0, CYCLEINDEX, historywave, hist_view
 		SetDimLabel 0, 1, TIMESTAMP, historywave, hist_view
@@ -3180,15 +3256,16 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		
 		Variable i
 		for(i=0; i<adc_chnnum; i+=1)
-			SetDimLabel 1, i, ADC_CHANNELS, historywave, hist_view
-			SetDimLabel 1, i, ADC_CHANNELS, rawwave
+			SetDimLabel 1, i, $(chnlist[selectedchn[i]]), historywave, hist_view
+			SetDimLabel 1, i, $(chnlist[selectedchn[i]]), rawwave
 		endfor
 		for(i=adc_chnnum; i<adc_chnnum+dac_chnnum; i+=1)
-			SetDimLabel 1, i, DAC_CHANNELS, historywave, hist_view
-			SetDimLabel 1, i, DAC_CHANNELS, rawwave
+			SetDimLabel 1, i, $(dacchnlist[selecteddacchn[i-adc_chnnum]]), historywave, hist_view
+			SetDimLabel 1, i, $(dacchnlist[selecteddacchn[i-adc_chnnum]]), rawwave
 		endfor
-		SetDimLabel 1, adc_chnnum+dac_chnnum, COND_CALC, historywave, rawwave, hist_view
-		SetDimLabel 1, adc_chnnum+dac_chnnum+1, TIMESTAMP, rawwave
+		SetDimLabel 1, adc_chnnum+dac_chnnum, TUNNELING_COND, historywave, rawwave, hist_view
+		SetDimLabel 1, adc_chnnum+dac_chnnum+1, IONIC_COND, historywave, rawwave, hist_view
+		SetDimLabel 1, adc_chnnum+dac_chnnum+2, TIMESTAMP, rawwave //rawwave has one more colume for time stamp
 				
 		SetDimLabel 2, -1, RECORD_TIME, historywave, hist_view
 		
@@ -3199,25 +3276,56 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		SetWindow ITCPanel, userdata(DepositRecord_RAW)=raw_record_name
 		SetWindow ITCPanel, userdata(DepositRecord_HISTORY)=history_record_name
 		SetWindow ITCPanel, userdata(DepositRecord_HISTORYVIEW)=history_view_name
+		SetWindow ITCPanel, userdata(DepositRecord_RAWFILEIDX)=raw_record_file_idx
 		
-		Variable /G control_count
-		Variable /G pulse_flag
+		Variable /G decision_countdown=0
+		Variable /G active_pulse_potential=0
+		Variable /G conductance=0
+		Variable /G conductance_stdev=0
+		
+		Variable /G rest_bias=0
+		Variable /G deposit_bias=0
+		Variable /G removal_bias=0
+		Variable /G target_cond=1
+		Variable /G total_cycle_time=0
+		
+		Variable /G pulse_width=MIN_PULSE_WIDTH
+		Variable /G pre_pulse_time=MIN_PRE_PULSE_TIME
+		Variable /G post_pulse_delay=MIN_POST_PULSE_DELAY
+		Variable /G post_pulse_sample_len=MIN_POST_PULSE_SAMPLELEN
+		
+		Variable /G Kp=1
+		Variable /G Ki=0.05
+		Variable /G Kd=0.1
+		Variable /G Er_Int=0
+		Variable /G Er_Prev=0
+		Variable /G PID_CV=0
+		
+		Variable /G display_len=60
 		
 	catch
+		Variable err = GetRTError(1)		// Gets error code and clears error
+		String errMessage = GetErrMessage(err)
+		Printf "preparing data folder for depositpanel encountered the following error: %s\r", errMessage
+		retVal=-1
 	endtry
 	
 	SetDataFolder dfr
-		
+	return retVal
 End
 
-Function DepositionPanelInit()
+
+
+Function DepositionPanelInit(variable length)
+	Variable retVal=0
+	
 	String PanelName=GetUserData("ITCPanel", "", "DepositionPanel")
 	if(strlen(PanelName)>0)
 		if(WinType(PanelName) == 7)
 			return 0
 		endif
-	endif
-	print("Deposition panel initialized.")
+	endif	
+	
 	Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
 	WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
@@ -3235,31 +3343,96 @@ Function DepositionPanelInit()
 	adcchn_list+="\""
 	dacchn_list+="\""
 	
-	NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,200,500)
-	String depositpanel_name = S_name
-	SetWindow ITCPanel, userdata(DepositionPanel)="ITCPanel#"+depositpanel_name
+	DFREF dfr=GetDataFolderDFR()
+	String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER"); AbortOnRTE
 	
-	ValDisplay depositpanel_total_cycle_time,title="total_cycle_time (ms)",value=_NUM:NaN,size={200,20}
-	//currently pulse wave used for dac channels are limited to be stored at root folder
-	PopupMenu depositpanel_pulse_wave,title="deposit_wave",size={200,20},value=WaveList("*",";","DIMS:1;")
-	SetVariable depositpanel_pulse_width,title="pulse_width (ms)",value=_NUM:50,size={200,20},limits={10,100,1}
-	SetVariable depositpanel_pre_pulse_time,title="pre_pulse_time (ms)",value=_NUM:20,size={200,20},limits={20,50,1}
-	SetVariable depositpanel_post_pulse_delay,title="post_pulse_delay (ms)",value=_NUM:50,size={200,20},limits={20,50,1}
-	ValDisplay depositpanel_post_pulse_samplelen,title="post_pulse_sample_len",value=_NUM:NaN,size={200,20}
+	try
+		
+		SetDataFolder root:$deposit_folder_name; AbortOnRTE
+		
+		NVAR decision_countdown; AbortOnRTE
+		NVAR active_pulse_potential; AbortOnRTE
+		NVAR conductance; AbortOnRTE
+		NVAR conductance_stdev; AbortOnRTE
+		
+		NVAR rest_bias; AbortOnRTE
+		NVAR deposit_bias; AbortOnRTE
+		NVAR removal_bias; AbortOnRTE
+		NVAR target_cond; AbortOnRTE
+		NVAR total_cycle_time; AbortOnRTE
+		NVAR pulse_width; AbortOnRTE
+		NVAR pre_pulse_time; AbortOnRTE
+		NVAR post_pulse_delay; AbortOnRTE
+		NVAR post_pulse_sample_len; AbortOnRTE
+		NVAR display_len; AbortOnRTE
+		NVAR Kp; AbortOnRTE
+		NVAR Ki; AbortOnRTE
+		NVAR Kd; AbortOnRTE
+		NVAR PID_CV; AbortOnRTE
+		
+		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,200,600)
+		String depositpanel_name = S_name
+		SetWindow ITCPanel, userdata(DepositionPanel)="ITCPanel#"+depositpanel_name
+		//display parameters
+		GroupBox depositpanel_grp_display,title="conductance calc and display",size={200,150},pos={0,0}
+		
+		PopupMenu depositpanel_tunneling_chn,title="tunneling I chn",size={180,20},bodyWidth=70,pos={10,20},value=#adcchn_list
+		PopupMenu depositpanel_tunneling_bias_chn,title="tunneling V chn",size={180,20},bodyWidth=70,pos={10,40},value=#dacchn_list
+		
+		PopupMenu depositpanel_ionic_chn,title="ionic I chn",size={180,20},bodyWidth=70,pos={10,60},value=#adcchn_list
+		PopupMenu depositpanel_ionic_bias_chn,title="ionic V chn",size={180,20},bodyWidth=70,pos={10,80},value=#dacchn_list
+		
+		
+		CheckBox depositpanel_errorbar,title="error bar enabled", size={180,20},pos={10,100},proc=DepositPanel_cb_errorbar
+		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={180,20},pos={10,120},limits={10, MaxDepositionRawRecordingLength, 1}
+		
+		//deposition parameters
+		GroupBox depositpanel_grp_depositwavesetup,title="deposit parameters",size={200,230},pos={0,160}
+		
+		PopupMenu depositpanel_pulse_wave,title="deposit_wave",size={180,20},pos={10,180},bodyWidth=80,value=Deposition_getDACWaveList()
+		SetVariable depositpanel_rest_bias,title="rest_bias (V)",value=rest_bias,size={180,20},pos={10,200},limits={-1.5,1.5,0.01}
+		SetVariable depositpanel_deposit_bias,title="deposit_bias (V)",value=deposit_bias,size={180,20},pos={10,220},limits={-1.5,1.5,0.01}
+		SetVariable depositpanel_removal_bias,title="removal_bias (V)",value=removal_bias,size={180,20},pos={10,240},limits={-1.5,1.5,0.01}
+		
+		SetVariable depositpanel_target_conductance,title="target_cond (nS)",value=target_cond,size={180,20},pos={10,260},limits={0.001,100,0.01}	
+		
+		String tvalstr="root:"+deposit_folder_name+":total_cycle_time"
+		ValDisplay depositpanel_total_cycle_time,title="total_cycle_time (s)",value=#(tvalstr),size={180,20},pos={10,280}
 	
-	PopupMenu depositpanel_tunneling_chn,title="tunneling_current_channel",size={200,20},value=#adcchn_list
-	PopupMenu depositpanel_bias_chn,title="tunneling_bias_chn",size={200,20},value=#dacchn_list
-	
-	SetVariable depositpanel_rest_bias,title="rest_bias (V)",value=_NUM:0,size={200,20},limits={-1.5,1.5,0.01}
-	SetVariable depositpanel_deposit_bias,title="deposit_bias (V)",value=_NUM:0,size={200,20},limits={-1.5,1.5,0.01}
-	SetVariable depositpanel_removal_bias,title="removal_bias (V)",value=_NUM:0,size={200,20},limits={-1.5,1.5,0.01}
-	Button depositpanel_newRTplot,title="new RT plot",size={200,20},proc=DepositionPanel_Btn_NewRTPlot
-	SetVariable depositpanel_target_conductance,title="target_cond (nS)",value=_NUM:1,size={200,20},limits={0.001,100,0.01}
-	SetVariable depositionpanel_histlen, title="tracking history len (s)", value=_NUM:120,size={200,20},limits={10, MaxDepositionRawRecordingLength, 1}
-	Button depositpanel_autodep,title="start autodeposition",size={200,20},fColor=(0,32768,0),proc=DepositionPanel_Btn_autodep
-	Valdisplay depositpanel_cond, title="Conductance monitor (nS):",value=_NUM:NaN,size={200,20}
-	Valdisplay depositpanel_pulse, title="Active pulse potental (V):", value=_NUM:NaN,size={200,20}
-	Valdisplay depositpanel_pulsedelaycount, title="Count down to next decision:", value=_NUM:NaN,size={200,20}
+		SetVariable depositpanel_pulse_width,title="pulse_width (ms)",value=pulse_width,size={180,20},pos={10,300},limits={MIN_PULSE_WIDTH,MAX_PULSE_WIDTH,1}
+		SetVariable depositpanel_pre_pulse_time,title="pre_pulse_time (ms)",value=pre_pulse_time,size={180,20},pos={10,320},limits={MIN_PRE_PULSE_TIME,MAX_PRE_PULSE_TIME,1}
+		SetVariable depositpanel_post_pulse_delay,title="post_pulse_delay (ms)",value=post_pulse_delay,size={180,20},pos={10,340},limits={MIN_POST_PULSE_DELAY,MAX_POST_PULSE_DELAY,1}
+		
+		tvalstr="root:"+deposit_folder_name+":post_pulse_sample_len"
+		ValDisplay depositpanel_post_pulse_samplelen,title="post_pulse_sample_len",value=#(tvalstr),size={180,20},pos={10,360}
+		
+		Button depositpanel_autodep,title="start autodeposition",size={180,20},pos={10,390},fColor=(0,32768,0),proc=DepositionPanel_Btn_autodep
+		
+		tvalstr="root:"+deposit_folder_name+":conductance"
+		Valdisplay depositpanel_cond, title="Cond (nS):",value=#(tvalstr),size={120,20},pos={0,420}
+		tvalstr="root:"+deposit_folder_name+":conductance_stdev"
+		Valdisplay depositpanel_cond_stdev, title="+/-",value=#(tvalstr),size={80,20},pos={120,420},format="%0.1e"
+		tvalstr="root:"+deposit_folder_name+":active_pulse_potential"
+		Valdisplay depositpanel_pulse, title="Active potental (V):", value=#(tvalstr),size={180,20},pos={10,440}
+		tvalstr="root:"+deposit_folder_name+":decision_countdown"
+		Valdisplay depositpanel_pulsedelaycount, title="Decision countdown:", value=#(tvalstr),size={180,20},pos={10,460}
+		
+		
+		SetVariable depositpanel_Kp,title="Kp",value=Kp,size={90,20},pos={0,480},limits={0,10,0.1}
+		SetVariable depositpanel_Ki,title="Ki",value=Ki,size={90,20},pos={100,480},limits={0,10,0.1}
+		SetVariable depositpanel_Kd,title="Kd",value=Kd,size={90,20},pos={0,500},limits={0,10,0.1}
+		tvalstr="root:"+deposit_folder_name+":PID_CV"
+		Valdisplay depositpanel_PID_CV, title="PID_CV", value=#(tvalstr),size={200,20},barmisc={0,50},format="%-2.5f",pos={0,520},limits={-10,10,0}
+		
+		print("Deposition panel initialized.")
+	catch	
+		Variable err = GetRTError(1)		// Gets error code and clears error
+		String errMessage = GetErrMessage(err)
+		Printf "init deposit panel encountered the following error: %s\r", errMessage
+		DepositionPanelexit()
+		retVal=-1
+	endtry
+	return retVal	
 End
 
 Function DepositionPanelExit()
@@ -3270,62 +3443,15 @@ Function DepositionPanelExit()
 	endif
 End
 
-Function DepositionPanel_KillRTPlot()
-	String RTPlotName=GetUserData("ITCPanel", "", "DepositionPanel_RTPlot")
-	if(strlen(RTPlotName)>0)
-		KillWindow /Z $RTPlotName
-		SetWindow ITCPanel, userdata(DepositionPanel_RTPlot)=""
-	endif	
-End
-
-
-Function DepositionPanel_Btn_NewRTPlot(ba) : ButtonControl
-	STRUCT WMButtonAction &ba
-
-	switch( ba.eventCode )
-		case 2: // mouse up
-			// click code here
-			try
-				DepositionPanel_KillRTPlot()
-				
-				ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace1name; AbortOnRTE
-				Variable chn1=V_value-1
-				ControlInfo /W=ITCPanel#rtgraphpanel rtgraph_trace2name; AbortOnRTE
-				Variable chn2=V_value-2
-				
-				if(chn1>=0 && chn2>=0)
-				
-					Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
-					String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
-					String dataname=WBPkgGetName(fPath, WBPkgDFWave, "ADCData"); AbortOnRTE
-					WAVE datawave=$dataname; AbortOnRTE
-					dataname=StringFromList(ItemsInList(dataname, ":")-1, dataname, ":"); AbortOnRTE
-					WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
-					WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
-					WAVE /T chnunit=$WBPkgGetName(fPath, WBPkgDFWave, "ADCScaleUnit"); AbortOnRTE
-					
-					String ylabel = chnlist[selectedchn[chn1]]+" (\\E"+chnunit[selectedchn[chn1]]+")"; AbortOnRTE
-					String xlabel = chnlist[selectedchn[chn2]]+" (\\E"+chnunit[selectedchn[chn2]]+")"; AbortOnRTE
-					
-					Display /N=RealTime_XY_plot /B /L datawave[][chn1] vs datawave[][chn2]; AbortOnRTE
-					String RTPlotName = S_name; AbortOnRTE
-					Label bottom xlabel; AbortOnRTE
-					Label left ylabel; AbortOnRTE
-					ModifyGraph axThick=2,standoff(left)=0,freePos(left)=0,freePos(bottom)=0,standoff(bottom)=0; AbortOnRTE
-					
-					SetWindow ITCPanel, userdata(DepositionPanel_RTPlot)=RTPlotName				
-				endif
-			catch
-				Variable err = GetRTError(1)		// Gets error code and clears error
-				String errMessage = GetErrMessage(err)
-				Printf "RTPlot encountered the following error: %s\r", errMessage
-			endtry
-		
-			break
-		case -1: // control being killed
+Function DepositPanel_cb_errorbar(cb) : CheckBoxControl
+	STRUCT WMCheckboxAction & cb
+	
+	switch(cb.eventCode)
+		case 2:		// Mouse up
+			rtgraph_update_display()
 			break
 	endswitch
-
+	
 	return 0
 End
 
@@ -3338,8 +3464,8 @@ Function DepositionPanel_Btn_autodep(ba) : ButtonControl
 			try
 				String panel_name = GetUserData("ITCPanel", "", "DepositionPanel")
 				String deposit_folder_name = GetUserData("ITCPanel","","DepositRecord_FOLDER")
-				String raw_record_name = GetUserData("ITCPanel","","DepositRecord_RAW")
-				String history_record_name = GetUserData("ITCPanel","","DepositRecord_HISTORY")
+				//String raw_record_name = GetUserData("ITCPanel","","DepositRecord_RAW")
+				//String history_record_name = GetUserData("ITCPanel","","DepositRecord_HISTORY")
 				Variable autodep_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_AUTODEP_ENABLED"))
 				
 				if(autodep_status == 1)
@@ -3354,7 +3480,7 @@ Function DepositionPanel_Btn_autodep(ba) : ButtonControl
 			catch
 				Variable err = GetRTError(1)		// Gets error code and clears error
 				String errMessage = GetErrMessage(err)
-				Printf "RTPlot encountered the following error: %s\r", errMessage
+				Printf "autodep encountered the following error: %s\r", errMessage
 			endtry
 		
 			break
@@ -3376,39 +3502,86 @@ Function DepositionPanelPulseGenerator(wave w, int length, int pre_pulse_len, in
 	duplicate dacwave, w
 End
 
-Function Deposition_CopyHistoryRecord(wave hist_record, wave hist_fordisp, variable hist_endidx, variable hist_len)
+Function /T Deposition_getDACWaveList()
+	Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
+	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
+	WAVE /T dacdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
+	String list=""
+	variable i
+	for(i=0; i<DimSize(dacdatawavepath,0); i+=1)
+		list+=dacdatawavepath[i]+";"
+	endfor
+	return list
 End
 
 Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 total_count, int64 cycle_count, int length, int adc_chnnum, int dac_chnnum, double samplingrate, int flag)
-//Please modify the code as needed 
-//and set as user data process function from the ITCPanel
-	Variable ret_val=0
-	Variable total_cycle_time=length/samplingrate
-	
-	String panel_name=GetUserData("ITCPanel","","DepositionPanel")
 
+	Variable ret_val=0
+	
+	DFREF dfr=GetDataFolderDFR()
+	
 	try
+		if(flag ==ITCUSERFUNC_FIRSTCALL)
+			if(DepositionPanelPrepareDataFolder(length, samplingrate, adc_chnnum, dac_chnnum)!=0)
+				return -1
+			endif
+			if(DepositionPanelInit(length)!=0)
+				return -1
+			endif		
+		endif
+	
+		String panel_name=GetUserData("ITCPanel","","DepositionPanel"); AbortOnRTE
+		String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER"); AbortOnRTE
+		String raw_record_name = GetUserData("ITCPanel", "", "DepositRecord_RAW"); AbortOnRTE
+		String history_record_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORY"); AbortOnRTE
+		String raw_record_file_idx = GetUserData("ITCPanel", "", "DepositRecord_RAWFILEIDX"); AbortOnRTE
+		String data_folder = GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER"); AbortOnRTE
+		Variable autodep_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_AUTODEP_ENABLED")); AbortOnRTE
+		
+		Variable save_folder_ready=0
+		PathInfo /S savefolder; AbortOnRTE
+		if(strlen(data_folder)>0 && autodep_status==1)
+			data_folder = ParseFilePath(2, data_folder, ":", 0, 0)
+			data_folder += deposit_folder_name
+			NewPath /C/O/Z/Q savefolder, data_folder; AbortOnRTE
+			save_folder_ready = 1
+		endif
+
+		SetDataFolder root:$deposit_folder_name; AbortOnRTE
+		
+		NVAR decision_countdown; AbortOnRTE
+		NVAR pulse_flag; AbortOnRTE
+		NVAR conductance; AbortOnRTE
+		NVAR conductance_stdev; AbortOnRTE
+		NVAR rest_bias; AbortOnRTE
+		NVAR deposit_bias; AbortOnRTE
+		NVAR removal_bias; AbortOnRTE
+		NVAR target_cond; AbortOnRTE
+		NVAR total_cycle_time; AbortOnRTE
+		NVAR pulse_width; AbortOnRTE
+		NVAR pre_pulse_time; AbortOnRTE
+		NVAR post_pulse_delay; AbortOnRTE
+		NVAR post_pulse_sample_len; AbortOnRTE
+		NVAR display_len; AbortOnRTE
+		NVAR Kp; AbortOnRTE
+		NVAR Ki; AbortOnRTE
+		NVAR Kd; AbortOnRTE
+		NVAR Er_Int; AbortOnRTE
+		NVAR Er_Prev; AbortOnRTE
+		NVAR PID_CV; AbortOnRTE
+		
+		total_cycle_time=length/samplingrate
+		
+		Variable pulse_sample_start=round(samplingrate*(pre_pulse_time+pulse_width+post_pulse_delay)/1000)
+		
+		post_pulse_sample_len = length - pulse_sample_start
+		if(post_pulse_sample_len<MIN_POST_PULSE_SAMPLELEN)
+			post_pulse_sample_len = MIN_POST_PULSE_SAMPLELEN 
+			pulse_sample_start = length - post_pulse_sample_len
+		endif
+			
+			
 		if(WinType(panel_name)==7)
-			ControlInfo /W=$(panel_name) depositpanel_target_conductance
-			Variable target_conductance = V_Value
-			
-			ControlInfo /W=$(panel_name) depositpanel_pulse_width
-			Variable pulse_width = V_Value
-			
-			ControlInfo /W=$(panel_name) depositpanel_pre_pulse_time
-			Variable pre_pulse_time = V_Value
-			
-			ControlInfo /W=$(panel_name) depositpanel_post_pulse_delay
-			Variable post_pulse_delay = V_Value			
-			
-			ControlInfo /W=$(panel_name) depositpanel_rest_bias
-			Variable rest_bias = V_Value
-			
-			ControlInfo /W=$(panel_name) depositpanel_deposit_bias
-			Variable deposit_bias = V_Value
-			
-			ControlInfo /W=$(panel_name) depositpanel_rest_bias
-			Variable oxidize_bias = V_Value
 			
 			ControlInfo /W=$(panel_name) depositpanel_pulse_wave
 			if(strlen(S_Value)>0)
@@ -3421,16 +3594,23 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			ControlInfo /W=$(panel_name) depositpanel_tunneling_chn
 			Variable tunneling_current_chn = V_Value - 1
 			
-			ControlInfo /W=$(panel_name) depositpanel_bias_chn
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_chn
 			Variable tunneling_bias_chn = V_Value - 1
 			
-			ControlInfo /W=$(panel_name) depositionpanel_histlen
-			Variable hist_len_time = V_Value
-			Variable hist_len = hist_len_time / (length/samplingrate)
+			ControlInfo /W=$(panel_name) depositpanel_ionic_chn
+			Variable ionic_current_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_chn
+			Variable ionic_bias_chn = V_Value - 1
+			
+			Variable hist_len = display_len / (length/samplingrate)
 			
 			String hist_view_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORYVIEW")
 			Wave hist_view = $hist_view_name
 			
+			ControlInfo /W=$(panel_name) depositpanel_errorbar
+			Variable errorbar_enabled=V_Value
+		
 		endif
 			
 		switch(flag)
@@ -3438,8 +3618,12 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			/////////////////////////////
 			//User code here
 			/////////////////////////////
-			DepositionPanelInit()
-			DepositionPanelPrepareDataFolder(length, samplingrate, adc_chnnum, dac_chnnum)
+			DoAlert /T="Experiment must be saved first", 0, "Experiment must be saved before this program can continue. Please make sure to properly save this experiment in a folder with space for additional data storage."
+			SaveExperiment
+			PathInfo /SHOW home
+			String deposit_path = S_path
+			SetWindow ITCPanel, userdata(DEPOSIT_DATAFOLDER)=deposit_path
+			
 			ret_val=0 //if ret_val is set to non-zero, user function will not be set and an error will be generated
 			break
 		case ITCUSERFUNC_IDLE://called when background cycle is idel (not continuously recording)
@@ -3460,8 +3644,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			//User code here
 			/////////////////////////////
 			print "Initial call for DepositionPanel: total count=", total_count, "recording length = ", length, "sampling rate = ", samplingrate
-			print "If actual sampling rate does not match, stop and restart again."
-			DepositionPanelInit()
+			print "If actual sampling rate does not match, disable user function, update the wave and restart again."
+			DepositionPanelInit(length)
 			ret_val=0
 			hist_view=NaN
 			break
@@ -3470,62 +3654,41 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			//User code here
 			/////////////////////////////
 			
-			ValDisplay depositpanel_total_cycle_time win=$panel_name,value=_NUM:(round(total_cycle_time*1000))
-			
-			Variable pulse_sample_start=round(samplingrate*(pre_pulse_time+pulse_width+post_pulse_delay)/1000)
-			Variable pulse_sample_len = length - pulse_sample_start
-			
-			ValDisplay depositpanel_post_pulse_samplelen win=$panel_name,value=_NUM:(pulse_sample_len)
-			
-			Make /FREE/D/N=(DimSize(adcdata, 0)) cond_calc=adcdata[p][tunneling_current_chn] / dacdata[p][tunneling_bias_chn]
-			Make /FREE/D/N=(pulse_sample_len,adc_chnnum+dac_chnnum+1) tmp_stat
-			
-			tmp_stat[][0,adc_chnnum-1] = adcdata[pulse_sample_start+p][q];AbortOnRTE
-			tmp_stat[][adc_chnnum,adc_chnnum+dac_chnnum-1] = dacdata[pulse_sample_start+p][q-adc_chnnum];AbortOnRTE
-			tmp_stat[][adc_chnnum+dac_chnnum] = cond_calc[pulse_sample_start+p];AbortOnRTE
-			
-			String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER")
-			String raw_record_name = GetUserData("ITCPanel", "", "DepositRecord_RAW")
-			String history_record_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORY")
-			
 			wave rawwave = $raw_record_name
 			wave historywave = $history_record_name
+			wave /T rawwaveidx = $raw_record_file_idx
+			
+			Make /FREE/D/N=(DimSize(adcdata, 0)) tunneling_cond=adcdata[p][tunneling_current_chn] / dacdata[p][tunneling_bias_chn]
+			Make /FREE/D/N=(DimSize(adcdata, 0)) ionic_cond=adcdata[p][ionic_current_chn] / dacdata[p][ionic_bias_chn]
+			
+			Make /FREE/D/N=(post_pulse_sample_len,adc_chnnum+dac_chnnum+2) tmp_stat
+			
+			tmp_stat[][0,adc_chnnum-1] = adcdata[pulse_sample_start+p][q];AbortOnRTE
+			rawwave[][0,adc_chnnum-1] = adcdata[p][q];AbortOnRTE
+			
+			tmp_stat[][adc_chnnum,adc_chnnum+dac_chnnum-1] = dacdata[pulse_sample_start+p][q-adc_chnnum];AbortOnRTE
+			rawwave[][adc_chnnum, adc_chnnum+dac_chnnum-1] = dacdata[p][q-adc_chnnum];AbortOnRTE
+			
+			tmp_stat[][adc_chnnum+dac_chnnum] = tunneling_cond[pulse_sample_start+p];AbortOnRTE
+			rawwave[][adc_chnnum+dac_chnnum] = tunneling_cond[p];AbortOnRTE
+			
+			tmp_stat[][adc_chnnum+dac_chnnum+1] = ionic_cond[pulse_sample_start+p];AbortOnRTE
+			rawwave[][adc_chnnum+dac_chnnum+1] = ionic_cond[p];AbortOnRTE
+			
+			rawwave[][adc_chnnum+dac_chnnum+2] = total_count*length/samplingrate+p/samplingrate; AbortOnRTE
 			
 			Variable timestamp_ticks = ticks
 			
-			Variable raw_startidx, raw_endidx, raw_base
-			Variable hist_startidx, hist_endidx
+			Variable hist_endidx=str2num(note(historywave))
+			Variable fileidx_last=str2num(note(rawwaveidx))
 			
-			String raw_idx_str=note(rawwave)
-			String hist_idx_str=note(historywave)
-			
-			raw_startidx=str2num(StringFromList(0, raw_idx_str))
-			raw_endidx=str2num(StringFromList(1, raw_idx_str))
-			raw_base = raw_endidx*length
-			
-			hist_startidx=str2num(StringFromList(0, hist_idx_str))
-			hist_endidx=str2num(StringFromList(1, hist_idx_str))
-			
-			
-			rawwave[raw_base, raw_base+length-1][0,adc_chnnum-1] = adcdata[p-raw_base][q];AbortOnRTE
-			rawwave[raw_base, raw_base+length-1][adc_chnnum, adc_chnnum+dac_chnnum-1] = dacdata[p-raw_base][q-adc_chnnum];AbortOnRTE
-			rawwave[raw_base, raw_base+length-1][adc_chnnum+dac_chnnum] = cond_calc[p-raw_base];AbortOnRTE
-			rawwave[raw_base, raw_base+length-1][adc_chnnum+dac_chnnum+1] = total_count*length/samplingrate+(p-raw_base)/samplingrate; AbortOnRTE
-
-			raw_endidx+=1
-			Variable max_raw_idx = round(DimSize(rawwave, 0)/length)
-			if(raw_endidx >= max_raw_idx)
-				raw_endidx = 0
-			endif
-			if(raw_endidx==raw_startidx)
-				raw_startidx+=1
-			endif
-			if(raw_startidx >= max_raw_idx)
-				raw_startidx = 0
+			if(numtype(fileidx_last)!=0)
+				fileidx_last = 0
 			endif
 			
-			note /k rawwave
-			note rawwave, num2istr(raw_startidx)+";"+num2istr(raw_endidx)
+			if(numtype(hist_endidx)!=0)
+				hist_endidx=0
+			endif
 			
 			WaveStats /Q /PCST /Z tmp_stat
 			Wave M_WaveStats
@@ -3539,6 +3702,12 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			historywave[%MEANL2][][hist_endidx]=M_WaveStats[%meanL2][q];AbortOnRTE
 			historywave[%SKEWNESS][][hist_endidx]=M_WaveStats[%skew][q];AbortOnRTE
 			historywave[%KURTOSIS][][hist_endidx]=M_WaveStats[%kurt][q];AbortOnRTE
+			
+			Variable t_cond=historywave[%MEANVALUE][%TUNNELING_COND][hist_endidx]
+			Variable i_cond=historywave[%MEANVALUE][%IONIC_COND][hist_endidx]
+						
+			conductance = t_cond
+			conductance_stdev=historywave[%SDEV][%TUNNELING_COND][hist_endidx]
 			
 			WaveStats /Q pulse_wave
 			historywave[%PULSE_HIGH][][hist_endidx]=V_max;AbortOnRTE
@@ -3556,8 +3725,34 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				InsertPoints /M=2 /V=(NaN) DimSize(historywave, 2), round(MaxDepositionRawRecordingLength / (length/samplingrate)), historywave;AbortOnRTE
 			endif
 			
-			note /k historywave
-			note historywave, "0;"+num2str(hist_endidx)
+			note /k historywave, num2str(hist_endidx)
+			
+			if(save_folder_ready ==1 && autodep_status == 1)
+				
+				String tmpstr=""
+				sprintf tmpstr, "raw_%08d_%08d", hist_endidx, cycle_count
+				
+				Duplicate /O rawwave, $tmpstr
+				
+				SaveData /D=1/L=1/O/Q/P=savefolder/J=tmpstr ":"
+				KillWaves /Z $tmpstr
+				rawwaveidx[fileidx_last] = tmpstr
+				fileidx_last += 1
+				note /k rawwaveidx, num2istr(fileidx_last)
+			endif
+			
+			if(cycle_count==0)
+				Er_Int=0
+				Er_Prev=t_cond
+			else
+				Variable er=t_cond-target_cond
+				
+				Er_Int+=er
+				Variable diff_er=er-Er_Prev
+				Er_Prev=er
+				PID_CV = Kp*er + Ki*Er_Int + Kd*diff_er
+				DepositPanel_PID_CV(PID_CV, target_cond, conductance_stdev, conductance_stdev, pulse_wave)
+			endif
 			
 			ret_val=0 //if need to stop recording by the user function, return a non-zero value
 			break
@@ -3566,18 +3761,45 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			//User code here
 			/////////////////////////////
 			SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
-			DepositionPanel_KillRTPlot()			
+			Button depositpanel_autodep,win=$panel_name,title="start autodeposition",size={200,20},fColor=(0,32768,0)
 			break //ret_val is not checked for this call
 		
 		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
-			DepositionPanelExit()
+			SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
+			Button depositpanel_autodep,win=$panel_name,title="start autodeposition",size={200,20},fColor=(0,32768,0)
+			DepositionPanelExit()			
 			break
 		case ITCUSERFUNC_CUSTOMDISPLAY: //called by GUI controller where user can use the ITCPanel#rtgraph to display customized content
-			AppendToGraph /W=ITCPanel#rtgraph /L /B hist_view[%MEANVALUE][%COND_CALC][] vs hist_view[%TIMESTAMP][%COND_CALC][]
-			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left)=0,lblPos(left)=60,notation(left)=0,ZisZ(left)=1,fsize=12; AbortOnRTE
-			ModifyGraph /W=ITCPanel#rtgraph freePos(left)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
+			AppendToGraph /W=ITCPanel#rtgraph /L=left1 /B hist_view[%MEANVALUE][%TUNNELING_COND][0,hist_len-1] //vs hist_view[%TIMESTAMP][%TUNNELING_COND][]
+			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left1)=0,lblPos(left1)=60,notation(left1)=0,ZisZ(left1)=1,fsize=12; AbortOnRTE
+			ModifyGraph /W=ITCPanel#rtgraph freePos(left1)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
+			
+			AppendToGraph /W=ITCPanel#rtgraph /L=left2 /B hist_view[%MEANVALUE][%IONIC_COND][0,hist_len-1] //vs hist_view[%TIMESTAMP][%IONIC_COND][]
+			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left2)=0,lblPos(left2)=60,notation(left2)=0,ZisZ(left2)=1,fsize=12; AbortOnRTE
+			ModifyGraph /W=ITCPanel#rtgraph freePos(left2)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
+			ModifyGraph /W=ITCPanel#rtgraph lblPos(left1)=80, lblPos(left2)=80
+			if(errorbar_enabled)
+				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)) SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1],hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1])
+				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)+"#1") SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%IONIC_COND][0,hist_len-1],hist_view[%SDEV][%IONIC_COND][0,hist_len-1])
+			else
+				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)) OFF
+				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)+"#1") OFF
+			endif
+			
+			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left1
+			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left2
+
+			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left1)={0.52,1}
+			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left2)={0,0.48}
+			
+			ModifyGraph /W=ITCPanel#rtgraph rgb($(NameOfWave(hist_view)+"#1"))=(0,0,65535)
+			
+			Label /W=ITCPanel#rtgraph left1 "Tunneling Cond./\U S"
+			Label /W=ITCPanel#rtgraph left2 "Ionic Cond./\U S"
+			Label /W=ITCPanel#rtgraph bottom "relative time / \\U"
+			
 			ModifyGraph /W=ITCPanel#rtgraph margin(left)=80; AbortOnRTE
-			print("display updated.")
+			
 			//ret_val is not checked for this call
 			break
 		default:
@@ -3587,13 +3809,36 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 	catch
 		Variable err = GetRTError(1)		// Gets error code and clears error
 		String errMessage = GetErrMessage(err)
-		Printf "user function encountered the following error: %s\r", errMessage
+		Printf "deposit function encountered the following error: %s\r", errMessage
+		SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
+		Button depositpanel_autodep,win=$panel_name,title="start autodeposition",size={200,20},fColor=(0,32768,0)
 		ret_val=-1
 	endtry
-	
+	SetDataFolder dfr
 	return ret_val
 End
 
+Function DepositPanel_PID_CV(variable PID_CV, variable target, variable cond, variable stdev, wave pulse_wave)
+	//if(PID_CV>0)
+	//	pulse_wave += 0.01*PID_CV
+	//elseif(PID_CV<0)
+	if(abs(target-cond)<stdev)
+		return 0
+	endif
+	
+	pulse_wave -= 0.1*PID_CV
+	//endif
+	
+	variable i
+	for(i=0; i<DimSize(pulse_wave,0); i+=1)
+		if(pulse_wave[i]>10)
+			pulse_wave[i]=10
+		endif
+		if(pulse_wave[i]<-10)
+			pulse_wave[i]=-10
+		endif
+	endfor
+End
 
 // PNG: width= 142, height= 142
 static Picture QingLabBadge
