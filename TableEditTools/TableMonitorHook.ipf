@@ -40,13 +40,13 @@ Function hook_capture_change(s)
 	
 	GetWindow $s.winName activeSW
 	String activeSubwindow = S_value
+	
 	m=ItemsInList(activeSubwindow, "#")
 	String hostWindow=StringFromList(0, activeSubwindow, "#")
 	String hookstatus=""
 	hookstatus=GetUserData(hostWindow, "", "TableMonitorHookStatus")
 
 	String editWindow=StringFromList(m-1, activeSubwindow, "#")
-	
 	editNameList=GetUserData(hostWindow, "", "CaptureEditName" )
 	m=ItemsInList(editNameList)
 	for(n=0; n<m; n+=1)
@@ -55,15 +55,12 @@ Function hook_capture_change(s)
 			break
 		endif
 	endfor
+
 	if(n>=m)
 		return statusCode
 	endif
 
-#if (IgorVersion()>=7)
-	if((s.eventCode==0) || (s.eventCode==1) || (s.eventCode==5) || s.eventCode==11 && (s.specialKeyCode>=100 && s.specialKeyCode<=204)) //check if waves in edit window is in the allowed list, and add must waves if not included
-#else
-	if((s.eventCode==0) || (s.eventCode==1) || (s.eventCode==5) || s.eventCode==11 && (s.keyCode==13 || s.keyCode==3 || (s.keyCode>=28 && s.keyCode<=31)))
-#endif
+	if((s.eventCode==0) || (s.eventCode==1) || (s.eventCode==5) || (s.eventCode==11 && (s.specialKeyCode>=100 && s.specialKeyCode<=204))) //check if waves in edit window is in the allowed list, and add must waves if not included
 		try
 			Variable c=NumberByKey("COLUMNS", TableInfo(activeSubwindow, -2), ":", ";")
 			Variable i, j, k
@@ -130,11 +127,7 @@ Function hook_capture_change(s)
 				print "must have: "+musthavelist
 			endtry
 
-#if (IgorVersion()>=7)
 		if((s.eventCode==5) || (s.eventCode==11 && (s.specialKeyCode>=100 && s.specialKeyCode<=204))) //call user defined function if the event involves selecting and/or changing
-#else
-		if((s.eventCode==5) || (s.eventCode==11 && (s.keyCode==13 || s.keyCode==3 || (s.keyCode>=28 && s.keyCode<=31))))
-#endif
 		//mouse up, modified, or "enter" key has been pressed
 		//mouse down is not recommended for use in hook functions with edit panel as suggested by WaveMetrics
 			try
@@ -148,7 +141,7 @@ Function hook_capture_change(s)
 			endtry
 		endif
 	endif
-	
+	return statusCode
 End
 
 Function StartMonitorEditPanel(panelname, editname, funcname, [allowedWaveList, mustHaveWaveList])
