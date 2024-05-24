@@ -222,7 +222,7 @@ Function ITC_init()
 	taskstatus=0 //idle
 	samplingrate=ITC_DefaultSamplingRate
 	recordnum=0
-	recordinglen=ITCMinRecordingLen
+	recordinglen=ITCMinRecordingLen*2
 	continuous=0
 	saverecording=0
 
@@ -840,7 +840,7 @@ Function itc_setup_sealtest_default(pulsev, pulsew, [clear_channels])
 	
 	Variable i
 	samplingrate=ITC_DefaultSamplingRate
-	recordinglen=0.2*3
+	recordinglen=ITCMinRecordingLen*2
 	continuous=inf
 	saverecording=0
 	WBrowserCreateDF("root:seal_tests:")
@@ -1046,9 +1046,6 @@ Function itc_update_chninfo(windowname, event)
 	if(event!=11) //event is given by TableMonitorHook callback
 		return -1
 	endif
-	
-	print windowname
-	print event
 	
 	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
@@ -3621,10 +3618,22 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			//User code here
 			/////////////////////////////
 			DoAlert /T="Experiment must be saved first", 0, "Experiment must be saved before this program can continue. Please make sure to properly save this experiment in a folder with space for additional data storage."
-			SaveExperiment
-			PathInfo /SHOW home
-			String deposit_path = S_path
-			
+			do
+				variable repeat_save=0
+				try
+					SaveExperiment; AbortOnRTE
+					PathInfo /SHOW home
+					String deposit_path = S_path
+					repeat_save=99
+				catch
+					Variable save_err = GetRTError(1)
+					print "save experiment failed once, will try three times before giving up..."
+					print GetErrMessage(save_err)
+					repeat_save+=1
+					print "retry time: ", repeat_save
+				endtry
+			while(repeat_save<3)
+						
 			if(strlen(S_path)>0)
 				SetWindow ITCPanel, userdata(DEPOSIT_DATAFOLDER)=deposit_path
 				save_data_folder = ParseFilePath(2, deposit_path, ":", 0, 0)
