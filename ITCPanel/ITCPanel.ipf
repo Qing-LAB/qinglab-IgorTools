@@ -222,7 +222,7 @@ Function ITC_init()
 	taskstatus=0 //idle
 	samplingrate=ITC_DefaultSamplingRate
 	recordnum=0
-	recordinglen=ITCMinRecordingLen
+	recordinglen=ITCMinRecordingLen*2
 	continuous=0
 	saverecording=0
 
@@ -840,7 +840,7 @@ Function itc_setup_sealtest_default(pulsev, pulsew, [clear_channels])
 	
 	Variable i
 	samplingrate=ITC_DefaultSamplingRate
-	recordinglen=0.2*3
+	recordinglen=ITCMinRecordingLen*2
 	continuous=inf
 	saverecording=0
 	WBrowserCreateDF("root:seal_tests:")
@@ -1046,9 +1046,6 @@ Function itc_update_chninfo(windowname, event)
 	if(event!=11) //event is given by TableMonitorHook callback
 		return -1
 	endif
-	
-	print windowname
-	print event
 	
 	Variable instance=WBPkgGetLatestInstance(ITC_PackageName)
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance)
@@ -3377,21 +3374,34 @@ Function DepositionPanelInit(variable length)
 		NVAR PID_CV; AbortOnRTE
 		NVAR deposit_recording; AbortOnRTE
 		
-		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,200,600)
+		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,400,800)
 		String depositpanel_name = S_name
 		SetWindow ITCPanel, userdata(DepositionPanel)="ITCPanel#"+depositpanel_name
 		//display parameters
-		GroupBox depositpanel_grp_display,title="conductance calc and display",size={200,150},pos={0,0}
+		GroupBox depositpanel_grp_display,title="conductance calc and display",size={400,170},pos={0,0}
 		
-		PopupMenu depositpanel_tunneling_chn,title="tunneling I chn",size={180,20},bodyWidth=70,pos={10,20},value=#adcchn_list
-		PopupMenu depositpanel_tunneling_bias_chn,title="tunneling V chn",size={180,20},bodyWidth=70,pos={10,40},value=#dacchn_list
+		PopupMenu depositpanel_tunneling_chn,title="tunneling I",size={180,20},bodyWidth=60,pos={20,20},value=#adcchn_list
+		SetVariable depositpanel_tunneling_raw_correction,title="raw",size={50,20},pos={0,20},bodywidth=50,limits={-inf,inf,0},value=_NUM:0
+		SetVariable depositpanel_tunneling_sensitivity,title="Sensitivity(A/V)",size={180,20},bodywidth=60,pos={20,40},value=_NUM:1e-6,limits={-inf,inf,0}
+		PopupMenu depositpanel_tunneling_bias_chn,title="tunneling V",size={180,20},bodyWidth=60,pos={20,60},value=#dacchn_list
+		SetVariable depositpanel_tunneling_bias_offset,title="offset correction(V)", size={180,20},bodywidth=60, pos={20,80},value=_NUM:0,limits={-inf,inf,0}
+		CheckBox depositpanel_tunneling_bias_subtraction,title="subtract?", size={50,20},pos={10, 62}
 		
-		PopupMenu depositpanel_ionic_chn,title="ionic I chn",size={180,20},bodyWidth=70,pos={10,60},value=#adcchn_list
-		PopupMenu depositpanel_ionic_bias_chn,title="ionic V chn",size={180,20},bodyWidth=70,pos={10,80},value=#dacchn_list
+		PopupMenu depositpanel_tunneling_bias_counter_chn,title="tunneling V counter",size={180,20},bodyWidth=70,pos={20,100},value=#dacchn_list
+		SetVariable depositpanel_tunneling_bias_counter_offset,title="offset correction(V)", size={180,20},bodywidth=70, pos={20,120},value=_NUM:0,limits={-inf,inf,0}
+
+		PopupMenu depositpanel_ionic_chn,title="ionic I",size={180,20},bodyWidth=60,pos={200,20},value=#adcchn_list
+		SetVariable depositpanel_ionic_raw_correction,title="raw",size={50,20},pos={200,20},bodywidth=50,limits={-inf,inf,0},value=_NUM:0
+		SetVariable depositpanel_ionic_sensitivity,title="Sensitivity(A/V)",size={180,20},bodywidth=60,pos={200,40},value=_NUM:1e-6,limits={-inf,inf,0}
+		PopupMenu depositpanel_ionic_bias_chn,title="ionic V",size={180,20},bodyWidth=60,pos={200,60},value=#dacchn_list
+		SetVariable depositpanel_ionic_bias_offset,title="offset correction(V)", size={180,20},bodywidth=60, pos={200,80},value=_NUM:0,limits={-inf,inf,0}
+		CheckBox depositpanel_ionic_bias_subtraction,title="subtract?", size={50,20},pos={210, 62}
 		
+		PopupMenu depositpanel_ionic_bias_counter_chn,title="ionic V counter",size={180,20},bodyWidth=70,pos={200,100},value=#dacchn_list
+		SetVariable depositpanel_ionic_bias_counter_offset,title="offset correction(V)", size={180,20},bodywidth=70, pos={200,120},value=_NUM:0,limits={-inf,inf,0}
 		
-		CheckBox depositpanel_errorbar,title="error bar enabled", size={180,20},pos={10,100},proc=DepositPanel_cb_errorbar
-		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={180,20},pos={10,120},limits={10, MaxDepositionRawRecordingLength, 1}
+		CheckBox depositpanel_errorbar,title="error bar enabled", size={180,20},pos={10,140},proc=DepositPanel_cb_errorbar
+		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={15,120},pos={200,140},limits={10, MaxDepositionRawRecordingLength, 1}
 		
 		//deposition parameters
 		GroupBox depositpanel_grp_depositwavesetup,title="deposit parameters",size={200,230},pos={0,160}
@@ -3547,6 +3557,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		Variable autodep_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_AUTODEP_ENABLED")); AbortOnRTE
 		Variable save_folder_ready = str2num(GetUserData("ITCPanel","","DepositRecord_SAVE_FOLDER_READY")); AbortOnRTE
 		String save_data_folder = GetUserData("ITCPanel", "", "DepositRecord_SAVE_DATA_FOLDER")); AbortOnRTE
+		//WAVE /T dacdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
+		
 		PathInfo /S savefolder; AbortOnRTE
 		SetDataFolder root:$deposit_folder_name; AbortOnRTE
 		
@@ -3592,19 +3604,60 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				Make /FREE /N=(length) /D tmp_wave = rest_bias
 				wave pulse_wave = tmp_wave
 			endif
-			
+			//////////////////////////////////////////////////
+			// tunneling setting
 			ControlInfo /W=$(panel_name) depositpanel_tunneling_chn
 			Variable tunneling_current_chn = V_Value - 1
+
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_sensitivity
+			Variable tunneling_sensitivity=V_Value
 			
 			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_chn
 			Variable tunneling_bias_chn = V_Value - 1
 			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_offset
+			Variable tunneling_bias_offset=V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_counter_chn
+			Variable tunneling_bias_counter_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_counter_offset
+			Variable tunneling_bias_counter_offset=V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_subtraction
+			Variable tunneling_bias_subtraction=V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_raw_correction
+			Variable tunneling_raw_correction=V_Value
+			
+			////////////////////////////////////////////////////
+			// ionic setting
 			ControlInfo /W=$(panel_name) depositpanel_ionic_chn
 			Variable ionic_current_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_sensitivity
+			Variable ionic_current_sensitivity=V_Value
 			
 			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_chn
 			Variable ionic_bias_chn = V_Value - 1
 			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_offset
+			Variable ionic_bias_offset=V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_counter_chn
+			Variable ionic_bias_counter_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_counter_offset
+			Variable ionic_bias_counter_offset=V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_subtraction
+			Variable ionic_bias_subtraction=V_Value
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_raw_correction
+			Variable ionic_raw_correction=V_Value
+			
+			////////////////////////////////
+			// historical display setting
 			Variable hist_len = display_len / (length/samplingrate)
 			
 			String hist_view_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORYVIEW")
@@ -3621,10 +3674,22 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			//User code here
 			/////////////////////////////
 			DoAlert /T="Experiment must be saved first", 0, "Experiment must be saved before this program can continue. Please make sure to properly save this experiment in a folder with space for additional data storage."
-			SaveExperiment
-			PathInfo /SHOW home
-			String deposit_path = S_path
-			
+			do
+				variable repeat_save=0
+				try
+					SaveExperiment; AbortOnRTE
+					PathInfo /SHOW home
+					String deposit_path = S_path
+					repeat_save=99
+				catch
+					Variable save_err = GetRTError(1)
+					print "save experiment failed once, will try three times before giving up..."
+					print GetErrMessage(save_err)
+					repeat_save+=1
+					print "retry time: ", repeat_save
+				endtry
+			while(repeat_save<3)
+						
 			if(strlen(S_path)>0)
 				SetWindow ITCPanel, userdata(DEPOSIT_DATAFOLDER)=deposit_path
 				save_data_folder = ParseFilePath(2, deposit_path, ":", 0, 0)
@@ -3675,8 +3740,28 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			wave historywave = $history_record_name
 			wave /T rawwaveidx = $raw_record_file_idx
 			
-			Make /FREE/D/N=(DimSize(adcdata, 0)) tunneling_cond=adcdata[p][tunneling_current_chn] / dacdata[p][tunneling_bias_chn]
-			Make /FREE/D/N=(DimSize(adcdata, 0)) ionic_cond=adcdata[p][ionic_current_chn] / dacdata[p][ionic_bias_chn]
+			dacdata[][tunneling_bias_chn] -= tunneling_bias_offset
+			dacdata[][tunneling_bias_counter_chn] -= tunneling_bias_counter_offset
+
+			if(tunneling_bias_subtraction!=0)
+				adcdata[][tunneling_current_chn] -= dacdata[p][tunneling_bias_chn]
+			endif
+			adcdata[][tunneling_current_chn] -= tunneling_raw_correction
+			adcdata[][tunneling_current_chn] *= tunneling_sensitivity
+						
+			Make /FREE/D/N=(DimSize(adcdata, 0)) tunneling_cond=adcdata[p][tunneling_current_chn] / (dacdata[p][tunneling_bias_chn]-dacdata[p][tunneling_bias_counter_chn])
+			
+
+			dacdata[][ionic_bias_chn] -= ionic_bias_offset
+			dacdata[][ionic_bias_counter_chn] -=ionic_bias_counter_offset
+			
+			if(ionic_bias_subtraction!=0)
+				adcdata[][ionic_current_chn] -= dacdata[p][ionic_bias_chn]
+			endif
+			adcdata[][ionic_current_chn] -= ionic_raw_correction
+			adcdata[][ionic_current_chn] *= ionic_current_sensitivity
+			
+			Make /FREE/D/N=(DimSize(adcdata, 0)) ionic_cond=(adcdata[p][ionic_current_chn]) / (dacdata[p][ionic_bias_chn]-dacdata[p][ionic_bias_counter_chn])
 			
 			Make /FREE/D/N=(post_pulse_sample_len,adc_chnnum+dac_chnnum+2) tmp_stat
 			
