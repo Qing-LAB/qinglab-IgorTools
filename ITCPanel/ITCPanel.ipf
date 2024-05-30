@@ -1929,7 +1929,9 @@ Function rtgraph_btnproc_showinfo(ba) : ButtonControl
 End
 
 Function rtgraph_update_display()
-
+	if(WinType("ITCPanel#rtgraph")!=1)
+		return -1
+	endif
 	try
 		Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
 		String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
@@ -3374,34 +3376,36 @@ Function DepositionPanelInit(variable length)
 		NVAR PID_CV; AbortOnRTE
 		NVAR deposit_recording; AbortOnRTE
 		
-		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,400,800)
+		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,420,800)
 		String depositpanel_name = S_name
 		SetWindow ITCPanel, userdata(DepositionPanel)="ITCPanel#"+depositpanel_name
-		//display parameters
-		GroupBox depositpanel_grp_display,title="conductance calc and display",size={400,170},pos={0,0}
+		//ADC and DAC parameters
+		GroupBox depositpanel_grp_adcdac,title="ADC and DAC settings",size={420,150},pos={0,0}
 		
 		PopupMenu depositpanel_tunneling_chn,title="tunneling I",size={180,20},bodyWidth=60,pos={20,20},value=#adcchn_list
-		SetVariable depositpanel_tunneling_raw_correction,title="raw",size={50,20},pos={0,20},bodywidth=50,limits={-inf,inf,0},value=_NUM:0
-		SetVariable depositpanel_tunneling_sensitivity,title="Sensitivity(A/V)",size={180,20},bodywidth=60,pos={20,40},value=_NUM:1e-6,limits={-inf,inf,0}
+		SetVariable depositpanel_tunneling_raw_correction,title="offset(V)",size={60,20},pos={140,40},bodywidth=40,limits={-inf,inf,0},value=_NUM:0
+		SetVariable depositpanel_tunneling_sensitivity,title="scale(A/V)",size={90,20},bodywidth=40,pos={20,40},value=_NUM:1e-6,limits={-inf,inf,0}
 		PopupMenu depositpanel_tunneling_bias_chn,title="tunneling V",size={180,20},bodyWidth=60,pos={20,60},value=#dacchn_list
 		SetVariable depositpanel_tunneling_bias_offset,title="offset correction(V)", size={180,20},bodywidth=60, pos={20,80},value=_NUM:0,limits={-inf,inf,0}
-		CheckBox depositpanel_tunneling_bias_subtraction,title="subtract?", size={50,20},pos={10, 62}
+		CheckBox depositpanel_tunneling_bias_subtraction,title="subtract?", size={50,20},pos={10, 62},side=1
 		
-		PopupMenu depositpanel_tunneling_bias_counter_chn,title="tunneling V counter",size={180,20},bodyWidth=70,pos={20,100},value=#dacchn_list
+		PopupMenu depositpanel_tunneling_bias_counter_chn,title="tunneling V counter",size={180,20},bodyWidth=60,pos={20,100},value=#dacchn_list
 		SetVariable depositpanel_tunneling_bias_counter_offset,title="offset correction(V)", size={180,20},bodywidth=70, pos={20,120},value=_NUM:0,limits={-inf,inf,0}
 
-		PopupMenu depositpanel_ionic_chn,title="ionic I",size={180,20},bodyWidth=60,pos={200,20},value=#adcchn_list
-		SetVariable depositpanel_ionic_raw_correction,title="raw",size={50,20},pos={200,20},bodywidth=50,limits={-inf,inf,0},value=_NUM:0
-		SetVariable depositpanel_ionic_sensitivity,title="Sensitivity(A/V)",size={180,20},bodywidth=60,pos={200,40},value=_NUM:1e-6,limits={-inf,inf,0}
-		PopupMenu depositpanel_ionic_bias_chn,title="ionic V",size={180,20},bodyWidth=60,pos={200,60},value=#dacchn_list
-		SetVariable depositpanel_ionic_bias_offset,title="offset correction(V)", size={180,20},bodywidth=60, pos={200,80},value=_NUM:0,limits={-inf,inf,0}
-		CheckBox depositpanel_ionic_bias_subtraction,title="subtract?", size={50,20},pos={210, 62}
+		PopupMenu depositpanel_ionic_chn,title="ionic I",size={180,20},bodyWidth=60,pos={220,20},value=#adcchn_list
+		SetVariable depositpanel_ionic_raw_correction,title="offset(V)",size={60,20},pos={340,40},bodywidth=40,limits={-inf,inf,0},value=_NUM:0
+		SetVariable depositpanel_ionic_sensitivity,title="scale(A/V)",size={90,20},bodywidth=40,pos={220,40},value=_NUM:1e-6,limits={-inf,inf,0}
+		PopupMenu depositpanel_ionic_bias_chn,title="ionic V",size={180,20},bodyWidth=60,pos={220,60},value=#dacchn_list
+		SetVariable depositpanel_ionic_bias_offset,title="offset correction(V)", size={180,20},bodywidth=60, pos={220,80},value=_NUM:0,limits={-inf,inf,0}
+		CheckBox depositpanel_ionic_bias_subtraction,title="subtract?", size={50,20},pos={210, 62},side=1
 		
-		PopupMenu depositpanel_ionic_bias_counter_chn,title="ionic V counter",size={180,20},bodyWidth=70,pos={200,100},value=#dacchn_list
-		SetVariable depositpanel_ionic_bias_counter_offset,title="offset correction(V)", size={180,20},bodywidth=70, pos={200,120},value=_NUM:0,limits={-inf,inf,0}
+		PopupMenu depositpanel_ionic_bias_counter_chn,title="ionic V counter",size={180,20},bodyWidth=60,pos={220,100},value=#dacchn_list
+		SetVariable depositpanel_ionic_bias_counter_offset,title="offset correction(V)", size={180,20},bodywidth=70, pos={220,120},value=_NUM:0,limits={-inf,inf,0}
 		
-		CheckBox depositpanel_errorbar,title="error bar enabled", size={180,20},pos={10,140},proc=DepositPanel_cb_errorbar
-		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={15,120},pos={200,140},limits={10, MaxDepositionRawRecordingLength, 1}
+		//display parameter
+		GroupBox depositpanel_grp_display,title="Display settings",size={200,150},pos={200,160}
+		CheckBox depositpanel_errorbar,title="error bar enabled", size={150,20},pos={280,180},side=1,bodywidth=50,proc=DepositPanel_cb_errorbar
+		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={160,20},bodywidth=60,pos={230,200},limits={10, MaxDepositionRawRecordingLength, 1}
 		
 		//deposition parameters
 		GroupBox depositpanel_grp_depositwavesetup,title="deposit parameters",size={200,230},pos={0,160}
