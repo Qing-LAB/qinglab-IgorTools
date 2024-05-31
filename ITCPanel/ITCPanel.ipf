@@ -3317,14 +3317,21 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Variable /G post_pulse_delay=MIN_POST_PULSE_DELAY
 		Variable /G post_pulse_sample_len=MIN_POST_PULSE_SAMPLELEN
 		
-		Variable /G Kp=1
+		Variable /G Kp=0.1
 		Variable /G Ki=0.05
-		Variable /G Kd=0.1
+		Variable /G Kd=0.0
 		Variable /G Er_Int=0
 		Variable /G Er_Prev=0
 		Variable /G PID_CV=0
 		Variable /G deposit_recording=0
 		Variable /G display_len=60
+		
+		Variable /G PID_enabled=0
+		Variable /G continuous_exec=0
+		Variable /G exec_mode=1
+		
+		Variable /G deposition_status=0
+		Variable /G deposition_indicator=0
 		
 	catch
 		Variable err = GetRTError(1)		// Gets error code and clears error
@@ -3408,9 +3415,14 @@ Function DepositionPanelInit(variable length)
 		NVAR rest_cycle_number; AbortOnRTE
 		NVAR rest_cycle_countdown; AbortOnRTE
 		
+		NVAR PID_enabled; AbortOnRTE
+		NVAR continuous_exec; AbortOnRTE
+		NVAR exec_mode; AbortOnRTE
+		NVAR deposition_indicator; AbortOnRTE
+		
 		String tvalstr = ""
 		
-		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,420,800)
+		NewPanel /EXT=0 /HOST=ITCPanel /K=2 /N=DepositionPanel /W=(0,0,420,500)
 		String depositpanel_name = S_name
 		SetWindow ITCPanel, userdata(DepositionPanel)="ITCPanel#"+depositpanel_name
 		//ADC and DAC parameters
@@ -3494,16 +3506,14 @@ Function DepositionPanelInit(variable length)
 		tvalstr="root:"+deposit_folder_name+":ionic_conductance_stdev"
 		Valdisplay depositpanel_i_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,240},format="%0.3f"
 		
-		tvalstr="root:"+deposit_folder_name+":rest_cycle_countdown"
-		Valdisplay depositpanel_pulsedelaycount, title="Rest cycle countdown:", value=#(tvalstr),size={180,20},pos={210,260}
-		
+				
 		Checkbox depositpanel_recording,title="Data recording",size={90,25},pos={210,320},variable=deposit_recording
 		Checkbox depositpanel_recording,help={"Get raw data saved into disk as individual wave files.\nIn the igor file, only history and file records are saved."}
 		
 		//deposition parameters
-		GroupBox depositpanel_grp_depositwavesetup,title="Deposit potential/pulse",size={200,340},pos={0,160}
+		GroupBox depositpanel_grp_depositwavesetup,title="Deposit potential/pulse",size={200,330},pos={0,160}
 		
-		SetVariable depositpanel_target_conductance,title="target_cond (nS)",value=target_cond,size={180,20},pos={10,180},limits={0.001,100,0.01}	
+		SetVariable depositpanel_target_conductance,title="target_cond (nS)",value=target_cond,size={180,20},pos={10,180},limits={0.001,1000,0.01}	
 		SetVariable depositpanel_target_conductance,help={"The target conductance when deposition/removal should be stopped."}
 		
 		SetVariable depositpanel_tunneling_deltaV,title="Tunneling deltaV",value=tunneling_deltaV,size={180,20},bodywidth=80,pos={10,200},limits={-0.2,0.2,0.01}
@@ -3531,21 +3541,31 @@ Function DepositionPanelInit(variable length)
 		ValDisplay depositpanel_post_pulse_samplelen,title="post_pulse_sample_len",value=#(tvalstr),size={180,20},pos={10,400},frame=0
 		ValDisplay depositpanel_post_pulse_samplelen,valueBackColor=(40969,65535,16385),labelBack=(32792,65535,1)
 		
-		SetVariable depositpanel_rest_cycle,title="rest cycle#",value=rest_cycle_number,size={180,20},pos={10,420},limits={0,100,1}
-		SetVariable depositpanel_rest_cycle,help={"Set the blank cycles where only the rest potential is applied between application of pulses."}
-		
 		Button depositpanel_update_deposit_parameters, title="update deposition pulse",size={180,20},pos={10,440},proc=DepositionPanel_Btn_update_deppulse
+
 		//////////////////////////////////////
 		// deposition control (automatic part)
-		Button depositpanel_autodep,title="start autodep.",size={90,25},pos={10,470},fColor=(0,32768,0),proc=DepositionPanel_Btn_autodep,disable=2
+		GroupBox depositpanel_grp_depositcontrol,title="Deposition Control",size={220,150},pos={200,340}
 		
-
+		SetVariable depositpanel_rest_cycle,title="rest cycle#",value=rest_cycle_number,size={180,20},pos={210,360},limits={0,100,1}
+		SetVariable depositpanel_rest_cycle,help={"Set the blank cycles where only the rest potential is applied between application of pulses."}
 		
-		SetVariable depositpanel_Kp,title="Kp",value=Kp,size={60,20},pos={0,500},limits={0,10,0.01}
-		SetVariable depositpanel_Ki,title="Ki",value=Ki,size={60,20},pos={65,500},limits={0,10,0.01}
-		SetVariable depositpanel_Kd,title="Kd",value=Kd,size={60,20},pos={135,500},limits={0,10,0.01}
+		tvalstr="root:"+deposit_folder_name+":rest_cycle_countdown"
+		Valdisplay depositpanel_pulsedelaycount, title="Rest cycle countdown:", value=#(tvalstr),size={180,20},pos={210,380}
+		tvalstr="root:"+deposit_folder_name+":deposition_indicator"
+		ValDisplay depositpanel_pulse_indicator,title="",pos={390,380},size={15,15},zeroColor=(0,65535,0),mode=1,barmisc={0,0},limits={-1,1,0},value=#(tvalstr)
+		
+		Button depositpanel_exec,title="Execute",size={80,20},pos={205,400},fColor=(0,32768,0),proc=DepositionPanel_Btn_exec
+		PopupMenu depositpanel_depmode,title="mode",size={100,20},pos={290,400},value="Close gap;Open gap;Maintain;",mode=exec_mode
+		CheckBox depositpanel_continuous,title="continuous",size={80,20},pos={205,425},variable=continuous_exec
+		CheckBox depositpanel_pid_enable,title="PID enable",size={80,20},pos={290,425},variable=PID_enabled
+				
+		SetVariable depositpanel_Kp,title="Kp",value=Kp,size={60,20},pos={205,450},limits={0,10,0.01}
+		SetVariable depositpanel_Ki,title="Ki",value=Ki,size={60,20},pos={270,450},limits={0,10,0.01}
+		SetVariable depositpanel_Kd,title="Kd",value=Kd,size={60,20},pos={335,450},limits={0,10,0.01}
+		
 		tvalstr="root:"+deposit_folder_name+":PID_CV"
-		Valdisplay depositpanel_PID_CV, title="PID_CV", value=#(tvalstr),size={200,20},barmisc={0,50},format="%-2.5f",pos={0,520},limits={-10,10,0}
+		Valdisplay depositpanel_PID_CV, title="PID_CV", value=#(tvalstr),size={190,20},barmisc={0,50},format="%-2.5f",pos={205,470},limits={-10,10,0}
 		
 		//print("Deposition panel initialized.")
 	catch	
@@ -3731,34 +3751,44 @@ Function DepositePanel_GeneratePulse(string deposit_folder_name, variable pulse_
 	
 End
 
-Function DepositionPanel_Btn_autodep(ba) : ButtonControl
+Function DepositionPanel_update_exec_button(Variable flag)
+	String panel_name = GetUserData("ITCPanel", "", "DepositionPanel")
+	String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER"); AbortOnRTE
+	
+	Variable deposition_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_DEPOSIT_EXEC"))
+	
+	switch(flag)
+	case 0:
+		deposition_status = 0
+		break
+	case 1:
+		deposition_status = 1
+		break
+	default:
+		deposition_status = ! deposition_status
+	endswitch
+	
+	NVAR rest_cycle = $("root:"+deposit_folder_name+":rest_cycle_number")
+	NVAR rest_cycle_countdown = $("root:"+deposit_folder_name+":rest_cycle_countdown")
+		
+	if(deposition_status == 0)
+		SetWindow ITCPanel, userdata(DepositRecord_DEPOSIT_EXEC)="0"
+		Button depositpanel_exec,win=$panel_name,title="Execute",fColor=(0,32768,0)
+		rest_cycle_countdown = rest_cycle
+	else
+		SetWindow ITCPanel, userdata(DepositRecord_DEPOSIT_EXEC)="1"
+		Button depositpanel_exec,win=$panel_name,title="STOP",fColor=(32768,0,0)
+		rest_cycle_countdown = rest_cycle
+	endif
+End
+
+Function DepositionPanel_Btn_exec(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			try
-				String panel_name = GetUserData("ITCPanel", "", "DepositionPanel")
-				String deposit_folder_name = GetUserData("ITCPanel","","DepositRecord_FOLDER")
-				//String raw_record_name = GetUserData("ITCPanel","","DepositRecord_RAW")
-				//String history_record_name = GetUserData("ITCPanel","","DepositRecord_HISTORY")
-				Variable autodep_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_AUTODEP_ENABLED"))
-				
-				if(autodep_status == 1)
-					autodep_status = 0
-					SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
-					Button depositpanel_autodep,win=$panel_name,title="start autodep.",fColor=(0,32768,0)
-				else
-					autodep_status = 1
-					Button depositpanel_autodep,win=$panel_name,title="stop autodep.",fColor=(32768,0,0)
-					SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="1"
-				endif
-			catch
-				Variable err = GetRTError(1)		// Gets error code and clears error
-				String errMessage = GetErrMessage(err)
-				Printf "autodep encountered the following error: %s\r", errMessage
-			endtry
-		
+			DepositionPanel_update_exec_button(-1)
 			break
 		case -1: // control being killed
 			break
@@ -3812,10 +3842,9 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		String history_record_name = GetUserData("ITCPanel", "", "DepositRecord_HISTORY"); AbortOnRTE
 		String raw_record_file_idx = GetUserData("ITCPanel", "", "DepositRecord_RAWFILEIDX"); AbortOnRTE
 		//String data_folder = GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER"); AbortOnRTE
-		Variable autodep_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_AUTODEP_ENABLED")); AbortOnRTE
+		
 		Variable save_folder_ready = str2num(GetUserData("ITCPanel","","DepositRecord_SAVE_FOLDER_READY")); AbortOnRTE
 		String save_data_folder = GetUserData("ITCPanel", "", "DepositRecord_SAVE_DATA_FOLDER")); AbortOnRTE
-		//WAVE /T dacdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
 		
 		PathInfo /S savefolder; AbortOnRTE
 		SetDataFolder root:$deposit_folder_name; AbortOnRTE
@@ -3858,6 +3887,18 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		NVAR Er_Int; AbortOnRTE
 		NVAR Er_Prev; AbortOnRTE
 		
+		NVAR PID_enabled; AbortOnRTE
+		NVAR continuous_exec; AbortOnRTE
+		NVAR exec_mode; AbortOnRTE
+		NVAR deposition_status; AbortOnRTE
+		NVAR deposition_indicator; AbortOnRTE
+		
+		ControlInfo /W=$(panel_name) depositpanel_depmode
+		exec_mode = V_value
+		deposition_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_DEPOSIT_EXEC"))
+		if(deposition_status == 0)
+			deposition_indicator = 0
+		endif
 		
 		total_cycle_time=length/samplingrate
 		
@@ -3870,14 +3911,6 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		endif
 			
 		if(WinType(panel_name)==7)
-			
-			ControlInfo /W=$(panel_name) depositpanel_pulse_wave
-			if(strlen(S_Value)>0)
-				wave pulse_wave = $S_Value
-			else
-				Make /FREE /N=(length) /D tmp_wave = rest_bias
-				wave pulse_wave = tmp_wave
-			endif
 			//////////////////////////////////////////////////
 			// tunneling setting
 			ControlInfo /W=$(panel_name) depositpanel_tunneling_chn
@@ -3980,8 +4013,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			DepositionPanelInit(length)
 			ret_val=0
 			hist_view=NaN
-			Button depositpanel_autodep,win=$panel_name,title="start autodep.",fColor=(0,32768,0),disable=0
-			SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
+			
+			DepositionPanel_update_exec_button(0)
 			break
 		case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
 			/////////////////////////////
@@ -4013,6 +4046,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			adcdata[][ionic_current_chn] *= ionic_scale
 			
 			Make /FREE/D/N=(DimSize(adcdata, 0)) ionic_cond=(adcdata[p][ionic_current_chn]) / (dacdata[p][ionic_bias_chn]-dacdata[p][ionic_bias_counter_chn])
+			
+			Make /FREE/D/N=(DimSize(adcdata, 0)) pulse_wave = dacdata[p][tunneling_bias_chn] - dacdata[p][ionic_bias_chn] //the difference between tunnling electrodes and the reference should give the pulse information
 			
 			Make /FREE/D/N=(post_pulse_sample_len,adc_chnnum+dac_chnnum+2) tmp_stat
 			
@@ -4098,7 +4133,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				note /k rawwaveidx, num2istr(fileidx_last)
 			endif
 			
-			if(cycle_count==0 || autodep_status==0)
+			if(cycle_count==0 || PID_enabled==0)
 				Er_Int=0
 				Er_Prev=t_cond
 			else
@@ -4107,7 +4142,21 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				Variable diff_er=er-Er_Prev
 				Er_Prev=er
 				PID_CV = Kp*er + Ki*Er_Int + Kd*diff_er
-				DepositPanel_PID_CV(PID_CV, target_cond, tunneling_conductance, tunneling_conductance_stdev, pulse_wave)
+			endif
+			
+			if(deposition_status)
+				if(rest_cycle_countdown <= 0)
+					rest_cycle_countdown = rest_cycle_number
+					if(continuous_exec)
+						DepositionPanel_update_exec_button(1)
+					else
+						DepositionPanel_update_exec_button(0)
+					endif
+					deposition_indicator=DepositPanel_SendPulse(exec_mode, target_cond, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn)
+				else
+					deposition_indicator=0
+					rest_cycle_countdown -=1
+				endif
 			endif
 			
 			ret_val=0 //if need to stop recording by the user function, return a non-zero value
@@ -4116,15 +4165,15 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			/////////////////////////////
 			//User code here
 			/////////////////////////////
-			SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
-			Button depositpanel_autodep,win=$panel_name,title="start autodep.",fColor=(0,32768,0),disable=2
+			DepositionPanel_update_exec_button(0)
 			break //ret_val is not checked for this call
 		
 		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
-			SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
+			
 			SetWindow ITCPanel, userdata(DepositRecord_SAVE_FOLDER_READY)="0"
-			Button depositpanel_autodep,win=$panel_name,title="start autodep.",fColor=(0,32768,0),disable=2
-			DepositionPanelExit()			
+			DepositionPanel_update_exec_button(0)
+			
+			DepositionPanelExit()
 			break
 		case ITCUSERFUNC_CUSTOMDISPLAY: //called by GUI controller where user can use the ITCPanel#rtgraph to display customized content
 			AppendToGraph /W=ITCPanel#rtgraph /L=left1 /B hist_view[%MEANVALUE][%TUNNELING_COND][0,hist_len-1] //vs hist_view[%TIMESTAMP][%TUNNELING_COND][]
@@ -4167,34 +4216,64 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		Variable err = GetRTError(1)		// Gets error code and clears error
 		String errMessage = GetErrMessage(err)
 		Printf "deposit function encountered the following error: %s\r", errMessage
-		SetWindow ITCPanel, userdata(DepositRecord_AUTODEP_ENABLED)="0"
-		Button depositpanel_autodep,win=$panel_name,title="start autodep.",fColor=(0,32768,0),disable=2
+		DepositionPanel_update_exec_button(0)
 		ret_val=-1
 	endtry
 	SetDataFolder dfr
 	return ret_val
 End
 
-Function DepositPanel_PID_CV(variable PID_CV, variable target, variable cond, variable stdev, wave pulse_wave)
-	//if(PID_CV>0)
-	//	pulse_wave += 0.01*PID_CV
-	//elseif(PID_CV<0)
-	if(abs(target-cond)<stdev)
-		return 0
-	endif
+Function DepositPanel_SendPulse(Variable deposition_mode, Variable target_cond, Variable tunneling_cond, Variable tunneling_bias_chn, Variable tunneling_bias_counter_chn, Variable ionic_bias_chn, Variable ionic_bias_counter_chn)
+	Variable retVal = 0
+	String wlist=Deposition_GetDACWaveList()
 	
-	pulse_wave -= 0.001*PID_CV
-	//endif
+	try
+		Wave tdacw0_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC0_DEPOSIT")
+		Wave tdacw1_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC1_DEPOSIT")
+		Wave idacw0_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC0_DEPOSIT")
+		Wave idacw1_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC1_DEPOSIT")
+		
+		Wave tdacw0_rm=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC0_REMOVAL")
+		Wave tdacw1_rm=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC1_REMOVAL")
+		Wave idacw0_rm=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC0_REMOVAL")
+		Wave idacw1_rm=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC1_REMOVAL")
+		
+		
+		Wave tdacw0_rest=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC0_REST")
+		Wave tdacw1_rest=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC1_REST")
+		Wave idacw0_rest=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC0_REST")
+		Wave idacw1_rest=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC1_REST")
+		
+		switch(deposition_mode)
+		case 1: //close
+			
+			if(abs(tunneling_cond)<abs(target_cond))
+				print "will close"
+				retVal = -1
+			endif
+			
+			break
+		case 2: //open
+			
+			if(abs(tunneling_cond) > abs(target_cond))
+				print "will open"
+				retVal = 1
+			endif
+			
+			break
+		case 3: //maintain
+			print "not implemented yet"
+			break
+		default:
+		endswitch
+	catch
+	endtry
 	
-	variable i
-	for(i=0; i<DimSize(pulse_wave,0); i+=1)
-		if(pulse_wave[i]>10)
-			pulse_wave[i]=10
-		endif
-		if(pulse_wave[i]<-10)
-			pulse_wave[i]=-10
-		endif
-	endfor
+	return retVal
+End
+
+Function DepositPanel_PID_CV(variable PID_CV, variable target, variable cond, variable stdev)
+	
 End
 
 // PNG: width= 142, height= 142
