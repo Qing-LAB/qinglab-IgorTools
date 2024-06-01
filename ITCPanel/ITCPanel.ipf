@@ -3301,10 +3301,13 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Variable /G ionic_DAC0_offset=0
 		Variable /G ionic_DAC1_offset=0
 		
-		Variable /G rest_bias=0
-		Variable /G deposit_bias=0
-		Variable /G removal_bias=0
-		Variable /G target_cond=1
+		Variable /G rest_bias=-0.4
+		Variable /G deposit_bias=-1.3
+		Variable /G removal_bias=0.6
+		
+		Variable /G target_cond=2
+		Variable /G target_err_ratio=10 //in percent
+		
 		Variable /G total_cycle_time=0
 		
 		Variable /G tunneling_deltaV=0.01
@@ -3312,9 +3315,9 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Variable /G rest_cycle_number=0		
 		Variable /G rest_cycle_countdown=0
 		
-		Variable /G pulse_width=MIN_PULSE_WIDTH
-		Variable /G pre_pulse_time=MIN_PRE_PULSE_TIME
-		Variable /G post_pulse_delay=MIN_POST_PULSE_DELAY
+		Variable /G pulse_width=MIN_PULSE_WIDTH*2
+		Variable /G pre_pulse_time=MIN_PRE_PULSE_TIME*2
+		Variable /G post_pulse_delay=MIN_POST_PULSE_DELAY*2
 		Variable /G post_pulse_sample_len=MIN_POST_PULSE_SAMPLELEN
 		
 		Variable /G Kp=0.1
@@ -3376,8 +3379,7 @@ Function DepositionPanelInit(variable length)
 	DFREF dfr=GetDataFolderDFR()
 	String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER"); AbortOnRTE
 	
-	try
-		
+	try		
 		SetDataFolder root:$deposit_folder_name; AbortOnRTE
 		
 		NVAR tunneling_conductance; AbortOnRTE
@@ -3397,7 +3399,10 @@ Function DepositionPanelInit(variable length)
 		NVAR rest_bias; AbortOnRTE
 		NVAR deposit_bias; AbortOnRTE
 		NVAR removal_bias; AbortOnRTE
+		
 		NVAR target_cond; AbortOnRTE
+		NVAR target_err_ratio; AbortOnRTE
+		
 		NVAR total_cycle_time; AbortOnRTE
 		NVAR pulse_width; AbortOnRTE
 		NVAR pre_pulse_time; AbortOnRTE
@@ -3428,7 +3433,7 @@ Function DepositionPanelInit(variable length)
 		//ADC and DAC parameters
 		GroupBox depositpanel_grp_adcdac,title="ADC and DAC settings",size={420,150},pos={0,0}
 		
-		PopupMenu depositpanel_tunneling_chn,title="tunneling I",size={180,20},bodyWidth=60
+		PopupMenu depositpanel_tunneling_chn,title="tunneling I",size={180,20},bodyWidth=60,mode=1
 		PopupMenu depositpanel_tunneling_chn,pos={20,20},value=#adcchn_list
 		PopupMenu depositpanel_tunneling_chn,help={"Select the ADC channel representing \nthe raw voltage signal for tunneling current"}
 		
@@ -3440,7 +3445,7 @@ Function DepositionPanelInit(variable length)
 		SetVariable depositpanel_tunneling_sensitivity,pos={20,40},value=tunneling_scale,limits={1e-12,1,0}
 		SetVariable depositpanel_tunneling_sensitivity,help={"Sensitivity for the preamp that converts\ntunneling current to voltage signal"}
 		
-		PopupMenu depositpanel_tunneling_bias_chn,title="tunneling V",size={180,20}
+		PopupMenu depositpanel_tunneling_bias_chn,title="tunneling V",size={180,20},mode=1
 		PopupMenu depositpanel_tunneling_bias_chn,bodyWidth=60,pos={20,60},value=#dacchn_list
 		PopupMenu depositpanel_tunneling_bias_chn,help={"Select the DAC channel that sends voltage signal to \nchange the potential on the tunneling current preamp side."}
 		
@@ -3448,10 +3453,10 @@ Function DepositionPanelInit(variable length)
 		SetVariable depositpanel_tunneling_bias_offset,bodywidth=60, pos={20,80},value=tunneling_DAC0_offset,limits={-0.5,0.5,0}
 		SetVariable depositpanel_tunneling_bias_offset,help={"The correction for the output signal of the bias channel.\nMeasure the actual output voltage when setting the output to zero.\nIf the actual voltage is not zero, \nenter the negative of the value here. \nIt will be added to the output wave before sending to the hardware\nto correct the offset error."}
 		
-		CheckBox depositpanel_tunneling_bias_subtraction,title="subtract?", size={50,20},pos={10, 62},side=1
+		CheckBox depositpanel_tunneling_bias_subtraction,title="subtract?", size={50,20},pos={10, 62},side=1,value=1
 		CheckBox depositpanel_tunneling_bias_subtraction,help={"If the tunneling current preamp circuit does not have compensation \nfor the bias applied at the preamp side, \nthis will subtract the applied bias (from the DAC record)\n from the read out voltage to correct the baseline shift."}
 		
-		PopupMenu depositpanel_tunneling_bias_counter_chn,title="tunneling V counter",size={180,20}
+		PopupMenu depositpanel_tunneling_bias_counter_chn,title="tunneling V counter",size={180,20},mode=2
 		PopupMenu depositpanel_tunneling_bias_counter_chn,bodyWidth=60,pos={20,100},value=#dacchn_list
 		PopupMenu depositpanel_tunneling_bias_counter_chn,help={"Select the DAC channel that sends voltage signal to\nchange the potential on the opposite/counter side from the electrode \nconnected with the tunneling current preamp."}
 		
@@ -3459,7 +3464,7 @@ Function DepositionPanelInit(variable length)
 		SetVariable depositpanel_tunneling_bias_counter_offset,bodywidth=70, pos={20,120},value=tunneling_DAC1_offset,limits={-0.5,0.5,0}
 		SetVariable depositpanel_tunneling_bias_counter_offset,help={"The correction for the output signal of the counter bias channel.\nMeasure the actual output voltage when setting the output to zero.\nIf the actual voltage is not zero, \nenter the negative of the value here. \nIt will be added to the output wave before sending to the hardware\nto correct the offset error."}
 		
-		PopupMenu depositpanel_ionic_chn,title="ionic I",size={180,20},bodyWidth=60,pos={220,20},value=#adcchn_list
+		PopupMenu depositpanel_ionic_chn,title="ionic I",size={180,20},bodyWidth=60,pos={220,20},value=#adcchn_list,mode=1
 		PopupMenu depositpanel_ionic_chn,help={"Select the ADC channel representing \nthe raw voltage signal for ionic current"}
 		
 		SetVariable depositpanel_ionic_raw_correction,title="offset(V)",size={60,20},pos={340,40}
@@ -3471,18 +3476,18 @@ Function DepositionPanelInit(variable length)
 		SetVariable depositpanel_ionic_sensitivity,help={"Sensitivity for the preamp that converts\nionic current to voltage signal"}
 		
 		PopupMenu depositpanel_ionic_bias_chn,title="ionic V",size={180,20},bodyWidth=60
-		PopupMenu depositpanel_ionic_bias_chn,pos={220,60},value=#dacchn_list
+		PopupMenu depositpanel_ionic_bias_chn,pos={220,60},value=#dacchn_list,mode=3
 		PopupMenu depositpanel_ionic_bias_chn,help={"Select the DAC channel that sends voltage signal to \nchange the potential on the ionic current preamp side."}
 		
 		SetVariable depositpanel_ionic_bias_offset,title="offset correction(V)", size={180,20}
 		SetVariable depositpanel_ionic_bias_offset,bodywidth=60, pos={220,80},value=ionic_DAC0_offset,limits={-inf,inf,0}
 		SetVariable depositpanel_ionic_bias_offset,help={"The correction for the output signal of the bias channel.\nMeasure the actual output voltage when setting the output to zero.\nIf the actual voltage is not zero, \nenter the negative of the value here. \nIt will be added to the output wave before sending to the hardware\nto correct the offset error."}
 		
-		CheckBox depositpanel_ionic_bias_subtraction,title="subtract?", size={50,20},pos={210, 62},side=1
+		CheckBox depositpanel_ionic_bias_subtraction,title="subtract?", size={50,20},pos={210, 62},side=1,value=1
 		CheckBox depositpanel_ionic_bias_subtraction,help={"If the ionic current preamp circuit does not have compensation \nfor the bias applied at the preamp side, \nthis will subtract the applied bias (from the DAC record)\n from the read out voltage to correct the baseline shift."}
 		
 		PopupMenu depositpanel_ionic_bias_counter_chn,title="ionic V counter",size={180,20},bodyWidth=60
-		PopupMenu depositpanel_ionic_bias_counter_chn,pos={220,100},value=#dacchn_list
+		PopupMenu depositpanel_ionic_bias_counter_chn,pos={220,100},value=#dacchn_list,mode=4
 		PopupMenu depositpanel_ionic_bias_counter_chn,help={"Select the DAC channel that sends voltage signal to\nchange the potential on the opposite/counter side from the electrode \nconnected with the ionic current preamp."}
 		
 		SetVariable depositpanel_ionic_bias_counter_offset,title="offset correction(V)", size={180,20},bodywidth=70
@@ -3494,17 +3499,26 @@ Function DepositionPanelInit(variable length)
 		CheckBox depositpanel_errorbar,title="error bar enabled", size={150,20},pos={280,180},side=1,bodywidth=50,proc=DepositPanel_cb_errorbar
 		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={160,20},bodywidth=60,pos={230,200},limits={10, MaxDepositionRawRecordingLength, 1}
 		
+		SetVariable depositpanel_target_conductance,title="target_cond (nS)",variable=target_cond,size={120,20},pos={205,240},limits={0.001,1000,0}	
+		SetVariable depositpanel_target_conductance,help={"The target conductance when deposition/removal should be stopped."}
+		SetVariable depositpanel_target_err_ratio,title="+/-(%)",variable=target_err_ratio,size={70,20},pos={325,240},limits={0.1,100,0}	
+		SetVariable depositpanel_target_err_ratio,help={"The range in percentage that will trigger deposition or removal pulses."}
+		
 		tvalstr="root:"+deposit_folder_name+":tunneling_conductance"
-		Valdisplay depositpanel_t_cond, title="Cond_T (nS):",value=#(tvalstr),size={120,20},pos={210,220},format="%+0.3f"
+		Valdisplay depositpanel_t_cond,title="Cond_T (nS):",value=#(tvalstr),size={120,20},pos={210,260},format="%+0.3f"
+		Valdisplay depositpanel_t_cond,valueBackColor=(3,52428,1)
 		Valdisplay depositpanel_t_cond,help={"Calculated tunneling conductance"}
 		tvalstr="root:"+deposit_folder_name+":tunneling_conductance_stdev"
-		Valdisplay depositpanel_t_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,220},format="%0.3f"
+		Valdisplay depositpanel_t_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,260},format="%0.3f"
+		Valdisplay depositpanel_t_cond_stdev,valueBackColor=(3,52428,1)
 		
 		tvalstr="root:"+deposit_folder_name+":ionic_conductance"
-		Valdisplay depositpanel_i_cond, title="Cond_I (nS):",value=#(tvalstr),size={120,20},pos={210,240},format="%+0.3f"
+		Valdisplay depositpanel_i_cond,title="Cond_I (nS):",value=#(tvalstr),size={120,20},pos={210,280},format="%+0.3f"
+		Valdisplay depositpanel_i_cond,valueBackColor=(3,52428,1)
 		Valdisplay depositpanel_i_cond,help={"Calculated cross-ionic channels conductance"}
 		tvalstr="root:"+deposit_folder_name+":ionic_conductance_stdev"
-		Valdisplay depositpanel_i_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,240},format="%0.3f"
+		Valdisplay depositpanel_i_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,280},format="%0.3f"
+		Valdisplay depositpanel_i_cond_stdev,valueBackColor=(3,52428,1)
 		
 				
 		Checkbox depositpanel_recording,title="Data recording",size={90,25},pos={210,320},variable=deposit_recording
@@ -3513,13 +3527,10 @@ Function DepositionPanelInit(variable length)
 		//deposition parameters
 		GroupBox depositpanel_grp_depositwavesetup,title="Deposit potential/pulse",size={200,330},pos={0,160}
 		
-		SetVariable depositpanel_target_conductance,title="target_cond (nS)",value=target_cond,size={180,20},pos={10,180},limits={0.001,1000,0.01}	
-		SetVariable depositpanel_target_conductance,help={"The target conductance when deposition/removal should be stopped."}
-		
-		SetVariable depositpanel_tunneling_deltaV,title="Tunneling deltaV",value=tunneling_deltaV,size={180,20},bodywidth=80,pos={10,200},limits={-0.2,0.2,0.01}
+		SetVariable depositpanel_tunneling_deltaV,title="Tunneling deltaV",value=tunneling_deltaV,size={180,20},bodywidth=80,pos={10,180},limits={-0.2,0.2,0.01}
 		SetVariable depositpanel_tunneling_deltaV,help={"The bias across the tunneling gap that should be maintained throughout the process."}
 		
-		SetVariable depositpanel_ionic_deltaV,title="Ionic deltaV",value=ionic_deltaV,size={180,20},bodywidth=80,pos={10,220},limits={-0.5,0.5,0.01}
+		SetVariable depositpanel_ionic_deltaV,title="Ionic deltaV",value=ionic_deltaV,size={180,20},bodywidth=80,pos={10,200},limits={-0.5,0.5,0.01}
 		SetVariable depositpanel_ionic_deltaV,help={"The bias between the ionic channels that should be maintained throughout the process."}
 		
 		PopupMenu depositpanel_pulse_method,title="DepBias",size={180,20},pos={10,240},bodyWidth=100,value="@Tunneling;@Reference;Customized;"
@@ -3640,7 +3651,7 @@ Function DepositePanel_GeneratePulse(string deposit_folder_name, variable pulse_
 		NVAR rest_bias; AbortOnRTE
 		NVAR deposit_bias; AbortOnRTE
 		NVAR removal_bias; AbortOnRTE
-		NVAR target_cond; AbortOnRTE
+		
 		NVAR total_cycle_time; AbortOnRTE
 		NVAR pulse_width; AbortOnRTE
 		NVAR pre_pulse_time; AbortOnRTE
@@ -3866,7 +3877,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		NVAR rest_bias; AbortOnRTE
 		NVAR deposit_bias; AbortOnRTE
 		NVAR removal_bias; AbortOnRTE
+		
 		NVAR target_cond; AbortOnRTE
+		NVAR target_err_ratio; AbortOnRTE
+		
 		NVAR total_cycle_time; AbortOnRTE
 		NVAR pulse_width; AbortOnRTE
 		NVAR pre_pulse_time; AbortOnRTE
@@ -4124,7 +4138,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				
 				Duplicate /O rawwave, $tmpstr
 				
-				NewPath /C/O savefolder, save_data_folder
+				NewPath /C/O/Q savefolder, save_data_folder
 				
 				SaveData /D=1/L=1/O/Q/P=savefolder/J=tmpstr ":"
 				KillWaves /Z $tmpstr
@@ -4145,18 +4159,27 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			endif
 			
 			if(deposition_status)
-				if(rest_cycle_countdown <= 0)
-					rest_cycle_countdown = rest_cycle_number
-					if(continuous_exec)
-						DepositionPanel_update_exec_button(1)
-					else
-						DepositionPanel_update_exec_button(0)
+				if(rest_cycle_countdown >= rest_cycle_number)
+					if(deposition_indicator==0)
+						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, exec_mode, target_cond, target_err_ratio, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn)
 					endif
-					deposition_indicator=DepositPanel_SendPulse(exec_mode, target_cond, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn)
+					rest_cycle_countdown -= 1				
 				else
-					deposition_indicator=0
-					rest_cycle_countdown -=1
-				endif
+					if(deposition_indicator!=0)
+						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn)
+					endif
+					rest_cycle_countdown -= 1
+					if(rest_cycle_countdown <0)
+						rest_cycle_countdown = rest_cycle_number						
+						rest_cycle_countdown=rest_cycle_number
+						
+						if(continuous_exec)
+							DepositionPanel_update_exec_button(1)
+						else
+							DepositionPanel_update_exec_button(0)
+						endif					
+					endif
+				endif				
 			endif
 			
 			ret_val=0 //if need to stop recording by the user function, return a non-zero value
@@ -4223,7 +4246,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 	return ret_val
 End
 
-Function DepositPanel_SendPulse(Variable deposition_mode, Variable target_cond, Variable tunneling_cond, Variable tunneling_bias_chn, Variable tunneling_bias_counter_chn, Variable ionic_bias_chn, Variable ionic_bias_counter_chn)
+Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_mode, Variable target_cond, Variable target_err_ratio, Variable tunneling_cond, Variable tunneling_bias_chn, Variable tunneling_bias_counter_chn, Variable ionic_bias_chn, Variable ionic_bias_counter_chn)
 	Variable retVal = 0
 	String wlist=Deposition_GetDACWaveList()
 	
@@ -4244,29 +4267,51 @@ Function DepositPanel_SendPulse(Variable deposition_mode, Variable target_cond, 
 		Wave idacw0_rest=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC0_REST")
 		Wave idacw1_rest=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC1_REST")
 		
+		Wave tdacw0 = $StringFromList(tunneling_bias_chn, wlist); AbortOnRTE
+		Wave tdacw1 = $StringFromList(tunneling_bias_counter_chn, wlist); AbortOnRTE
+		Wave idacw0 = $StringFromList(ionic_bias_chn, wlist); AbortOnRTE
+		Wave idacw1 = $StringFromList(ionic_bias_counter_chn, wlist); AbortOnRTE
+		
+		Variable deltaC = abs(abs(tunneling_cond) - abs(target_cond))
+		
 		switch(deposition_mode)
-		case 1: //close
-			
-			if(abs(tunneling_cond)<abs(target_cond))
-				print "will close"
+		case 1: //close			
+			if((abs(tunneling_cond) < abs(target_cond))  && (deltaC > abs(target_cond)*target_err_ratio/100))
+				//print "will close"
+				duplicate /O tdacw0_dp, tdacw0; AbortOnRTE
+				duplicate /O tdacw1_dp, tdacw1; AbortOnRTE
+				duplicate /O idacw0_dp, idacw0; AbortOnRTE
+				duplicate /O idacw1_dp, idacw1; AbortOnRTE
 				retVal = -1
 			endif
 			
 			break
-		case 2: //open
-			
-			if(abs(tunneling_cond) > abs(target_cond))
-				print "will open"
+		case 2: //open	
+			if(abs(tunneling_cond) > abs(target_cond)  && deltaC > abs(target_cond)*target_err_ratio/100)
+				//print "will open"
+				duplicate /O tdacw0_rm, tdacw0; AbortOnRTE
+				duplicate /O tdacw1_rm, tdacw1; AbortOnRTE
+				duplicate /O idacw0_rm, idacw0; AbortOnRTE
+				duplicate /O idacw1_rm, idacw1; AbortOnRTE
 				retVal = 1
 			endif
 			
 			break
 		case 3: //maintain
-			print "not implemented yet"
+			//print "not implemented yet"
 			break
-		default:
+		default: //send rest potential only
+			//print "rest"
+			duplicate /O tdacw0_rest, tdacw0; AbortOnRTE
+			duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
+			duplicate /O idacw0_rest, idacw0; AbortOnRTE
+			duplicate /O idacw1_rest, idacw1; AbortOnRTE
+			break
 		endswitch
 	catch
+		Variable err = GetRTError(1)
+		print "Error captured during sending pulse:", err
+		print GetErrMessage(err)
 	endtry
 	
 	return retVal
