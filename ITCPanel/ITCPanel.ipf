@@ -126,7 +126,7 @@ StrConstant ITC_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLeng
 Constant ITCMaxBlockSize=16383
 Constant ITCMinRecordingLen=0.2 //minimal length of data in sec for continuous acquisitions
 StrConstant ITC_ADCChnDefault="DATAFOLDER=;WAVENAME=;TITLE=ADC#;TELEGRAPH=1;SCALEFACTOR=1;SCALEUNIT=V;FOLDERLABEL=Destination data folder;WAVELABEL=Destination wave;DEFAULTFOLDER=root:;DEFAULTWAVE=adc#;OPTIONS=0;DISABLE=0"
-StrConstant ITC_DACChnDefault="DATAFOLDER=;WAVENAME=;TITLE=DAC#;FOLDERLABEL=Source data folder;WAVELABEL=Source wave;DEFAULTFOLDER=;DEFAULTWAVE=;OPTIONS=3;DISABLE=0"
+StrConstant ITC_DACChnDefault="DATAFOLDER=;WAVENAME=;TITLE=DAC#;FOLDERLABEL=Source data folder;WAVELABEL=Source wave;DEFAULTFOLDER=root:;DEFAULTWAVE=dac#;OPTIONS=3;DISABLE=0"
 
 StrConstant ITC_TelegraphList="_none_;#GAIN;#CSLOW;#FILTER;#MODE;"
 
@@ -1519,6 +1519,17 @@ Function itc_selectwave_callback(controlname, datafolder, wname)
 		
 		chninfo=ReplaceStringByKey("DATAFOLDER", chninfo, datafolder,"=", ";")
 		chninfo=ReplaceStringByKey("WAVENAME", chninfo, wname,"=", ";")
+		Wave w=$(datafolder+wname)
+		if(WaveExists(w)==0)
+			ControlInfo /W=ITCPanel itc_sv_samplingrate
+			Variable samplingrate=V_Value
+			
+			Controlinfo /W=ITCPanel itc_sv_recordinglen
+			Variable recordinglen=V_Value
+			
+			Make /D/N=(round(samplingrate*recordinglen)) $(datafolder+wname)
+		endif
+		
 		CheckBox $controlname, win=ITCPanel, userdata(param)=chninfo
 	endif
 	itc_update_chninfo("", 11)
@@ -3243,7 +3254,7 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Make /O/N=(len, chnnum+1)/D $raw_record_name=NaN //rawwave has one more colume for time stamp
 		Wave rawwave=$raw_record_name
 		
-		Make /O/N=(13, chnnum, max_cycle_count)/D $history_record_name = NaN, $history_view_name = NaN
+		Make /O/N=(15, chnnum, max_cycle_count)/D $history_record_name = NaN, $history_view_name = NaN
 		Make /O/N=(len)/T=(strlen("raw_")+8+strlen("_")+8+strlen(".ibw")) $raw_record_file_idx
 
 		Wave historywave=$history_record_name
@@ -3262,6 +3273,8 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		SetDimLabel 0, 10, PULSE_HIGH, historywave, hist_view
 		SetDimLabel 0, 11, PULSE_LOW, historywave, hist_view
 		SetDimLabel 0, 12, PULSE_WIDTH, historywave, hist_view
+		SetDimLabel 0, 13, PULSE_HEIGHT, historywave, hist_view
+		SetDimLabel 0, 14, FLAGS, historywave, hist_view
 		
 		Variable i
 		for(i=0; i<adc_chnnum; i+=1)
@@ -3320,9 +3333,9 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Variable /G post_pulse_delay=MIN_POST_PULSE_DELAY*2
 		Variable /G post_pulse_sample_len=MIN_POST_PULSE_SAMPLELEN
 		
-		Variable /G Kp=0.1
-		Variable /G Ki=0.05
-		Variable /G Kd=0.0
+		Variable /G Kp=1
+		Variable /G Ki=0
+		Variable /G Kd=0
 		Variable /G Er_Int=0
 		Variable /G Er_Prev=0
 		Variable /G PID_CV=0
@@ -3495,29 +3508,29 @@ Function DepositionPanelInit(variable length)
 		SetVariable depositpanel_ionic_bias_counter_offset,help={"The correction for the output signal of the counter bias channel.\nMeasure the actual output voltage when setting the output to zero.\nIf the actual voltage is not zero, \nenter the negative of the value here. \nIt will be added to the output wave before sending to the hardware\nto correct the offset error."}
 		
 		//display parameter
-		GroupBox depositpanel_grp_display,title="Display/Graph",size={200,180},pos={200,160}
-		CheckBox depositpanel_errorbar,title="error bar enabled", size={150,20},pos={280,180},side=1,bodywidth=50,proc=DepositPanel_cb_errorbar
-		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={160,20},bodywidth=60,pos={230,200},limits={10, MaxDepositionRawRecordingLength, 1}
+		GroupBox depositpanel_grp_display,title="Display/Graph",size={220,180},pos={200,160}
+		CheckBox depositpanel_errorbar,title="error bar enabled", size={170,20},pos={280,180},side=1,bodywidth=60,proc=DepositPanel_cb_errorbar
+		SetVariable depositionpanel_histlen, title="history display len (s)", value=display_len,size={180,20},bodywidth=70,pos={230,200},limits={10, MaxDepositionRawRecordingLength, 1}
 		
-		SetVariable depositpanel_target_conductance,title="target_cond (nS)",variable=target_cond,size={120,20},pos={205,240},limits={0.001,1000,0}	
+		SetVariable depositpanel_target_conductance,title="target(nS)",variable=target_cond,size={120,20},pos={205,240},limits={0.001,1000,0.1}	
 		SetVariable depositpanel_target_conductance,help={"The target conductance when deposition/removal should be stopped."}
-		SetVariable depositpanel_target_err_ratio,title="+/-(%)",variable=target_err_ratio,size={70,20},pos={325,240},limits={0.1,100,0}	
+		SetVariable depositpanel_target_err_ratio,title="+/-(%)",variable=target_err_ratio,size={80,20},pos={335,240},limits={0.1,100,1}	
 		SetVariable depositpanel_target_err_ratio,help={"The range in percentage that will trigger deposition or removal pulses."}
 		
 		tvalstr="root:"+deposit_folder_name+":tunneling_conductance"
-		Valdisplay depositpanel_t_cond,title="Cond_T (nS):",value=#(tvalstr),size={120,20},pos={210,260},format="%+0.3f"
+		Valdisplay depositpanel_t_cond,title="Cond_T (nS):",value=#(tvalstr),size={140,20},pos={210,260},format="%+0.3f"
 		Valdisplay depositpanel_t_cond,valueBackColor=(3,52428,1)
 		Valdisplay depositpanel_t_cond,help={"Calculated tunneling conductance"}
 		tvalstr="root:"+deposit_folder_name+":tunneling_conductance_stdev"
-		Valdisplay depositpanel_t_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,260},format="%0.3f"
+		Valdisplay depositpanel_t_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={350,260},format="%0.3f"
 		Valdisplay depositpanel_t_cond_stdev,valueBackColor=(3,52428,1)
 		
 		tvalstr="root:"+deposit_folder_name+":ionic_conductance"
-		Valdisplay depositpanel_i_cond,title="Cond_I (nS):",value=#(tvalstr),size={120,20},pos={210,280},format="%+0.3f"
+		Valdisplay depositpanel_i_cond,title="Cond_I (nS):",value=#(tvalstr),size={140,20},pos={210,280},format="%+0.3f"
 		Valdisplay depositpanel_i_cond,valueBackColor=(3,52428,1)
 		Valdisplay depositpanel_i_cond,help={"Calculated cross-ionic channels conductance"}
 		tvalstr="root:"+deposit_folder_name+":ionic_conductance_stdev"
-		Valdisplay depositpanel_i_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={330,280},format="%0.3f"
+		Valdisplay depositpanel_i_cond_stdev, title="+/-",value=#(tvalstr),size={60,20},pos={350,280},format="%0.3f"
 		Valdisplay depositpanel_i_cond_stdev,valueBackColor=(3,52428,1)
 		
 				
@@ -3525,37 +3538,46 @@ Function DepositionPanelInit(variable length)
 		Checkbox depositpanel_recording,help={"Get raw data saved into disk as individual wave files.\nIn the igor file, only history and file records are saved."}
 		
 		//deposition parameters
-		GroupBox depositpanel_grp_depositwavesetup,title="Deposit potential/pulse",size={200,330},pos={0,160}
+		GroupBox depositpanel_grp_depositwavesetup,title="Deposit potential/pulse",size={200,330},pos={0,160},labelBack=(65535,16385,16385,16384)
 		
 		SetVariable depositpanel_tunneling_deltaV,title="Tunneling deltaV",value=tunneling_deltaV,size={180,20},bodywidth=80,pos={10,180},limits={-0.2,0.2,0.01}
 		SetVariable depositpanel_tunneling_deltaV,help={"The bias across the tunneling gap that should be maintained throughout the process."}
+		SetVariable depositpanel_tunneling_deltaV,proc=DepositPanel_sv_update_depositwave
 		
 		SetVariable depositpanel_ionic_deltaV,title="Ionic deltaV",value=ionic_deltaV,size={180,20},bodywidth=80,pos={10,200},limits={-0.5,0.5,0.01}
 		SetVariable depositpanel_ionic_deltaV,help={"The bias between the ionic channels that should be maintained throughout the process."}
+		SetVariable depositpanel_ionic_deltaV,proc=DepositPanel_sv_update_depositwave
 		
 		PopupMenu depositpanel_pulse_method,title="DepBias",size={180,20},pos={10,240},bodyWidth=100,value="@Tunneling;@Reference;Customized;"
 		PopupMenu depositpanel_pulse_method,help={"This specifies how the deposition bias should be applied: \neither letting the reference electrodes hold resting potential \nand apply just the pulse from the tunneling electrodes, \nor letting the tunneling electrodes always hold at \ngrounding potential, and change the reference electrodes.\nThe deltaV will be maintained between tunneling electrodes."}
+		PopupMenu depositpanel_pulse_method,proc=DepositPanel_pm_update_depositwave
 		
 		SetVariable depositpanel_rest_bias,title="rest_bias (V)",value=rest_bias,size={180,20},pos={10,260},limits={-1.5,1.5,0.01}
+		SetVariable depositpanel_rest_bias,proc=DepositPanel_sv_update_depositwave
 		SetVariable depositpanel_deposit_bias,title="deposit_bias (V)",value=deposit_bias,size={180,20},pos={10,280},limits={-1.5,1.5,0.01}
+		SetVariable depositpanel_deposit_bias,proc=DepositPanel_sv_update_depositwave
 		SetVariable depositpanel_removal_bias,title="removal_bias (V)",value=removal_bias,size={180,20},pos={10,300},limits={-1.5,1.5,0.01}
+		SetVariable depositpanel_removal_bias,proc=DepositPanel_sv_update_depositwave
 		
 		tvalstr="root:"+deposit_folder_name+":total_cycle_time"
 		ValDisplay depositpanel_total_cycle_time,title="total_cycle_time (s)",value=#(tvalstr),size={180,20},pos={10,320},frame=0
 		ValDisplay depositpanel_total_cycle_time,valueBackColor=(40969,65535,16385),labelBack=(32792,65535,1)
 	
 		SetVariable depositpanel_pulse_width,title="pulse_width (ms)",value=pulse_width,size={180,20},pos={10,340},limits={MIN_PULSE_WIDTH,MAX_PULSE_WIDTH,1}
+		SetVariable depositpanel_pulse_width,proc=DepositPanel_sv_update_depositwave
 		SetVariable depositpanel_pre_pulse_time,title="pre_pulse_time (ms)",value=pre_pulse_time,size={180,20},pos={10,360},limits={MIN_PRE_PULSE_TIME,MAX_PRE_PULSE_TIME,1}
+		SetVariable depositpanel_pre_pulse_time,proc=DepositPanel_sv_update_depositwave
 		SetVariable depositpanel_post_pulse_delay,title="post_pulse_delay (ms)",value=post_pulse_delay,size={180,20},pos={10,380},limits={MIN_POST_PULSE_DELAY,MAX_POST_PULSE_DELAY,1}
+		SetVariable depositpanel_post_pulse_delay,proc=DepositPanel_sv_update_depositwave
 		
 		tvalstr="root:"+deposit_folder_name+":post_pulse_sample_len"
 		ValDisplay depositpanel_post_pulse_samplelen,title="post_pulse_sample_len",value=#(tvalstr),size={180,20},pos={10,400},frame=0
 		ValDisplay depositpanel_post_pulse_samplelen,valueBackColor=(40969,65535,16385),labelBack=(32792,65535,1)
 		
-		Button depositpanel_update_deposit_parameters, title="update deposition pulse",size={180,20},pos={10,440},proc=DepositionPanel_Btn_update_deppulse
+		Button depositpanel_update_deposit_parameters, title="update deposition pulse",size={180,50},pos={10,435},fColor=(52428,1,1),proc=DepositionPanel_Btn_update_deppulse
 
 		//////////////////////////////////////
-		// deposition control (automatic part)
+		// deposition control
 		GroupBox depositpanel_grp_depositcontrol,title="Deposition Control",size={220,150},pos={200,340}
 		
 		SetVariable depositpanel_rest_cycle,title="rest cycle#",value=rest_cycle_number,size={180,20},pos={210,360},limits={0,100,1}
@@ -3567,10 +3589,10 @@ Function DepositionPanelInit(variable length)
 		ValDisplay depositpanel_pulse_indicator,title="",pos={390,380},size={15,15},zeroColor=(0,65535,0),mode=1,barmisc={0,0},limits={-1,1,0},value=#(tvalstr)
 		
 		Button depositpanel_exec,title="Execute",size={80,20},pos={205,400},fColor=(0,32768,0),proc=DepositionPanel_Btn_exec
-		PopupMenu depositpanel_depmode,title="mode",size={100,20},pos={290,400},value="Close gap;Open gap;Maintain;",mode=exec_mode
+		PopupMenu depositpanel_depmode,title="mode",size={100,20},pos={290,400},value="Rest;Close;Open;ForcedClose;ForcedOpen;PID;",mode=exec_mode
+		
 		CheckBox depositpanel_continuous,title="continuous",size={80,20},pos={205,425},variable=continuous_exec
-		CheckBox depositpanel_pid_enable,title="PID enable",size={80,20},pos={290,425},variable=PID_enabled
-				
+		
 		SetVariable depositpanel_Kp,title="Kp",value=Kp,size={60,20},pos={205,450},limits={0,10,0.01}
 		SetVariable depositpanel_Ki,title="Ki",value=Ki,size={60,20},pos={270,450},limits={0,10,0.01}
 		SetVariable depositpanel_Kd,title="Kd",value=Kd,size={60,20},pos={335,450},limits={0,10,0.01}
@@ -3588,6 +3610,47 @@ Function DepositionPanelInit(variable length)
 	endtry
 	return retVal	
 End
+
+Function DepositPanel_sv_update_depositwave(sva) : SetVariableControl
+	STRUCT WMSetVariableAction &sva
+	String depositpanel_name = GetUserData("ITCPanel", "", "DepositionPanel")
+	
+	switch( sva.eventCode )
+		case 1: // mouse up
+		case 2: // Enter key
+		case 3: // Live update
+			Variable dval = sva.dval
+			String sval = sva.sval
+			
+			GroupBox depositpanel_grp_depositwavesetup,win=$(depositpanel_name),labelBack=(65535,16385,16385,16384)
+			Button depositpanel_update_deposit_parameters,win=$(depositpanel_name),fColor=(52428,1,1)
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function DepositPanel_pm_update_depositwave(pa) : PopupMenuControl
+	STRUCT WMPopupAction &pa
+	String depositpanel_name = GetUserData("ITCPanel", "", "DepositionPanel")
+	
+	switch( pa.eventCode )
+		case 2: // mouse up
+			Variable popNum = pa.popNum
+			String popStr = pa.popStr
+			
+			GroupBox depositpanel_grp_depositwavesetup,win=$(depositpanel_name),labelBack=(65535,16385,16385,16384)
+			Button depositpanel_update_deposit_parameters,win=$(depositpanel_name),fColor=(52428,1,1)
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
 
 Function DepositionPanelExit()
 	String depositpanel_name = GetUserData("ITCPanel", "", "DepositionPanel")
@@ -3624,7 +3687,22 @@ Function DepositionPanel_Btn_update_deppulse(ba) : ButtonControl
 			ControlInfo /W=$(panel_name) depositpanel_pulse_method
 			Variable pulse_method=V_Value
 			
-			DepositePanel_GeneratePulse(deposit_folder_name, pulse_method, sampling_rate)			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_chn
+			Variable tunneling_bias_chn = V_Value - 1
+			
+			ControlInfo /W=$(panel_name) depositpanel_tunneling_bias_counter_chn
+			Variable tunneling_bias_counter_chn = V_Value - 1
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_chn
+			Variable ionic_bias_chn = V_Value - 1			
+			
+			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_counter_chn
+			Variable ionic_bias_counter_chn = V_Value - 1	
+			
+			DepositePanel_GeneratePulse(deposit_folder_name, pulse_method, sampling_rate)
+			DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
+			
+			GroupBox depositpanel_grp_depositwavesetup,win=$(panel_name),labelBack=0
+			Button depositpanel_update_deposit_parameters,win=$(panel_name),fColor=(0,0,0)
 			break
 		case -1: // control being killed
 			break
@@ -3808,17 +3886,6 @@ Function DepositionPanel_Btn_exec(ba) : ButtonControl
 	return 0
 End
 
-
-Function DepositionPanelPulseGenerator(wave w, int length, int pre_pulse_len, int pulse_len, double rest_bias, double pulse_bias)
-	Make /N=(length) /D dacwave
-	dacwave = rest_bias
-	variable i
-	for(i=pre_pulse_len; i<length && i<pre_pulse_len+pulse_len; i+=1)
-		dacwave[i]=pulse_bias
-	endfor
-	duplicate dacwave, w
-End
-
 Function /T Deposition_getDACWaveList()
 	Variable instance=WBPkgGetLatestInstance(ITC_PackageName); AbortOnRTE
 	String fPath=WBSetupPackageDir(ITC_PackageName, instance=instance); AbortOnRTE
@@ -3909,6 +3976,11 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		
 		ControlInfo /W=$(panel_name) depositpanel_depmode
 		exec_mode = V_value
+				
+		if(exec_mode == 6) //PID
+			PID_enabled = 1
+		endif
+		
 		deposition_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_DEPOSIT_EXEC"))
 		if(deposition_status == 0)
 			deposition_indicator = 0
@@ -3946,10 +4018,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			Variable ionic_current_chn = V_Value - 1
 			
 			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_chn
-			Variable ionic_bias_chn = V_Value - 1			
+			Variable ionic_bias_chn = V_Value - 1
 			
 			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_counter_chn
-			Variable ionic_bias_counter_chn = V_Value - 1			
+			Variable ionic_bias_counter_chn = V_Value - 1	
 			
 			ControlInfo /W=$(panel_name) depositpanel_ionic_bias_subtraction
 			Variable ionic_bias_subtraction=V_Value
@@ -3964,7 +4036,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			
 			ControlInfo /W=$(panel_name) depositpanel_errorbar
 			Variable errorbar_enabled=V_Value
-		
+			
+			ControlInfo /W=$(panel_name) depositpanel_pulse_method
+			Variable pulse_method=V_Value
+			
 		endif
 			
 		switch(flag)
@@ -4029,6 +4104,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			hist_view=NaN
 			
 			DepositionPanel_update_exec_button(0)
+			DepositePanel_GeneratePulse(deposit_folder_name, pulse_method, samplingrate)
 			break
 		case ITCUSERFUNC_CYCLESYNC: //called at the end of every full cycle of data is recorded in adcdata
 			/////////////////////////////
@@ -4114,8 +4190,16 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			ionic_conductance_stdev=historywave[%SDEV][%IONIC_COND][hist_endidx]*1e9
 			
 			WaveStats /Q pulse_wave
+			
 			historywave[%PULSE_HIGH][][hist_endidx]=V_max;AbortOnRTE
 			historywave[%PULSE_LOW][][hist_endidx]=V_min;AbortOnRTE
+			
+			if(V_max-V_avg > V_avg-V_min)
+				historywave[%PULSE_HEIGHT][][hist_endidx] = V_max-V_min
+			else
+				historywave[%PULSE_HEIGHT][][hist_endidx] = V_min-V_max
+			endif
+			
 			historywave[%PULSE_WIDTH][][hist_endidx]=pulse_width;AbortOnRTE
 			
 			if(hist_endidx<hist_len)
@@ -4151,22 +4235,24 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				Er_Int=0
 				Er_Prev=t_cond
 			else
-				Variable er=t_cond-target_cond				
-				Er_Int+=er
-				Variable diff_er=er-Er_Prev
-				Er_Prev=er
-				PID_CV = Kp*er + Ki*Er_Int + Kd*diff_er
+				if(rest_cycle_countdown <= 0)
+					Variable er = abs(t_cond) - abs(target_cond)
+					Er_Int+=er
+					Variable diff_er=er-Er_Prev
+					Er_Prev=er
+					PID_CV = Kp*er + Ki*Er_Int + Kd*diff_er
+				endif
 			endif
 			
 			if(deposition_status)
 				if(rest_cycle_countdown >= rest_cycle_number)
 					if(deposition_indicator==0)
-						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, exec_mode, target_cond, target_err_ratio, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn)
+						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, exec_mode, target_cond, target_err_ratio, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
 					endif
 					rest_cycle_countdown -= 1				
 				else
 					if(deposition_indicator!=0)
-						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn)
+						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, tunneling_conductance, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
 					endif
 					rest_cycle_countdown -= 1
 					if(rest_cycle_countdown <0)
@@ -4207,6 +4293,13 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left2)=0,lblPos(left2)=60,notation(left2)=0,ZisZ(left2)=1,fsize=12; AbortOnRTE
 			ModifyGraph /W=ITCPanel#rtgraph freePos(left2)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
 			ModifyGraph /W=ITCPanel#rtgraph lblPos(left1)=80, lblPos(left2)=80, nticks(left1)=2, nticks(left2)=2
+			
+			AppendToGraph /W=ITCPanel#rtgraph /R=right1 hist_view[%PULSE_HEIGHT][%TUNNELING_COND][0,hist_len-1]
+			
+			ModifyGraph /W=ITCPanel#rtgraph axThick=2,standoff=0,freePos(right1)=0;DelayUpdate
+			
+			ModifyGraph /W=ITCPanel#rtgraph lsize($(NameOfWave(hist_view)+"#2"))=3,rgb($(NameOfWave(hist_view)+"#2"))=(49163,65535,32768,19661)
+			
 			if(errorbar_enabled)
 				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)) SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1],hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1])
 				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)+"#1") SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%IONIC_COND][0,hist_len-1],hist_view[%SDEV][%IONIC_COND][0,hist_len-1])
@@ -4217,6 +4310,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			
 			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left1
 			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left2
+			SetAxis /W=ITCPanel#rtgraph right1 -2,2
 
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left1)={0.52,1}
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left2)={0,0.48}
@@ -4226,8 +4320,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			Label /W=ITCPanel#rtgraph left1 "G_tunneling\n/\U S"
 			Label /W=ITCPanel#rtgraph left2 "G_ionic\n/\U S"
 			Label /W=ITCPanel#rtgraph bottom "relative time / \\U"
+			Label /W=ITCPanel#rtgraph right1 "pulse height / V"
 			
 			ModifyGraph /W=ITCPanel#rtgraph margin(left)=80; AbortOnRTE
+			ModifyGraph /W=ITCPanel#rtgraph margin(right)=80; AbortOnRTE
 			
 			//ret_val is not checked for this call
 			break
@@ -4246,11 +4342,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 	return ret_val
 End
 
-Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_mode, Variable target_cond, Variable target_err_ratio, Variable tunneling_cond, Variable tunneling_bias_chn, Variable tunneling_bias_counter_chn, Variable ionic_bias_chn, Variable ionic_bias_counter_chn)
-	Variable retVal = 0
-	String wlist=Deposition_GetDACWaveList()
-	
+Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_mode, Variable target_cond, Variable target_err_ratio, Variable tunneling_cond, Variable tunneling_bias_chn, Variable tunneling_bias_counter_chn, Variable ionic_bias_chn, Variable ionic_bias_counter_chn, Variable PID_CV)	
 	try
+		String wlist=Deposition_GetDACWaveList()
+		
 		Wave tdacw0_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC0_DEPOSIT")
 		Wave tdacw1_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_TDAC1_DEPOSIT")
 		Wave idacw0_dp=$("root:"+deposit_folder_name+":PULSE_WAVE_IDAC0_DEPOSIT")
@@ -4274,8 +4369,16 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 		
 		Variable deltaC = abs(abs(tunneling_cond) - abs(target_cond))
 		
+		Variable retVal = 0
+		
 		switch(deposition_mode)
-		case 1: //close			
+		case 1: //rest
+			duplicate /O tdacw0_rest, tdacw0; AbortOnRTE
+			duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
+			duplicate /O idacw0_rest, idacw0; AbortOnRTE
+			duplicate /O idacw1_rest, idacw1; AbortOnRTE
+			break
+		case 2: //close			
 			if((abs(tunneling_cond) < abs(target_cond))  && (deltaC > abs(target_cond)*target_err_ratio/100))
 				//print "will close"
 				duplicate /O tdacw0_dp, tdacw0; AbortOnRTE
@@ -4286,7 +4389,7 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 			endif
 			
 			break
-		case 2: //open	
+		case 3: //open	
 			if(abs(tunneling_cond) > abs(target_cond)  && deltaC > abs(target_cond)*target_err_ratio/100)
 				//print "will open"
 				duplicate /O tdacw0_rm, tdacw0; AbortOnRTE
@@ -4297,11 +4400,50 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 			endif
 			
 			break
-		case 3: //maintain
-			//print "not implemented yet"
+		case 4: //forced close
+			duplicate /O tdacw0_dp, tdacw0; AbortOnRTE
+			duplicate /O tdacw1_dp, tdacw1; AbortOnRTE
+			duplicate /O idacw0_dp, idacw0; AbortOnRTE
+			duplicate /O idacw1_dp, idacw1; AbortOnRTE
+			retVal = -1
+			break
+		case 5: //forced open
+			duplicate /O tdacw0_rm, tdacw0; AbortOnRTE
+			duplicate /O tdacw1_rm, tdacw1; AbortOnRTE
+			duplicate /O idacw0_rm, idacw0; AbortOnRTE
+			duplicate /O idacw1_rm, idacw1; AbortOnRTE
+			retVal = 1
+			break
+		case 6: //PID
+			if(PID_CV>0)
+				if(deltaC > abs(target_cond)*target_err_ratio/100)
+					retVal = 1
+				endif
+			elseif(PID_CV<0)
+				if(deltaC > abs(target_cond)*target_err_ratio/100)
+					retVal = -1
+				endif
+			endif
+			
+			if(retVal>0)
+				duplicate /O tdacw0_rm, tdacw0; AbortOnRTE
+				duplicate /O tdacw1_rm, tdacw1; AbortOnRTE
+				duplicate /O idacw0_rm, idacw0; AbortOnRTE
+				duplicate /O idacw1_rm, idacw1; AbortOnRTE
+			elseif(retVal<0)
+				duplicate /O tdacw0_dp, tdacw0; AbortOnRTE
+				duplicate /O tdacw1_dp, tdacw1; AbortOnRTE
+				duplicate /O idacw0_dp, idacw0; AbortOnRTE
+				duplicate /O idacw1_dp, idacw1; AbortOnRTE
+			else
+				duplicate /O tdacw0_rest, tdacw0; AbortOnRTE
+				duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
+				duplicate /O idacw0_rest, idacw0; AbortOnRTE
+				duplicate /O idacw1_rest, idacw1; AbortOnRTE
+			endif
+				
 			break
 		default: //send rest potential only
-			//print "rest"
 			duplicate /O tdacw0_rest, tdacw0; AbortOnRTE
 			duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
 			duplicate /O idacw0_rest, idacw0; AbortOnRTE
