@@ -371,6 +371,27 @@ Function ITC_init()
 	
 	itc_update_chninfo("", 11)
 	StartITCTask()
+	
+	SetIgorHook IgorBeforeQuitHook = ITCCheckIgorQuit
+End
+
+Function ITCCheckIgorQuit(Variable unsavedExp, Variable unsavedNotebooks, Variable unsavedProcedures)
+	Variable Need_quit_ITC = 0
+	
+	if(WinType("ITCPanel")==7)
+		Need_quit_ITC=1
+	endif
+	
+	NVAR itcrunning=root:ITCPanelRunning
+	if(NVAR_Exists(itcrunning) && itcrunning !=0)
+		Need_quit_ITC=1
+	endif
+	
+	if(Need_quit_ITC)
+		DoAlert /T="ITCPanel NEEDS TO BE SHUTDOWN BEFORE QUITTING IGOR.", 0, "ITCPanel will shutdown."
+		ITC_Quit()
+	endif
+	return 0
 End
 
 Function itc_btnproc_lastrecord(ba) : ButtonControl
@@ -1041,6 +1062,7 @@ Function ITC_Quit()
 	endif
 	
 	print "ITCPanel closed."
+	SetIgorHook /K IgorBeforeQuitHook=ITCCheckIgorQuit
 End
 
 Function itc_update_chninfo(windowname, event)
@@ -3325,7 +3347,7 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		
 		Variable /G tunneling_deltaV=0.01
 		Variable /G ionic_deltaV=0.05
-		Variable /G rest_cycle_number=0		
+		Variable /G rest_cycle_number=1
 		Variable /G rest_cycle_countdown=0
 		
 		Variable /G pulse_width=MIN_PULSE_WIDTH*2
@@ -3538,7 +3560,7 @@ Function DepositionPanelInit(variable length)
 		Checkbox depositpanel_recording,help={"Get raw data saved into disk as individual wave files.\nIn the igor file, only history and file records are saved."}
 		
 		//deposition parameters
-		GroupBox depositpanel_grp_depositwavesetup,title="Deposit potential/pulse",size={200,330},pos={0,160},labelBack=(65535,16385,16385,16384)
+		GroupBox depositpanel_grp_depositwavesetup,title="Deposit pulse(Need Update)",size={200,330},pos={0,160},fColor=(65535,0,0),fstyle=1,labelBack=(65535,16385,16385,16384)
 		
 		SetVariable depositpanel_tunneling_deltaV,title="Tunneling deltaV",value=tunneling_deltaV,size={180,20},bodywidth=80,pos={10,180},limits={-0.2,0.2,0.01}
 		SetVariable depositpanel_tunneling_deltaV,help={"The bias across the tunneling gap that should be maintained throughout the process."}
@@ -3574,13 +3596,13 @@ Function DepositionPanelInit(variable length)
 		ValDisplay depositpanel_post_pulse_samplelen,title="post_pulse_sample_len",value=#(tvalstr),size={180,20},pos={10,400},frame=0
 		ValDisplay depositpanel_post_pulse_samplelen,valueBackColor=(40969,65535,16385),labelBack=(32792,65535,1)
 		
-		Button depositpanel_update_deposit_parameters, title="update deposition pulse",size={180,50},pos={10,435},fColor=(52428,1,1),proc=DepositionPanel_Btn_update_deppulse
+		Button depositpanel_update_deposit_parameters, title="UPDATE!",size={180,50},pos={10,430},fColor=(52428,1,1),proc=DepositionPanel_Btn_update_deppulse
 
 		//////////////////////////////////////
 		// deposition control
 		GroupBox depositpanel_grp_depositcontrol,title="Deposition Control",size={220,150},pos={200,340}
 		
-		SetVariable depositpanel_rest_cycle,title="rest cycle#",value=rest_cycle_number,size={180,20},pos={210,360},limits={0,100,1}
+		SetVariable depositpanel_rest_cycle,title="rest cycle#",value=rest_cycle_number,size={180,20},pos={210,360},limits={1,100,1}
 		SetVariable depositpanel_rest_cycle,help={"Set the blank cycles where only the rest potential is applied between application of pulses."}
 		
 		tvalstr="root:"+deposit_folder_name+":rest_cycle_countdown"
@@ -3622,7 +3644,7 @@ Function DepositPanel_sv_update_depositwave(sva) : SetVariableControl
 			Variable dval = sva.dval
 			String sval = sva.sval
 			
-			GroupBox depositpanel_grp_depositwavesetup,win=$(depositpanel_name),labelBack=(65535,16385,16385,16384)
+			GroupBox depositpanel_grp_depositwavesetup,win=$(depositpanel_name),title="Deposit pulse(Need Update)",fColor=(65535,0,0),fstyle=1,labelBack=(65535,16385,16385,16384)
 			Button depositpanel_update_deposit_parameters,win=$(depositpanel_name),fColor=(52428,1,1)
 			break
 		case -1: // control being killed
@@ -3641,7 +3663,7 @@ Function DepositPanel_pm_update_depositwave(pa) : PopupMenuControl
 			Variable popNum = pa.popNum
 			String popStr = pa.popStr
 			
-			GroupBox depositpanel_grp_depositwavesetup,win=$(depositpanel_name),labelBack=(65535,16385,16385,16384)
+			GroupBox depositpanel_grp_depositwavesetup,win=$(depositpanel_name),title="Deposit pulse(Need Update)",fColor=(65535,0,0),fstyle=1,labelBack=(65535,16385,16385,16384)
 			Button depositpanel_update_deposit_parameters,win=$(depositpanel_name),fColor=(52428,1,1)
 			break
 		case -1: // control being killed
@@ -3701,7 +3723,7 @@ Function DepositionPanel_Btn_update_deppulse(ba) : ButtonControl
 			DepositePanel_GeneratePulse(deposit_folder_name, pulse_method, sampling_rate)
 			DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
 			
-			GroupBox depositpanel_grp_depositwavesetup,win=$(panel_name),labelBack=0
+			GroupBox depositpanel_grp_depositwavesetup,win=$(panel_name),title="Deposit pulse(Updated)",fColor=(0,0,0),fstyle=0,labelBack=0
 			Button depositpanel_update_deposit_parameters,win=$(panel_name),fColor=(0,0,0)
 			break
 		case -1: // control being killed
