@@ -1,6 +1,12 @@
 #pragma TextEncoding = "UTF-8"
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 
+Menu ITCMenuStr
+	Submenu "DepositionData"
+		"Inspect Deposition Data", DP_inspect_data_panel_init()
+	End
+End
+
 Constant MaxDepositionRawRecordingLength = 600 // sec
 
 Function DepositPanel_PostSlackChannel(String token, String channel, String message, String notify_person)
@@ -1265,4 +1271,101 @@ End
 
 Function DepositPanel_PID_CV(variable PID_CV, variable target, variable cond, variable stdev)
 	
+End
+
+Function /T DP_get_deposition_folder()
+	String dfdir=StringByKey("FOLDERS", DataFolderDir(1), ":", ";")
+	variable i
+	String liststr=""
+	for(i=0; i<ItemsInList(dfdir, ","); i+=1)
+		String fdstr=stringfromList(i, dfdir, ",")
+		if(stringmatch(fdstr, "DepositRecord*")==1)
+			liststr+=fdstr+";"
+		endif
+	endfor
+	return liststr
+End
+
+Function /T DP_get_dimlabels(string folder, string wname, variable dimsel)
+	DFREF dfr=GetDataFolderDFR()
+	String liststr=""
+	try
+		SetDataFolder $("root:"+folder)
+		WAVE w=$wname
+		if(WaveExists(w))
+			variable i
+			for(i=0; i<DimSize(w, dimsel); i+=1)
+				liststr+=GetDimLabel(w, dimsel, i)+";"
+			endfor
+		endif
+	catch
+	endtry
+	
+	SetDataFolder dfr
+	return liststr
+End
+
+Function DP_inspect_data_panel_init()
+	Display /N=DPInspection /K=1
+	String panel_name = S_name
+	NewPanel /HOST=$panel_name /EXT=2 /k=2 /W=(0,0,600,200)
+	
+	
+	PopupMenu DP_folder,title="DepositionFolder",value=DP_get_deposition_folder()
+	PopupMenu DP_folder,pos={10,10},size={250,20},bodywidth=150
+	String s=StringFromList(0, DP_get_deposition_folder(), ";")
+	String sl="\""+DP_get_dimlabels(s, s+"_history", 1)+"\""
+	PopupMenu DP_trace,title="Signal",value=#sl
+	PopupMenu DP_trace,pos={10,30},size={250,20},bodywidth=150
+	Checkbox DP_errorbar,title="Show error bar",pos={10,50},size={250,20}
+	Button DF_update_hist_trace,title="update trace",pos={10,70},size={250,20},proc=DP_btn_update_trace
+
+End
+
+
+Function DP_btn_update_trace(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+	String panelname=ba.win
+	String dispname=StringFromList(0, panelname, "#")
+	
+	switch( ba.eventCode )
+		case 2: // mouse up
+			// click code here
+			HideInfo /W=$dispname
+			string trlist = TraceNameList(dispname, ";", 1)
+			variable i
+			i=ItemsInList(trlist, ";")
+			do
+				if(i>0)
+					RemoveFromGraph /W=$dispname $(StringFromList(i-1, trlist))
+				endif
+				trlist = TraceNameList(dispname, ";", 1)
+				i=ItemsInList(trlist, ";")				
+			while(i>0)
+			
+			ControlInfo /W=$panelname DP_folder
+			String foldername = S_Value
+			Wave w = $("root:"+foldername+":"+foldername+"_history")
+			
+			ControlInfo /W=$panelname DP_trace
+			String signal=S_Value
+			Variable idx = FindDimLabel(w, 1, signal)
+			
+			ControlInfo /W=$panelname DP_errorbar
+			Variable errbar=V_value
+			
+			AppendToGraph /W=$dispname w[%MEANVALUE][idx][] vs w[%TIMESTAMP][idx][]
+			ModifyGraph /W=$dispname mode=3
+			trlist = StringFromList(0, TraceNameList(dispname, ";", 1), ";")
+			if(errbar)
+				ErrorBars /W=$dispname $trlist SHADE={0,0,(0,0,0,0),(0,0,0,0)},wave=(w[%SDEV][idx][*],w[%SDEV][idx][*])
+			endif
+			ShowInfo /W=$dispname
+			
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
 End
