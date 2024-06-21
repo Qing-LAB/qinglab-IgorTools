@@ -1018,12 +1018,6 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				hist_view[][][0, hist_len-1] = historywave[p][q][hist_endidx-hist_len+1+r]
 			endif
 			
-			hist_endidx+=1
-			if(hist_endidx>=DimSize(historywave, 2))
-				InsertPoints /M=2 /V=(NaN) DimSize(historywave, 2), round(MaxDepositionRawRecordingLength / (length/samplingrate)), historywave;AbortOnRTE
-			endif
-			
-			note /k historywave, num2str(hist_endidx)
 			//check if need to save data
 			if(save_folder_ready ==1 && deposit_recording == 1)
 				
@@ -1041,6 +1035,15 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				note /k rawwaveidx, num2istr(fileidx_last)
 			endif
 			
+			//update hist_endidx
+			hist_endidx+=1
+			if(hist_endidx>=DimSize(historywave, 2))
+				InsertPoints /M=2 /V=(NaN) DimSize(historywave, 2), round(MaxDepositionRawRecordingLength / (length/samplingrate)), historywave;AbortOnRTE
+			endif
+			
+			note /k historywave, num2str(hist_endidx)
+			
+			//calculate PID
 			if(cycle_count==0 || PID_enabled==0)
 				Er_Int=0
 				Er_Prev=src_cond
@@ -1307,9 +1310,11 @@ End
 
 Function DP_inspect_data_panel_init()
 	Display /N=DPInspection /K=1
-	String panel_name = S_name
-	NewPanel /HOST=$panel_name /EXT=2 /k=2 /W=(0,0,600,200)
+	String hist_disp_name = S_name
+	ShowInfo /W=$hist_disp_name
 	
+	NewPanel /HOST=$hist_disp_name /EXT=2 /k=2 /W=(0,0,800,400)
+	String panel_name=hist_disp_name+"#"+S_name
 	
 	PopupMenu DP_folder,title="DepositionFolder",value=DP_get_deposition_folder()
 	PopupMenu DP_folder,pos={10,10},size={250,20},bodywidth=150
@@ -1318,10 +1323,81 @@ Function DP_inspect_data_panel_init()
 	PopupMenu DP_trace,title="Signal",value=#sl
 	PopupMenu DP_trace,pos={10,30},size={250,20},bodywidth=150
 	Checkbox DP_errorbar,title="Show error bar",pos={10,50},size={250,20}
-	Button DF_update_hist_trace,title="update trace",pos={10,70},size={250,20},proc=DP_btn_update_trace
+	Button DP_update_hist_trace,title="update trace",pos={10,70},size={250,20},proc=DP_btn_update_trace
 
+	NewPanel /HOST=$hist_disp_name /N=$(hist_disp_name+"_RAW") /EXT=0 /k=2 /W=(0,0,480,270)
+	String disp_panel_name =  hist_disp_name+"#"+S_name
+
+	Display /HOST=$disp_panel_name /FG=(FL,FT,FR,FB)
+	String disp_name = disp_panel_name+"#"+S_name
+	
+	SetWindow $hist_disp_name, hook(DP_hook)=DP_hist_hook
+	SetWindow $hist_disp_name, userdata(DP_CONTROL_PANEL)=panel_name
+	SetWindow $hist_disp_name, userdata(DP_RAW_DISP)=disp_name
 End
 
+Function DP_hist_hook(s)
+	STRUCT WMWinHookStruct &s
+	String mainwin_name = s.winName
+	
+	Variable hookResult = 0	// 0 if we do not handle event, 1 if we handle it.
+	
+	String message = ""
+
+	switch(s.eventCode)
+		case 7:	// "cursormoved"
+			String disp_name = GetUserData(mainwin_name, "", "DP_RAW_DISP")
+			String panel_name = GetUserData(mainwin_name, "", "DP_CONTROL_PANEL")
+			
+			Variable ptidx = s.pointNumber
+			
+			ControlInfo /W=$panel_name DP_folder
+			String foldername=S_value
+			
+			String hist_wave_name = "root:"+foldername+":"+foldername+"_history"
+			String record_trace_name = "root:"+foldername+":"+foldername+"_rawidx"
+			
+			Wave hw=$hist_wave_name
+			Wave /T rw=$record_trace_name
+			print hist_wave_name
+			print record_trace_name
+			
+			ControlInfo /W=$panel_name DP_trace
+			String signal=S_Value
+			Variable idx = FindDimLabel(hw, 1, signal)
+
+			Variable cycle_number = hw[%CYCLEINDEX][idx][ptidx]
+			variable i,flag = 0
+			for(i=0; i<DimSize(rw, 0); i+=1)
+				string rs=rw[i]
+				if(char2num(rs[0])!=char2num("r"))
+					break
+				else
+					print StringFromList(0, rw[i], "_"), StringFromList(1, rw[i], "_"), StringFromList(2, rw[i], "_") 
+					
+					Variable cidx = str2num(StringFromList(2, rw[i], "_"))
+					if(cidx==cycle_number)
+						print rw[i]
+						flag=1
+						break
+					endif
+				endif
+			endfor
+			
+//			print s.traceName
+//			
+//			print s.cursorName
+//			print s.pointNumber
+//			print s.yPointNumber
+//			print s.isFree
+//			
+			
+			hookResult = 1	// We handled keystroke
+			break
+	endswitch
+	
+	return hookResult		// If non-zero, we handled event and Igor will ignore it.
+End
 
 Function DP_btn_update_trace(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
