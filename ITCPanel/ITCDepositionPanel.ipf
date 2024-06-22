@@ -56,6 +56,10 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 
 		Wave historywave=$history_record_name
 		wave hist_view=$history_view_name
+		Wave raw_record_files=$raw_record_file_idx
+		
+		note /k raw_record_files, "-1"
+		note /k historywave, "-1"
 		
 		SetDimLabel 0, 0, CYCLEINDEX, historywave, hist_view
 		SetDimLabel 0, 1, TIMESTAMP, historywave, hist_view
@@ -844,7 +848,41 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			Variable pulse_method=V_Value
 			
 		endif
+		
+		wave rawwave = $raw_record_name
+		wave historywave = $history_record_name
+		wave /T rawwaveidx = $raw_record_file_idx
 			
+		//check index record first
+		Variable hist_endidx=str2num(note(historywave))
+		Variable fileidx_last=str2num(note(rawwaveidx))
+		if(numtype(fileidx_last)!=0)
+			fileidx_last = -1
+		endif
+		
+		if(numtype(hist_endidx)!=0)
+			hist_endidx=-1
+		endif
+			
+		
+		//update hist_endidx to prepare filling
+		
+		Variable max_cycle_count = round(MaxDepositionRawRecordingLength / (length/samplingrate))
+		
+		hist_endidx+=1 //this is based on the number taken from the notes from previouse run. 
+							//if no action is done on the historical wave, the note will not be updated
+							//so the next cycle will pick up the right number.
+		if(hist_endidx>=DimSize(historywave, 2))
+			InsertPoints /M=2 /V=(NaN) DimSize(historywave, 2), max_cycle_count, historywave;AbortOnRTE
+		endif
+		
+		//update raw record file index		
+		fileidx_last += 1
+		if(fileidx_last>=DimSize(rawwaveidx, 0))			
+			InsertPoints /M=0 DimSize(rawwaveidx, 0), max_cycle_count, rawwaveidx
+		endif
+		
+		//start of the operation	
 		switch(flag)
 		case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
 			/////////////////////////////
@@ -914,10 +952,6 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			//User code here
 			/////////////////////////////
 			
-			wave rawwave = $raw_record_name
-			wave historywave = $history_record_name
-			wave /T rawwaveidx = $raw_record_file_idx
-			
 			dacdata[][tunneling_bias_chn] -= tunneling_DAC0_offset
 			dacdata[][tunneling_bias_counter_chn] -= tunneling_DAC1_offset
 
@@ -960,17 +994,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			
 			Variable timestamp_ticks = ticks
 			
-			Variable hist_endidx=str2num(note(historywave))
-			Variable fileidx_last=str2num(note(rawwaveidx))
-			
-			if(numtype(fileidx_last)!=0)
-				fileidx_last = 0
-			endif
-			
-			if(numtype(hist_endidx)!=0)
-				hist_endidx=0
-			endif
-			
+		
 			WaveStats /Q /PCST /Z tmp_stat
 			Wave M_WaveStats
 			historywave[%CYCLEINDEX][][hist_endidx]=cycle_count;AbortOnRTE
@@ -1030,18 +1054,13 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				
 				SaveData /D=1/L=1/O/Q/P=savefolder/J=tmpstr ":"
 				KillWaves /Z $tmpstr
+				
 				rawwaveidx[fileidx_last] = tmpstr
-				fileidx_last += 1
+				
 				note /k rawwaveidx, num2istr(fileidx_last)
 			endif
 			
-			//update hist_endidx
-			hist_endidx+=1
-			if(hist_endidx>=DimSize(historywave, 2))
-				InsertPoints /M=2 /V=(NaN) DimSize(historywave, 2), round(MaxDepositionRawRecordingLength / (length/samplingrate)), historywave;AbortOnRTE
-			endif
-			
-			note /k historywave, num2str(hist_endidx)
+			note /k historywave, num2str(hist_endidx) //this will always give the correct index to work with.
 			
 			//calculate PID
 			if(cycle_count==0 || PID_enabled==0)
@@ -1087,6 +1106,9 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			/////////////////////////////
 			//User code here
 			/////////////////////////////
+			historywave[][][hist_endidx]=NaN
+			historywave[%FLAGS][][hist_endidx]=-1
+			note /k historywave, num2str(hist_endidx) //this is a mark to flag the stop operation
 			DepositionPanel_update_exec_button(0)
 			break //ret_val is not checked for this call
 		
@@ -1313,28 +1335,70 @@ Function DP_inspect_data_panel_init()
 	String hist_disp_name = S_name
 	ShowInfo /W=$hist_disp_name
 	
-	NewPanel /HOST=$hist_disp_name /EXT=2 /k=2 /W=(0,0,800,400)
+	NewPanel /HOST=$hist_disp_name /EXT=2 /k=2 /W=(0,0,600,100)
 	String panel_name=hist_disp_name+"#"+S_name
 	
 	PopupMenu DP_folder,title="DepositionFolder",value=DP_get_deposition_folder()
-	PopupMenu DP_folder,pos={10,10},size={250,20},bodywidth=150
+	PopupMenu DP_folder,pos={0,0},size={250,20},bodywidth=150
 	String s=StringFromList(0, DP_get_deposition_folder(), ";")
 	String sl="\""+DP_get_dimlabels(s, s+"_history", 1)+"\""
 	PopupMenu DP_trace,title="Signal",value=#sl
-	PopupMenu DP_trace,pos={10,30},size={250,20},bodywidth=150
-	Checkbox DP_errorbar,title="Show error bar",pos={10,50},size={250,20}
-	Button DP_update_hist_trace,title="update trace",pos={10,70},size={250,20},proc=DP_btn_update_trace
-
+	PopupMenu DP_trace,pos={0,20},size={250,20},bodywidth=150
+	Checkbox DP_errorbar,title="Show error bar",pos={10,40},size={250,20}
+	Button DP_update_hist_trace,title="update trace",pos={0,60},size={250,20},proc=DP_btn_update_trace
+	
+	GroupBox grpbox_cursorA, title="CursorA", size={140,100},pos={260,0}
+	GroupBox grpbox_cursorB, title="CursorB", size={140,100},pos={410,0}
+	
+	TitleBox DP_title_cursorA title="cursor A\nInformation ",pos={265,15},fixedSize=1,size={130,60}
+	TitleBox DP_title_cursorB title="cursor B\nInformation ",pos={415,15},fixedSize=1,size={130,60}
+	Button DP_save_cursorA title="Load Data", pos={280,75},size={100,20}
+	Button DP_save_cursorB title="Load Data", pos={430,75},size={100,20}
+	
 	NewPanel /HOST=$hist_disp_name /N=$(hist_disp_name+"_RAW") /EXT=0 /k=2 /W=(0,0,480,270)
+	
 	String disp_panel_name =  hist_disp_name+"#"+S_name
+	ModifyPanel /W=$disp_panel_name fixedSize=0
+	SetWindow $disp_panel_name sizeLimit= {480, 270, INF, INF}	
 
 	Display /HOST=$disp_panel_name /FG=(FL,FT,FR,FB)
 	String disp_name = disp_panel_name+"#"+S_name
-	
+		
 	SetWindow $hist_disp_name, hook(DP_hook)=DP_hist_hook
 	SetWindow $hist_disp_name, userdata(DP_CONTROL_PANEL)=panel_name
 	SetWindow $hist_disp_name, userdata(DP_RAW_DISP)=disp_name
 End
+
+
+Function /T DP_update_file_record_flag(wave hw, wave /T rw, variable idx, Variable ptidx)
+	variable i,flag = 0
+	Variable maxrecordidx = str2num(note(rw))
+	
+	Variable cycle_number = hw[%CYCLEINDEX][idx][ptidx]
+	hw[%FLAGS][idx][ptidx]=0
+	for(i=0; i<maxrecordidx; i+=1)
+		string rs=rw[i]
+		if(char2num(rs[0])!=char2num("r"))
+			break
+		else
+			//print StringFromList(0, rw[i], "_"), StringFromList(1, rw[i], "_"), StringFromList(2, rw[i], "_") 
+			Variable cidx = str2num(StringFromList(2, rw[i], "_"))
+			Variable hidx = str2num(StringFromList(1, rw[i], "_"))
+			
+			if(cidx==cycle_number && abs(hidx-ptidx)<2)
+				hw[%FLAGS][idx][ptidx] = 1
+				flag = 1
+				break
+			endif
+		endif
+	endfor
+	if(flag)
+		return rw[i]
+	else
+		return ""
+	endif
+End
+
 
 Function DP_hist_hook(s)
 	STRUCT WMWinHookStruct &s
@@ -1348,9 +1412,7 @@ Function DP_hist_hook(s)
 		case 7:	// "cursormoved"
 			String disp_name = GetUserData(mainwin_name, "", "DP_RAW_DISP")
 			String panel_name = GetUserData(mainwin_name, "", "DP_CONTROL_PANEL")
-			
-			Variable ptidx = s.pointNumber
-			
+		
 			ControlInfo /W=$panel_name DP_folder
 			String foldername=S_value
 			
@@ -1359,44 +1421,138 @@ Function DP_hist_hook(s)
 			
 			Wave hw=$hist_wave_name
 			Wave /T rw=$record_trace_name
-			print hist_wave_name
-			print record_trace_name
 			
 			ControlInfo /W=$panel_name DP_trace
 			String signal=S_Value
 			Variable idx = FindDimLabel(hw, 1, signal)
+			String cursor_flag=GetUserData(disp_name, "", "CURSOR_STATUS")
+			if(strlen(cursor_flag)==0)
+				cursor_flag="0;0;"
+			endif
+			Variable cursor_A=str2num(StringfromList(0, cursor_flag))
+			Variable cursor_B=str2num(StringfromList(1, cursor_flag))
+			Variable flag = 0
+//			
+//			TitleBox DP_title_cursorA title="cursor A\nInformation ",pos={265,15},fixedSize=1,size={130,60}
+//			TitleBox DP_title_cursorB title="cursor B\nInformation ",pos={415,15},fixedSize=1,size={130,60}
+//			Button DP_save_cursorA title="Load Data", pos={280,75},size={100,20}
+//			Button DP_save_cursorB title="Load Data", pos={430,75},size={100,20}
+			
+			
+			DFREF dfr=GetDataFolderDFR()
+			try
+				SetDataFolder $("root:"+foldername); AbortOnRTE
 
-			Variable cycle_number = hw[%CYCLEINDEX][idx][ptidx]
-			variable i,flag = 0
-			for(i=0; i<DimSize(rw, 0); i+=1)
-				string rs=rw[i]
-				if(char2num(rs[0])!=char2num("r"))
-					break
-				else
-					print StringFromList(0, rw[i], "_"), StringFromList(1, rw[i], "_"), StringFromList(2, rw[i], "_") 
+				Variable ptidx = s.pointNumber
+				
+				if(numtype(ptidx)==0)
+					String filename=DP_update_file_record_flag(hw, rw, idx, ptidx)
+					String save_data_folder = GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER")
 					
-					Variable cidx = str2num(StringFromList(2, rw[i], "_"))
-					if(cidx==cycle_number)
-						print rw[i]
-						flag=1
-						break
-					endif
+					if(strlen(filename)>0)
+						filename = save_data_folder+foldername+":"+filename+".ibw"
+						LoadWave /O/Q/N filename; AbortOnRTE
+						String wn=StringFromList(0, S_WaveNames)
+						Duplicate /O $wn, $("RAW_DISP_CURSOR_"+s.cursorName); AbortOnRTE
+						KillWaves /Z $wn; AbortOnRTE
+						flag = 1
+					else
+						Wave w=$("RAW_DISP_CURSOR_"+s.cursorName)
+						if(WaveExists(w))
+							w=NaN
+						endif
+						
+					endif				
 				endif
-			endfor
+				
+				strswitch(s.cursorName)
+					case "A":
+						cursor_A=flag
+						break
+					case "B":
+						cursor_B=flag
+						break
+					default:
+						break
+				endswitch
+					
+			catch
+				Variable err = GetRTError(1)
+				print "error when loading file", filename
+				print "error code: ", err
+				print GetErrMessage(err)
+			endtry
+			String cursor_list=""
+			if(cursor_A)
+				cursor_list+="A;"
+			endif
+			if(cursor_B)
+				cursor_list+="B;"
+			endif
+			sprintf cursor_flag, "%d;%d;", cursor_A, cursor_B
+			SetWindow $disp_name, userdata(CURSOR_STATUS)=cursor_flag
 			
-//			print s.traceName
-//			
-//			print s.cursorName
-//			print s.pointNumber
-//			print s.yPointNumber
-//			print s.isFree
-//			
-			
+			SetDataFolder dfr
+			update_raw_disp(disp_name, foldername, cursor_list)
 			hookResult = 1	// We handled keystroke
 			break
+
 	endswitch
 	
 	return hookResult		// If non-zero, we handled event and Igor will ignore it.
+End
+
+Function update_raw_disp(String disp_name, String foldername, String cursor_list)
+	string trlist = TraceNameList(disp_name, ";", 1)
+	variable i
+	i=ItemsInList(trlist, ";")
+	do
+		if(i>0)
+			RemoveFromGraph /W=$disp_name $(StringFromList(i-1, trlist))
+		endif
+		trlist = TraceNameList(disp_name, ";", 1)
+		i=ItemsInList(trlist, ";")				
+	while(i>0)
+	
+	DFREF dfr=GetDataFolderDFR()
+	try
+		SetDataFolder $("root:"+foldername); AbortOnRTE
+
+		String raw_name="RAW_DISP_CURSOR_"
+		Variable numtraces=ItemsInList(cursor_list)
+		Variable axis_low = 0
+		Variable axis_high = 1	
+		
+		if(numtraces>0)
+			for(i=0; i<numtraces; i+=1)
+				String axisname="left"+num2istr(i)
+				Wave w=$(raw_name+StringFromList(i, cursor_list))
+				if(numtraces>1)
+					axis_low = (1-1/numtraces)/(1-numtraces)*i+(1-1/numtraces)
+					axis_high = axis_low + 1/numtraces
+				endif
+				if(WaveExists(w))
+					AppendToGraph /W=$disp_name /L=$axisname w
+					ModifyGraph /W=$disp_name mirror($axisname)=1,axThick($axisname)=2,standoff($axisname)=0,freePos($axisname)=0
+					ModifyGraph /W=$disp_name axisEnab($axisname)={axis_low,axis_high}
+					SetAxis /W=$disp_name /A=2/N=2 $axisname
+					Label /W=$disp_name $axisname "cursor "+StringFromList(i, cursor_list)
+					ModifyGraph /W=$disp_name lblPosMode($axisname)=1
+					ModifyGraph /W=$disp_name lblMargin=0,lblLatPos=0
+				endif
+			endfor
+			Label /W=$disp_name bottom "time";DelayUpdate	
+			ModifyGraph /W=$disp_name axThick=2,standoff=0
+		endif
+	catch
+		Variable err = GetRTError(1)
+		print "error when plotting raw data"
+		print "error code: ", err
+		print GetErrMessage(err)
+	endtry
+	
+	SetDataFolder dfr
+
 End
 
 Function DP_btn_update_trace(ba) : ButtonControl
@@ -1422,6 +1578,7 @@ Function DP_btn_update_trace(ba) : ButtonControl
 			ControlInfo /W=$panelname DP_folder
 			String foldername = S_Value
 			Wave w = $("root:"+foldername+":"+foldername+"_history")
+			Wave rw = $("root:"+foldername+":"+foldername+"_rawidx")
 			
 			ControlInfo /W=$panelname DP_trace
 			String signal=S_Value
@@ -1430,12 +1587,23 @@ Function DP_btn_update_trace(ba) : ButtonControl
 			ControlInfo /W=$panelname DP_errorbar
 			Variable errbar=V_value
 			
+			Variable last_hist_idx=str2num(note(w))
+			
+			for(i=0; i<=last_hist_idx && i<DimSize(w, 2); i+=1)
+				DP_update_file_record_flag(w, rw, idx, i)
+			endfor
+			
 			AppendToGraph /W=$dispname w[%MEANVALUE][idx][] vs w[%TIMESTAMP][idx][]
 			ModifyGraph /W=$dispname mode=3
+			ModifyGraph /W=$dispname zColor={w[%FLAGS][idx][*],0,1,BlueBlackRed,0}
+			ModifyGraph /W=$dispname zmrkSize={w[%FLAGS][idx][*],*,*,1,5}
+			ModifyGraph /W=$dispname mrkThick=2
+			
 			trlist = StringFromList(0, TraceNameList(dispname, ";", 1), ";")
 			if(errbar)
 				ErrorBars /W=$dispname $trlist SHADE={0,0,(0,0,0,0),(0,0,0,0)},wave=(w[%SDEV][idx][*],w[%SDEV][idx][*])
 			endif
+			
 			ShowInfo /W=$dispname
 			
 			break
