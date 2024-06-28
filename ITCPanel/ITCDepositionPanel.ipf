@@ -1376,7 +1376,7 @@ Function /T DP_update_file_record_flag(wave hw, wave /T rw, variable idx, Variab
 	
 	Variable cycle_number = hw[%CYCLEINDEX][idx][ptidx]
 	hw[%FLAGS][idx][ptidx]=0
-	for(i=0; i<maxrecordidx; i+=1)
+	for(i=0; i<maxrecordidx && i<DimSize(rw, 0); i+=1)
 		string rs=rw[i]
 		if(char2num(rs[0])!=char2num("r"))
 			break
