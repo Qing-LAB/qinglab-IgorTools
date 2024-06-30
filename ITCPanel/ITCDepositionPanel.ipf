@@ -481,7 +481,7 @@ Function DepositionPanel_Btn_update_deppulse(ba) : ButtonControl
 
 	switch( ba.eventCode )
 		case 2: // mouse up
-			// click code here
+			// click code here		
 			String panel_name = GetUserData("ITCPanel", "", "DepositionPanel")
 			String deposit_folder_name = GetUserData("ITCPanel", "", "DepositRecord_FOLDER"); AbortOnRTE
 
@@ -507,6 +507,7 @@ Function DepositionPanel_Btn_update_deppulse(ba) : ButtonControl
 			
 			GroupBox depositpanel_grp_depositwavesetup,win=$(panel_name),title="Deposit pulse(Updated)",fColor=(0,0,0),fstyle=0,labelBack=0
 			Button depositpanel_update_deposit_parameters,win=$(panel_name),fColor=(0,0,0)
+						
 			break
 		case -1: // control being killed
 			break
@@ -633,6 +634,12 @@ Function DepositePanel_GeneratePulse(string deposit_folder_name, variable pulse_
 		elseif(pulse_method==3) //customized
 			print("Customized wave not implemented yet.")
 		endif
+		
+		String sval=""
+			
+		sprintf sval, "pulsed updated with the following parameters: TDAC0_offset[%f] TDAC1_offset[%f] Tbias[%f] IDAC0_offset[%f] IDAC1_offset[%f] Ibias"
+		
+		itc_updatenb("User note: "+sval, r=0, g=0, b=32768)
 	
 	catch
 		Variable err=GetRTError(1)
@@ -728,7 +735,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 		Variable save_folder_ready = str2num(GetUserData("ITCPanel","","DepositRecord_SAVE_FOLDER_READY")); AbortOnRTE
 		String save_data_folder = GetUserData("ITCPanel", "", "DepositRecord_SAVE_DATA_FOLDER")); AbortOnRTE
 		
-		PathInfo /S savefolder; AbortOnRTE
+		//PathInfo /S savefolder; AbortOnRTE
 		SetDataFolder root:$deposit_folder_name; AbortOnRTE
 		
 		NVAR tunneling_conductance; AbortOnRTE
@@ -894,7 +901,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				try
 					SaveExperiment; AbortOnRTE
 					PathInfo /SHOW home
-					String deposit_path = S_path
+					String experiment_path = S_path
 					repeat_save=99
 				catch
 					Variable save_err = GetRTError(1)
@@ -906,8 +913,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			while(repeat_save<3)
 						
 			if(strlen(S_path)>0)
-				SetWindow ITCPanel, userdata(DEPOSIT_DATAFOLDER)=deposit_path
-				save_data_folder = ParseFilePath(2, deposit_path, ":", 0, 0)
+				//SetWindow ITCPanel, userdata(DEPOSIT_DATAFOLDER)=deposit_path
+				save_data_folder = ParseFilePath(2, experiment_path, ":", 0, 0)
 				save_data_folder += deposit_folder_name
 				print "Data folder for saving records are created as ", save_data_folder
 				NewPath /C/O/Z/Q savefolder, save_data_folder; AbortOnRTE
@@ -1447,7 +1454,12 @@ Function DP_hist_hook(s)
 				
 				if(numtype(ptidx)==0)
 					String filename=DP_update_file_record_flag(hw, rw, idx, ptidx)
-					String save_data_folder = GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER")
+					String home_folder=""
+					PathInfo home
+					String experiment_path = S_path
+					String save_data_folder = ParseFilePath(2, experiment_path, ":", 0, 0)
+					save_data_folder += foldername
+					//GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER")
 					
 					if(strlen(filename)>0)
 						filename = save_data_folder+foldername+":"+filename+".ibw"
