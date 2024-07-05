@@ -269,7 +269,7 @@ Function ITC_init()
 	NVAR chnongainbinflag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag"); AbortOnRTE
 	chnongainbinflag=0
 	
-	NewPanel /N=ITCPanel /K=2 /W=(50,50,850,500) as "(ITCPanel) Experiment : "+exptitle
+	NewPanel /N=ITCPanel /K=2 /W=(50,50,850,850) as "(ITCPanel) Experiment : "+exptitle
 	SetWindow ITCPanel, userdata(ITCModel)=modelstr
 	SetWindow ITCPanel, userdata(OperatorName)=opname
 	SetWindow ITCPanel, userdata(ExpTitle)=exptitle
@@ -281,13 +281,15 @@ Function ITC_init()
 	SetVariable itc_sv_opname win=ITCPanel,title="Operator", pos={20,6},size={150,16},variable=opname,noedit=1
 	SetVariable itc_sv_opname win=ITCPanel,valueColor=(0,0,65280)
 	SetVariable itc_sv_opname win=ITCPanel,valueBackColor=(57344,65280,48896)
+	SetVariable itc_sv_expname win=ITCPanel,title="Experiment Title:",pos={20,26},size={350,16},variable=exptitle,noedit=1
+	SetVariable itc_sv_expname win=ITCPanel,valueColor=(0,0,65280)
+	SetVariable itc_sv_expname win=ITCPanel,valueBackColor=(57344,65280,48896)
 	
 	Button itc_btn_recording win=ITCPanel,title="Start saving recording",pos={190,4}, fcolor=(0,65535,0),fsize=12,fstyle=0, size={140,22}
 	Button itc_btn_recording win=ITCPanel,proc=itc_btnproc_saverecording,userdata(status)="0",disable=2
 	SetVariable itc_sv_recordnum win=ITCPanel,title="#",pos={345, 6},size={90,16},limits={0,inf,0},variable=recordnum,noedit=1,fstyle=1,disable=2
 	SetVariable itc_sv_recordnum win=ITCPanel,frame=0,valueColor=(65280,0,0)
-	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={20,26},size={380,16},value=_STR:"",proc=itc_quicknote
-	
+		
 	SetVariable itc_sv_samplingrate win=ITCPanel,title="Sampling Rate (Hz)",pos={600, 10},size={190,16},limits={1/MaxSamplingTime,1/MinSamplingTime,0},variable=samplingrate
 	SetVariable itc_sv_recordinglen win=ITCPanel,title="Recording length (sec)",pos={600,30},size={190,16},limits={ITCMinRecordingLen,inf,0},variable=recordinglen
 	
@@ -323,7 +325,7 @@ Function ITC_init()
 	Edit /HOST=ITCPanel /N=itc_tbl_daclist /W=(120, 270, 590, 410) as "DAC list"
 		
 	debugstr=" "
-	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,416},fixedSize=1,frame=2,size={470,25},fColor=(32768,0,0)
+	TitleBox itc_tb_debug win=ITCPanel,variable=debugstr,pos={120,416},fixedSize=1,frame=2,size={670,25},fColor=(32768,0,0)
 	
 	GroupBox itc_grp_rtdac win=ITCPanel,title="RealTime DACs (V)",pos={600, 60}, size={195,75}
 	SetVariable itc_sv_rtdac0 win=ITCPanel, title="DAC0", pos={610, 80},size={80,16},format="%6.4f",limits={-10.2,10.2,0},value=_NUM:0,proc=itc_svproc_rtdac,userdata(channel)="0"
@@ -351,7 +353,9 @@ Function ITC_init()
 	CheckBox itc_cb_digital6  win=ITCPanel,title="6",pos={748,270},proc=itc_cbproc_digitals
 	CheckBox itc_cb_digital7  win=ITCPanel,title="7",pos={773,270},proc=itc_cbproc_digitals
 	
-	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(600,300,795,440)
+	
+	SetVariable itc_sv_note win=ITCPanel,title="Quick notes",pos={10,455},size={785,20},value=_STR:"",proc=itc_quicknote
+	NewNotebook /F=1 /N=ITCPanelLog /HOST=ITCPanel /W=(10,480,795,840)
 	Notebook ITCPanel#ITCPanelLog writeProtect=1,fSize=8,magnification=125
 	String initmsg="ITCPanel initialized.\r"
 	initmsg+="Experiment operator:"+opname+"\r"
@@ -1459,6 +1463,14 @@ Function itc_cbproc_setuserfunc(cba) : CheckBoxControl
 					endif
 					itc_update_parameter_control(1)
 				endif
+				String nbstr=""
+				if(checked)
+					sprintf nbstr, "Set user function as : %s", usrfuncname
+					itc_updatenb(nbstr)
+				else
+					sprintf nbstr, "User function is disabled."
+					itc_updatenb(nbstr)
+				endif
 				CheckBox itc_cb_userfunc win=ITCPanel, value=checked
 			catch
 				print "error!"
@@ -1627,9 +1639,11 @@ Function itc_start_task([flag])
 	if(runflag)
 		TaskStatus=1 //requesSt start
 		btnstatus=1
+		itc_updatenb("Starting acquisition.")
 	else
 		TaskStatus=3
 		btnstatus=0
+		itc_updatenb("Acquisition is stopped.")
 	endif
 	
 	itc_update_controls(btnstatus)
@@ -2308,7 +2322,7 @@ Function itc_update_controls(runstatus)
 		SetWindow ITCPanel#itc_tbl_daclist hide=0,needUpdate=1;DoUpdate
 		itc_rtgraph_quit()
 		
-		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(600,300,795,440); DoUpdate
+		//MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(600,300,795,440); DoUpdate
 		DoUpdate /W=ITCPanel
 	else
 	//running
@@ -2374,8 +2388,8 @@ Function itc_update_controls(runstatus)
 		SetWindow ITCPanel#itc_tbl_adclist hide=1,needUpdate=1; DoUpdate
 		SetWindow ITCPanel#itc_tbl_daclist hide=1,needUpdate=1; DoUpdate
 
-		itc_rtgraph_init(118, 58, 795,318)
-		MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(120, 320, 795, 405); DoUpdate
+		itc_rtgraph_init(118, 58, 795,410)
+		//MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(120, 320, 795, 405); DoUpdate
 		DoUpdate /W=ITCPanel
 	endif
 End
