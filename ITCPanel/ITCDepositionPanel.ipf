@@ -1215,6 +1215,12 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 						endif					
 					endif
 				endif				
+			else
+				if(deposition_indicator!=0)
+					deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
+					deposition_indicator=0
+					rest_cycle_countdown=rest_cycle_number
+				endif
 			endif
 			
 			ret_val=0 //if need to stop recording by the user function, return a non-zero value
@@ -1238,37 +1244,38 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			DepositionPanelExit()
 			break
 		case ITCUSERFUNC_CUSTOMDISPLAY: //called by GUI controller where user can use the ITCPanel#rtgraph to display customized content
-			AppendToGraph /W=ITCPanel#rtgraph /L=left1 /B hist_view[%MEANVALUE][%TUNNELING_COND][0,hist_len-1] //vs hist_view[%TIMESTAMP][%TUNNELING_COND][]
+			AppendToGraph /W=ITCPanel#rtgraph /L=left1 /B hist_view[%MEANVALUE][%TUNNELING_COND][0,hist_len-1] /TN='TUNNELING_COND' //vs hist_view[%TIMESTAMP][%TUNNELING_COND][]
 			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left1)=0,lblPos(left1)=60,notation(left1)=0,ZisZ(left1)=1,fsize=12; AbortOnRTE
 			ModifyGraph /W=ITCPanel#rtgraph freePos(left1)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
 			
-			AppendToGraph /W=ITCPanel#rtgraph /L=left2 /B hist_view[%MEANVALUE][%IONIC_COND][0,hist_len-1] //vs hist_view[%TIMESTAMP][%IONIC_COND][]
+			AppendToGraph /W=ITCPanel#rtgraph /L=left2 /B hist_view[%MEANVALUE][%IONIC_COND][0,hist_len-1] /TN='IONIC_COND' //vs hist_view[%TIMESTAMP][%IONIC_COND][]
 			ModifyGraph /W=ITCPanel#rtgraph grid=2,tick=2,axThick=2,standoff=0,freePos(left2)=0,lblPos(left2)=60,notation(left2)=0,ZisZ(left2)=1,fsize=12; AbortOnRTE
 			ModifyGraph /W=ITCPanel#rtgraph freePos(left2)=0,lblPos(bottom)=40,notation(bottom)=0,fsize=12,ZisZ=1; AbortOnRTE
 			ModifyGraph /W=ITCPanel#rtgraph lblPos(left1)=80, lblPos(left2)=80, nticks(left1)=2, nticks(left2)=2
 			
-			AppendToGraph /W=ITCPanel#rtgraph /R=right1 hist_view[%PULSE_HEIGHT][%TUNNELING_COND][0,hist_len-1]
+			AppendToGraph /W=ITCPanel#rtgraph /R=right1 hist_view[%PULSE_HEIGHT][%TUNNELING_COND][0,hist_len-1] /TN='PULSE_INFO'
 			
-			ModifyGraph /W=ITCPanel#rtgraph axThick=2,standoff=0,freePos(right1)=0;DelayUpdate
-			
-			ModifyGraph /W=ITCPanel#rtgraph lsize($(NameOfWave(hist_view)+"#2"))=3,rgb($(NameOfWave(hist_view)+"#2"))=(49163,65535,32768,19661)
+			ModifyGraph /W=ITCPanel#rtgraph axThick=2,standoff=0,freePos(right1)=0			
+			ModifyGraph /W=ITCPanel#rtgraph lsize('PULSE_INFO')=3,rgb('PULSE_INFO')=(0,65535,0,19661),mode('PULSE_INFO')=6
 			
 			if(errorbar_enabled)
-				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)) SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1],hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1])
-				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)+"#1") SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%IONIC_COND][0,hist_len-1],hist_view[%SDEV][%IONIC_COND][0,hist_len-1])
+				ErrorBars /W=ITCPanel#rtgraph 'TUNNELING_COND' SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1],hist_view[%SDEV][%TUNNELING_COND][0,hist_len-1])
+				ErrorBars /W=ITCPanel#rtgraph 'IONIC_COND' SHADE= {0,0,(0,0,0,0),(0,0,0,0)},wave=(hist_view[%SDEV][%IONIC_COND][0,hist_len-1],hist_view[%SDEV][%IONIC_COND][0,hist_len-1])
 			else
-				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)) OFF
-				ErrorBars /W=ITCPanel#rtgraph $(NameOfWave(hist_view)+"#1") OFF
+				ErrorBars /W=ITCPanel#rtgraph 'TUNNELING_COND' OFF
+				ErrorBars /W=ITCPanel#rtgraph 'IONIC_COND' OFF
 			endif
 			
 			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left1
 			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left2
 			SetAxis /W=ITCPanel#rtgraph right1 -2,2
+			ModifyGraph lblPosMode(right1)=1
+
 
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left1)={0.52,1}
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left2)={0,0.48}
 			
-			ModifyGraph /W=ITCPanel#rtgraph rgb($(NameOfWave(hist_view)+"#1"))=(0,0,65535)
+			ModifyGraph /W=ITCPanel#rtgraph rgb('IONIC_COND')=(0,0,65535)
 			
 			Label /W=ITCPanel#rtgraph left1 "G_tunneling\n/\U S"
 			Label /W=ITCPanel#rtgraph left2 "G_ionic\n/\U S"
