@@ -1705,7 +1705,7 @@ Function DP_hist_hook(s)
 					//GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER")
 					
 					if(strlen(filename)>0)
-						filename = save_data_folder+foldername+":"+filename+".ibw"
+						filename = save_data_folder+":"+filename+".ibw"
 						LoadWave /O/Q/N filename; AbortOnRTE
 						String wn=StringFromList(0, S_WaveNames)
 						Duplicate /O $wn, $("RAW_DISP_CURSOR_"+s.cursorName); AbortOnRTE
