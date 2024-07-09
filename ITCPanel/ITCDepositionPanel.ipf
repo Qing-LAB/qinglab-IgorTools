@@ -1675,6 +1675,7 @@ Function DP_hist_hook(s)
 			ControlInfo /W=$panel_name DP_trace
 			String signal=S_Value
 			Variable idx = FindDimLabel(hw, 1, signal)
+			
 			String cursor_flag=GetUserData(disp_name, "", "CURSOR_STATUS")
 			if(strlen(cursor_flag)==0)
 				cursor_flag="0;0;"
@@ -1748,7 +1749,7 @@ Function DP_hist_hook(s)
 			SetWindow $disp_name, userdata(CURSOR_STATUS)=cursor_flag
 			
 			SetDataFolder dfr
-			update_raw_disp(disp_name, foldername, cursor_list)
+			update_raw_disp(disp_name, foldername, cursor_list, idx)
 			hookResult = 1	// We handled keystroke
 			break
 
@@ -1757,7 +1758,7 @@ Function DP_hist_hook(s)
 	return hookResult		// If non-zero, we handled event and Igor will ignore it.
 End
 
-Function update_raw_disp(String disp_name, String foldername, String cursor_list)
+Function update_raw_disp(String disp_name, String foldername, String cursor_list, Variable idx)
 	string trlist = TraceNameList(disp_name, ";", 1)
 	variable i
 	i=ItemsInList(trlist, ";")
@@ -1787,7 +1788,7 @@ Function update_raw_disp(String disp_name, String foldername, String cursor_list
 					axis_high = axis_low + 1/numtraces
 				endif
 				if(WaveExists(w))
-					AppendToGraph /W=$disp_name /L=$axisname w
+					AppendToGraph /W=$disp_name /L=$axisname w[][idx]
 					ModifyGraph /W=$disp_name mirror($axisname)=1,axThick($axisname)=2,standoff($axisname)=0,freePos($axisname)=0
 					ModifyGraph /W=$disp_name axisEnab($axisname)={axis_low,axis_high}
 					SetAxis /W=$disp_name /A=2/N=2 $axisname
