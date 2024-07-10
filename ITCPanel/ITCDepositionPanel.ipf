@@ -793,13 +793,15 @@ Function /T Deposition_getDACWaveList()
 	return list
 End
 
-Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 total_count, int64 cycle_count, int length, int adc_chnnum, int dac_chnnum, double samplingrate, int flag)
+Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, int64 total_count, int64 cycle_count, int length, int adc_chnnum, int dac_chnnum, double samplingrate, int flag)
 
 	Variable ret_val=0
 	
 	DFREF dfr=GetDataFolderDFR()
 	
 	try
+		Duplicate /FREE adcdata_raw, adcdata
+		Duplicate /FREE dacdata_raw, dacdata
 		if(flag ==ITCUSERFUNC_FIRSTCALL)
 			if(DepositionPanelPrepareDataFolder(length, samplingrate, adc_chnnum, dac_chnnum)!=0)
 				return -1
@@ -1082,8 +1084,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 			
 			Make /FREE/D/N=(post_pulse_sample_len,adc_chnnum+dac_chnnum+2) tmp_stat
 			
-			tmp_stat[][0,adc_chnnum-1] = adcdata[pulse_sample_start+p][q];AbortOnRTE
-			rawwave[][0,adc_chnnum-1] = adcdata[p][q];AbortOnRTE
+			tmp_stat[][0,adc_chnnum-1] = adcdata_raw[pulse_sample_start+p][q];AbortOnRTE
+			rawwave[][0,adc_chnnum-1] = adcdata_raw[p][q];AbortOnRTE
 			
 			tmp_stat[][adc_chnnum,adc_chnnum+dac_chnnum-1] = dacdata[pulse_sample_start+p][q-adc_chnnum];AbortOnRTE
 			rawwave[][adc_chnnum, adc_chnnum+dac_chnnum-1] = dacdata[p][q-adc_chnnum];AbortOnRTE
@@ -1161,8 +1163,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata, wave dacdata, int64 to
 				
 				String tmpstr=""
 				sprintf tmpstr, "raw_%08d_%08d", hist_endidx, cycle_count
-				
+				String cali_str=""
+				sprintf cali_str, "TADCOFFSET=%.6e;TDAC0_OFFSET=%.6e;TDAC1_OFFSET=%.6e;TADC_SCALE=%.6e;IADCOFFSET=%.6e;IDAC0_OFFSET=%.6e;IDAC1_OFFSET=%.6e;IADC_SCALE=%.6e;", tunneling_ADC_offset, tunneling_DAC0_offset, tunneling_DAC1_offset, tunneling_scale,ionic_ADC_offset, ionic_DAC0_offset, ionic_DAC1_offset, ionic_scale
 				Duplicate /O rawwave, $tmpstr
+				note /k $tmpstr, cali_str
 				
 				NewPath /C/O/Q savefolder, save_data_folder
 				

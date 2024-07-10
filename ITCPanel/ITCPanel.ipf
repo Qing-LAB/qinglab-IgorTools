@@ -3046,8 +3046,6 @@ Function itc_bgTask(s)
 			//upload first before storing data
 				//decide whether we need to upload DAC data, if so, how many (continous or not)
 				
-				itc_reload_dac_from_src(countDAC, dacdatawavepath, dacdata) //refresh dac data first.
-				
 				if(availablelen>BlockSize)
 					sprintf tmpstr, "Warning: availablelen [%d] exceeds BlockSize [%d]. Forcing availablelen to be BlockSize for this cycle.", availablelen, BlockSize
 					itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -3152,7 +3150,7 @@ Function itc_bgTask(s)
 						cycle_count+=1 //cycle_count is increased after the user function is called with the previously recorded section
 						
 					endif
-
+										
 					if(SaveRecording!=0)
 						String allwnames="Saved traces: "
 						String stamp
@@ -3192,6 +3190,9 @@ Function itc_bgTask(s)
 						endif
 					endif
 				endif
+				
+				itc_reload_dac_from_src(countDAC, dacdatawavepath, dacdata) //refresh dac data.
+			
 			endif
 #if defined(ITCDEBUG)
 			itcstatus=-99
