@@ -28,6 +28,9 @@ Constant ITCDEP_REST_TARGET_COND_REACHED = 2
 Constant ITCDEP_CLOSE = 3
 Constant ITCDEP_OPEN = 4
 
+Constant ITCDEP_FLAGS_RAWDATASAVED = 1
+Constant ITCDEP_FLAGS_STOPPED = 512
+
 StrConstant ITCDEP_STATE_STR = "REST;REST_TARGET_COND_REACHED;CLOSE;OPEN"
 
 Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, variable adc_chnnum, variable dac_chnnum)
@@ -1084,7 +1087,9 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			
 			Make /FREE/D/N=(post_pulse_sample_len,adc_chnnum+dac_chnnum+2) tmp_stat
 			
-			tmp_stat[][0,adc_chnnum-1] = adcdata_raw[pulse_sample_start+p][q];AbortOnRTE
+			// the tmp_stat will use modified adcdata with calibrations to calculate the average of currents
+			tmp_stat[][0,adc_chnnum-1] = adcdata[pulse_sample_start+p][q];AbortOnRTE
+			// the raw data will be saved into files, the current values will not be saved in raw data file			
 			rawwave[][0,adc_chnnum-1] = adcdata_raw[p][q];AbortOnRTE
 			
 			tmp_stat[][adc_chnnum,adc_chnnum+dac_chnnum-1] = dacdata[pulse_sample_start+p][q-adc_chnnum];AbortOnRTE
@@ -1113,6 +1118,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			historywave[%MEANL2][][hist_endidx]=M_WaveStats[%meanL2][q];AbortOnRTE
 			historywave[%SKEWNESS][][hist_endidx]=M_WaveStats[%skew][q];AbortOnRTE
 			historywave[%KURTOSIS][][hist_endidx]=M_WaveStats[%kurt][q];AbortOnRTE
+			historywave[%FLAGS][][hist_endidx]=0; AbortOnRTE
 			
 			Variable t_cond=historywave[%MEANVALUE][%TUNNELING_COND][hist_endidx]*1e9
 			Variable i_cond=historywave[%MEANVALUE][%IONIC_COND][hist_endidx]*1e9
@@ -1179,6 +1185,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 				
 				raw_data_file_idx_record = fileidx_last
 				raw_file_name_record = save_data_folder+":"+tmpstr
+				
+				historywave[%FLAGS][][hist_endidx]+=ITCDEP_FLAGS_RAWDATASAVED
 			endif
 			
 			note /k historywave, num2str(hist_endidx) //this will always give the correct index to work with.
@@ -1234,7 +1242,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			//User code here
 			/////////////////////////////
 			historywave[][][hist_endidx]=NaN
-			historywave[%FLAGS][][hist_endidx]=-1
+			historywave[%FLAGS][][hist_endidx]+=ITCDEP_FLAGS_STOPPED
 			note /k historywave, num2str(hist_endidx) //this is a mark to flag the stop operation
 			DepositionPanel_update_exec_button(0)
 			deposition_action_record=ITCDEP_REST
@@ -1654,20 +1662,22 @@ Function /T DP_update_file_record_flag(wave hw, wave /T rw, Variable ptidx)
 	Variable maxrecordidx = str2num(note(rw))
 	
 	Variable cycle_number = hw[%CYCLEINDEX][0][ptidx]
-	hw[%FLAGS][][ptidx]=0
+	// hw[%FLAGS][][ptidx]=0
 	for(i=0; i<maxrecordidx && i<DimSize(rw, 0); i+=1)
-		string rs=rw[i]
-		if(char2num(rs[0])!=char2num("r"))
-			break
-		else
-			//print StringFromList(0, rw[i], "_"), StringFromList(1, rw[i], "_"), StringFromList(2, rw[i], "_") 
-			Variable cidx = str2num(StringFromList(2, rw[i], "_"))
-			Variable hidx = str2num(StringFromList(1, rw[i], "_"))
-			
-			if(cidx==cycle_number && abs(hidx-ptidx)<2)
-				hw[%FLAGS][][ptidx] = 1
-				flag = 1
+		if(numtype(hw[%FLAGS][0][ptidx])!=0)
+			string rs=rw[i]
+			if(char2num(rs[0])!=char2num("r"))
 				break
+			else
+				//print StringFromList(0, rw[i], "_"), StringFromList(1, rw[i], "_"), StringFromList(2, rw[i], "_") 
+				Variable cidx = str2num(StringFromList(2, rw[i], "_"))
+				Variable hidx = str2num(StringFromList(1, rw[i], "_"))
+				
+				if(cidx==cycle_number && abs(hidx-ptidx)<2)
+					hw[%FLAGS][][ptidx] = 1
+					flag = 1
+					break
+				endif
 			endif
 		endif
 	endfor
