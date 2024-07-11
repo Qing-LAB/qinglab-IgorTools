@@ -121,7 +121,7 @@ StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;Telegra
 StrConstant ITC_DataWavesInfo="ADCDataWavePath;DACDataWavePath"
 
 StrConstant ITC_AcquisitionSettingVars="ITCMODEL;SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
-StrConstant ITC_AcquisitionControlVars="Status;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag;DigitalChannels"
+StrConstant ITC_AcquisitionControlVars="Status;DisplayStatus;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag;DigitalChannels"
 StrConstant ITC_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"
 Constant ITCMaxBlockSize=16383
 Constant ITCMinRecordingLen=0.2 //minimal length of data in sec for continuous acquisitions
@@ -2269,25 +2269,6 @@ Function itc_update_controls(runstatus)
 		else
 			itc_update_parameter_control(0)
 		endif
-//		SetVariable itc_sv_samplingrate win=ITCPanel,disable=0
-//		SetVariable itc_sv_recordinglen win=ITCPanel,disable=0
-//		for(i=0; i<8; i+=1)
-//			string param=GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param")
-//			cb_disable=str2num(StringByKey("DISABLE", GetUserData("ITCPanel","itc_cb_adc"+num2istr(i), "param"), "=", ";"))
-//			CheckBox $("itc_cb_adc"+num2istr(i)) win=ITCPanel,disable=cb_disable
-//		endfor
-//		CheckBox itc_cb_adc16 win=ITCPanel,disable=0
-//	
-//		CheckBox itc_cb_dac0  win=ITCPanel,disable=0
-//		CheckBox itc_cb_dac1  win=ITCPanel,disable=0
-//		CheckBox itc_cb_dac2  win=ITCPanel,disable=0
-//		CheckBox itc_cb_dac3  win=ITCPanel,disable=0
-//		CheckBox itc_cb_dac8  win=ITCPanel,disable=0	
-//		
-//		Button itc_btn_telegraph win=ITCPanel,disable=0
-//		Button itc_btn_setsealtest win=ITCPanel,disable=0
-//		Button itc_btn_displastrecord win=ITCPanel,disable=0
-//		Button itc_btn_updatedacdata win=ITCPanel,disable=0
 		
 		GroupBox itc_grp_rtdac win=ITCPanel,disable=0
 		SetVariable itc_sv_rtdac0 win=ITCPanel,disable=0
@@ -2322,7 +2303,6 @@ Function itc_update_controls(runstatus)
 		SetWindow ITCPanel#itc_tbl_daclist hide=0,needUpdate=1;DoUpdate
 		itc_rtgraph_quit()
 		
-		//MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(600,300,795,440); DoUpdate
 		DoUpdate /W=ITCPanel
 	else
 	//running
@@ -2332,30 +2312,6 @@ Function itc_update_controls(runstatus)
 	
 		itc_update_parameter_control(1)
 		
-//		SetVariable itc_sv_samplingrate win=ITCPanel,disable=2
-//		SetVariable itc_sv_recordinglen win=ITCPanel,disable=2
-
-//		CheckBox itc_cb_adc0  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc1  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc2  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc3  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc4  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc5  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc6  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc7  win=ITCPanel,disable=2
-//		CheckBox itc_cb_adc16 win=ITCPanel,disable=2
-//	
-//		CheckBox itc_cb_dac0  win=ITCPanel,disable=2
-//		CheckBox itc_cb_dac1  win=ITCPanel,disable=2
-//		CheckBox itc_cb_dac2  win=ITCPanel,disable=2
-//		CheckBox itc_cb_dac3  win=ITCPanel,disable=2
-//		CheckBox itc_cb_dac8  win=ITCPanel,disable=2
-//
-//		Button itc_btn_telegraph win=ITCPanel,disable=2
-//		Button itc_btn_setsealtest win=ITCPanel,disable=2
-//		Button itc_btn_displastrecord win=ITCPanel,disable=0
-//		Button itc_btn_updatedacdata win=ITCPanel,disable=0
-
 		GroupBox itc_grp_rtdac win=ITCPanel,disable=1
 		SetVariable itc_sv_rtdac0 win=ITCPanel,disable=1
 		SetVariable itc_sv_rtdac1 win=ITCPanel,disable=1
@@ -2389,7 +2345,7 @@ Function itc_update_controls(runstatus)
 		SetWindow ITCPanel#itc_tbl_daclist hide=1,needUpdate=1; DoUpdate
 
 		itc_rtgraph_init(118, 58, 795,410)
-		//MoveSubWindow /W=ITCPanel#ITCPanelLog fnum=(120, 320, 795, 405); DoUpdate
+		
 		DoUpdate /W=ITCPanel
 	endif
 End
@@ -2774,6 +2730,7 @@ Function itc_bgTask(s)
 	sscanf TaskRecordingCount, "%x,%x", total_count, cycle_count
 	 
 	NVAR Status=$WBPkgGetName(fPath, WBPkgDFVar, "Status")
+	NVAR DisplayStatus=$WBPkgGetName(fPath, WBPkgDFVar, "DisplayStatus")
 	NVAR LastIdleTicks=$WBPkgGetName(fPath, WBPkgDFVar, "LastIdleTicks")
 	NVAR RecordNum=$WBPkgGetName(fPath, WBPkgDFVar, "RecordingNum")
 	NVAR SamplingRate=$WBPkgGetName(fPath, WBPkgDFVar, "SamplingRate")

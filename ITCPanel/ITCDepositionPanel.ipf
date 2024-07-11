@@ -1597,7 +1597,7 @@ Function DP_inspect_data_panel_init()
 	String s=StringFromList(0, DP_get_deposition_folder(), ";")
 	String sl="\""+DP_get_dimlabels(s, s+"_history", 1)+"\""
 	PopupMenu DP_trace,title="Signal",value=#sl
-	PopupMenu DP_trace,pos={0,20},size={250,20},bodywidth=150
+	PopupMenu DP_trace,pos={0,20},size={250,20},bodywidth=150,proc=DP_pm_update_signal
 	Checkbox DP_errorbar,title="Show error bar",pos={10,40},size={250,20}
 	Button DP_update_hist_trace,title="update trace",pos={0,60},size={250,20},proc=DP_btn_update_trace
 	
@@ -1617,19 +1617,44 @@ Function DP_inspect_data_panel_init()
 
 	Display /HOST=$disp_panel_name /FG=(FL,FT,FR,FB)
 	String disp_name = disp_panel_name+"#"+S_name
-		
+
 	SetWindow $hist_disp_name, hook(DP_hook)=DP_hist_hook
 	SetWindow $hist_disp_name, userdata(DP_CONTROL_PANEL)=panel_name
 	SetWindow $hist_disp_name, userdata(DP_RAW_DISP)=disp_name
 End
 
 
-Function /T DP_update_file_record_flag(wave hw, wave /T rw, variable idx, Variable ptidx)
+Function DP_pm_update_signal(pa) : PopupMenuControl
+	STRUCT WMPopupAction &pa
+	String panelname=pa.win
+	
+	switch( pa.eventCode )
+		case 2: // mouse up
+			Variable popNum = pa.popNum
+			String popStr = pa.popStr
+			
+			ControlInfo /W=$panelname DP_folder
+			String foldername = S_Value
+			
+			Wave w = $("root:"+foldername+":"+foldername+"_history")
+			
+			Variable idx = FindDimLabel(w, 1, popStr)
+			
+			DP_update_hist_view(panelname, w, idx)
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+Function /T DP_update_file_record_flag(wave hw, wave /T rw, Variable ptidx)
 	variable i,flag = 0
 	Variable maxrecordidx = str2num(note(rw))
 	
-	Variable cycle_number = hw[%CYCLEINDEX][idx][ptidx]
-	hw[%FLAGS][idx][ptidx]=0
+	Variable cycle_number = hw[%CYCLEINDEX][0][ptidx]
+	hw[%FLAGS][][ptidx]=0
 	for(i=0; i<maxrecordidx && i<DimSize(rw, 0); i+=1)
 		string rs=rw[i]
 		if(char2num(rs[0])!=char2num("r"))
@@ -1640,7 +1665,7 @@ Function /T DP_update_file_record_flag(wave hw, wave /T rw, variable idx, Variab
 			Variable hidx = str2num(StringFromList(1, rw[i], "_"))
 			
 			if(cidx==cycle_number && abs(hidx-ptidx)<2)
-				hw[%FLAGS][idx][ptidx] = 1
+				hw[%FLAGS][][ptidx] = 1
 				flag = 1
 				break
 			endif
@@ -1687,13 +1712,7 @@ Function DP_hist_hook(s)
 			Variable cursor_A=str2num(StringfromList(0, cursor_flag))
 			Variable cursor_B=str2num(StringfromList(1, cursor_flag))
 			Variable flag = 0
-//			
-//			TitleBox DP_title_cursorA title="cursor A\nInformation ",pos={265,15},fixedSize=1,size={130,60}
-//			TitleBox DP_title_cursorB title="cursor B\nInformation ",pos={415,15},fixedSize=1,size={130,60}
-//			Button DP_save_cursorA title="Load Data", pos={280,75},size={100,20}
-//			Button DP_save_cursorB title="Load Data", pos={430,75},size={100,20}
-			
-			
+	
 			DFREF dfr=GetDataFolderDFR()
 			try
 				SetDataFolder $("root:"+foldername); AbortOnRTE
@@ -1701,7 +1720,7 @@ Function DP_hist_hook(s)
 				Variable ptidx = s.pointNumber
 				
 				if(numtype(ptidx)==0)
-					String filename=DP_update_file_record_flag(hw, rw, idx, ptidx)
+					String filename=DP_update_file_record_flag(hw, rw, ptidx)
 					String home_folder=""
 					PathInfo home
 					String experiment_path = S_path
@@ -1818,58 +1837,62 @@ End
 Function DP_btn_update_trace(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
 	String panelname=ba.win
-	String dispname=StringFromList(0, panelname, "#")
-	
+		
 	switch( ba.eventCode )
 		case 2: // mouse up
 			// click code here
-			HideInfo /W=$dispname
-			string trlist = TraceNameList(dispname, ";", 1)
-			variable i
-			i=ItemsInList(trlist, ";")
-			do
-				if(i>0)
-					RemoveFromGraph /W=$dispname $(StringFromList(i-1, trlist))
-				endif
-				trlist = TraceNameList(dispname, ";", 1)
-				i=ItemsInList(trlist, ";")				
-			while(i>0)
-			
 			ControlInfo /W=$panelname DP_folder
 			String foldername = S_Value
+			
 			Wave w = $("root:"+foldername+":"+foldername+"_history")
 			Wave rw = $("root:"+foldername+":"+foldername+"_rawidx")
 			
 			ControlInfo /W=$panelname DP_trace
 			String signal=S_Value
 			Variable idx = FindDimLabel(w, 1, signal)
-			
-			ControlInfo /W=$panelname DP_errorbar
-			Variable errbar=V_value
-			
+
 			Variable last_hist_idx=str2num(note(w))
-			
+			Variable i
 			for(i=0; i<=last_hist_idx && i<DimSize(w, 2); i+=1)
-				DP_update_file_record_flag(w, rw, idx, i)
+				DP_update_file_record_flag(w, rw, i)
 			endfor
 			
-			AppendToGraph /W=$dispname w[%MEANVALUE][idx][] vs w[%TIMESTAMP][idx][]
-			ModifyGraph /W=$dispname mode=3
-			ModifyGraph /W=$dispname zColor={w[%FLAGS][idx][*],0,1,BlueBlackRed,0}
-			ModifyGraph /W=$dispname zmrkSize={w[%FLAGS][idx][*],*,*,1,5}
-			ModifyGraph /W=$dispname mrkThick=2
-			
-			trlist = StringFromList(0, TraceNameList(dispname, ";", 1), ";")
-			if(errbar)
-				ErrorBars /W=$dispname $trlist SHADE={0,0,(0,0,0,0),(0,0,0,0)},wave=(w[%SDEV][idx][*],w[%SDEV][idx][*])
-			endif
-			
-			ShowInfo /W=$dispname
-			
+			DP_update_hist_view(panelname, w, idx)
 			break
 		case -1: // control being killed
 			break
 	endswitch
 
 	return 0
+End
+
+Function DP_update_hist_view(String panelname, Wave w, Variable idx)
+	String dispname=StringFromList(0, panelname, "#")
+	HideInfo /W=$dispname
+	string trlist = TraceNameList(dispname, ";", 1)
+	variable i
+	i=ItemsInList(trlist, ";")
+	do
+		if(i>0)
+			RemoveFromGraph /W=$dispname $(StringFromList(i-1, trlist))
+		endif
+		trlist = TraceNameList(dispname, ";", 1)
+		i=ItemsInList(trlist, ";")				
+	while(i>0)
+				
+	AppendToGraph /W=$dispname w[%MEANVALUE][idx][] vs w[%TIMESTAMP][idx][]
+	ModifyGraph /W=$dispname mode=3
+	ModifyGraph /W=$dispname zColor={w[%FLAGS][idx][*],0,1,BlueBlackRed,0}
+	ModifyGraph /W=$dispname zmrkSize={w[%FLAGS][idx][*],*,*,1,5}
+	ModifyGraph /W=$dispname mrkThick=2
+	
+	ControlInfo /W=$panelname DP_errorbar
+	Variable errbar=V_value
+	
+	trlist = StringFromList(0, TraceNameList(dispname, ";", 1), ";")
+	if(errbar)
+		ErrorBars /W=$dispname $trlist SHADE={0,0,(0,0,0,0),(0,0,0,0)},wave=(w[%SDEV][idx][*],w[%SDEV][idx][*])
+	endif
+	
+	ShowInfo /W=$dispname
 End
