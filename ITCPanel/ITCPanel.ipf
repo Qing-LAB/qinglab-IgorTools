@@ -117,11 +117,11 @@ StrConstant ITC_PackageName="ITC"
 StrConstant ITC_ExperimentInfoStrs="OperatorName;ExperimentTitle;DebugStr;TelegraphInfo;UserDataProcessFunction;TaskRecordingCount"
 StrConstant ITC_ChnInfoWaves="ADC_Channel;DAC_Channel;ADC_DestFolder;ADC_DestWave;DAC_SrcFolder;DAC_SrcWave;ADCScaleUnit"
 
-StrConstant ITC_DataWaves="ADCData;DACData;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
+StrConstant ITC_DataWaves="ADCData;DACData;DACBufRecord;DACDataForUser;SelectedADCChn;SelectedDACChn;TelegraphAssignment;ADCScaleFactor"
 StrConstant ITC_DataWavesInfo="ADCDataWavePath;DACDataWavePath"
 
 StrConstant ITC_AcquisitionSettingVars="ITCMODEL;SamplingRate;ContinuousRecording;RecordingLength;RecordingSize;BlockSize;LastIdleTicks"
-StrConstant ITC_AcquisitionControlVars="Status;DisplayStatus;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag;DigitalChannels"
+StrConstant ITC_AcquisitionControlVars="Status;DisplayStatus;RecordingNum;FIFOBegin;FIFOEnd;FIFOVirtualEnd;ADCDataPointer;DACBufRecordPointer;SaveRecording;TelegraphGain;ChannelOnGainBinFlag;DigitalChannels"
 StrConstant ITC_BoardInfo="V_SecPerTick;MinSamplingTime;MaxSamplingTime;FIFOLength;NumberOfDacs;NumberOfAdcs"
 Constant ITCMaxBlockSize=16383
 Constant ITCMinRecordingLen=0.2 //minimal length of data in sec for continuous acquisitions
@@ -2350,10 +2350,11 @@ Function itc_update_controls(runstatus)
 	endif
 End
 
-Function itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
+Function itc_reload_dac_from_src(countDAC, wavepaths, dacwave, [suppress_warning])
 	Variable countDAC
 	WAVE /T wavepaths
 	WAVE dacwave
+	Variable suppress_warning
 	
 	Variable i
 	String tmpstr
@@ -2364,12 +2365,13 @@ Function itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
 			WAVE srcwave=$wavepaths[i]; AbortOnRTE
 			Variable n1=DimSize(dacwave, 0); AbortOnRTE
 			Variable n2=DimSize(srcwave, 0); AbortOnRTE
-			if(n1!=n2)
+			if(n1!=n2 && suppress_warning!=1)
 				sprintf tmpstr, "Warning: DAC source wave %s contains %d points while DAC buffer length is %d.", wavepaths[i], n2, n1; AbortOnRTE
 				itc_updatenb(tmpstr, r=32768, g=0, b=0); AbortOnRTE
-				if(n1>n2)
-					n1=n2
-				endif
+			endif
+			
+			if(n1>n2)
+				n1=n2
 			endif
 			multithread dacwave[0,n1-1][i]=srcwave[p]; AbortOnRTE
 		endif
@@ -2390,6 +2392,10 @@ Function itc_update_taskinfo()
 	WAVE /T wdacsrcwave=$WBPkgGetName(fPath, WBPkgDFWave, "DAC_SrcWave")
 	String adcdata=WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 	String dacdata=WBPkgGetName(fPath, WBPkgDFWave, "DACData")
+	String dacdataforuser=WBPkgGetName(fPath, WBPkgDFWave, "DACDataForUser")
+	
+	String dacbufrecord=WBPkgGetName(fPath, WBPkgDFWave, "DACBufRecord")
+	NVAR DACBufRecordPointer=$WBPkgGetName(fPath, WBPkgDFVar, "DACBufRecordPointer")
 	
 	Variable countADC=str2num(GetUserdata("ITCPanel", "itc_grp_ADC", "selected"))
 	Variable countDAC=str2num(GetUserdata("ITCPanel", "itc_grp_DAC", "selected"))
@@ -2431,16 +2437,23 @@ Function itc_update_taskinfo()
 							 //THE DIGITAL CHANNEL BY DEFAULT WILL RESET TO ALL ZEROES IF NOT SELECTED
 			ControlInfo /W=ITCPanel itc_sv_rtdac0	
 			Make /O /D /N=(recordingsize, 1) $dacdata=V_Value; AbortOnRTE
+			Make /O /D /N=(recordingsize*2, 1) $dacbufrecord=0; AbortOnRTE
+			Make /O /D /N=(recordingsize, 1) $dacdataforuser=0; AbortOnRTE
 		else
 			Make /O /D /N=(recordingsize, countDAC) $dacdata=0; AbortOnRTE
+			Make /O /D /N=(recordingsize*2, countDAC) $dacbufrecord=0; AbortOnRTE
+			Make /O /D /N=(recordingsize, countDAC) $dacdataforuser=0; AbortOnRTE
 		endif
 		
 		j=0
 		WAVE dacwave=$dacdata	
 		WAVE /T wavepaths=$dacdatawavepath
+		Wave dacbufrecord_wave=$dacbufrecord
 		
 		if(countDAC>0)
 			itc_reload_dac_from_src(countDAC, wavepaths, dacwave)
+			itc_reload_dac_from_src(countDAC, wavepaths, dacbufrecord_wave, suppress_warning=1)
+			DACBufRecordPointer=RecordingSize
 		endif
 
 		//preapare Telegraph assignments and scale factors
@@ -2744,6 +2757,7 @@ Function itc_bgTask(s)
 	NVAR FIFOEnd=$WBPkgGetName(fPath, WBPkgDFVar, "FIFOEnd")
 	NVAR FIFOVirtualEnd=$WBPkgGetName(fPath, WBPkgDFVar, "FIFOVirtualEnd")
 	NVAR ADCDataPointer=$WBPkgGetName(fPath, WBPkgDFVar, "ADCDataPointer")
+	NVAR DACBufRecordPointer=$WBPkgGetName(fPath, WBPkgDFVar, "DACBufRecordPointer")
 
 	NVAR ChnOnGainBinFlag=$WBPkgGetName(fPath, WBPkgDFVar, "ChannelOnGainBinFlag")
 	
@@ -2752,6 +2766,8 @@ Function itc_bgTask(s)
 
 	WAVE adcdata=$WBPkgGetName(fPath, WBPkgDFWave, "ADCData")
 	WAVE dacdata=$WBPkgGetName(fPath, WBPkgDFWave, "DACData")
+	WAVE dacbufrecord=$WBPkgGetName(fPath, WBPkgDFWave, "DACBufRecord")
+	WAVE dacdata_for_user=$WBPkgGetName(fPath, WBPkgDFWave, "DACDataForUser")
 	
 	WAVE /T adcdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "ADCDataWavePath")
 	WAVE /T dacdatawavepath=$WBPkgGetName(fPath, WBPkgDFWave, "DACDataWavePath")
@@ -2806,7 +2822,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, dacdata, total_count, 0, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
+					refFunc(adcdata, dacdata_for_user, total_count, 0, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_IDLE); AbortOnRTE
 				endif
 			endif
 			break
@@ -2815,12 +2831,13 @@ Function itc_bgTask(s)
 			String errMsg=""
 			//cycle of recording clear to zero. user function will receive a fresh start
 			cycle_count=0
+			DACBufRecordPointer=0
 
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(((Status & ITCSTATUS_ALLOWINIT)==0) && str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
 					//Attention: at this point, no adcdata wave have been initialized
-					userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
+					userfunc_ret=refFunc(adcdata, dacdata_for_user, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_START_BEFOREINIT); AbortOnRTE
 					if(userfunc_ret>0) //user function can decide when to allow init
 						if((Status & ITCSTATUS_FUNCALLED_BEFOREINIT)==0)
 							sprintf tmpstr, "User function holds initialization with return code %d...", userfunc_ret
@@ -2881,7 +2898,7 @@ Function itc_bgTask(s)
 				if(strlen(UserFunc)>0)
 					FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 					if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-						userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
+						userfunc_ret=refFunc(adcdata, dacdata_for_user, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_START_AFTERINIT); AbortOnRTE
 					endif
 				endif
 				
@@ -2979,7 +2996,7 @@ Function itc_bgTask(s)
 			DebugStr=""
 			SampleInt=1/SamplingRate
 #if defined(ITCDEBUG)
-			availablelen=round(BlockSize*0.7-(abs(floor(enoise(0.5*BlockSize))))); success=1
+			availablelen=round(BlockSize*0.05-(abs(floor(enoise(0.02*BlockSize))))); success=1
 #else
 			availablelen=LIH_AvailableStimAndSample(success)
 #endif
@@ -3040,6 +3057,19 @@ Function itc_bgTask(s)
 							AbortOnValue 1, 930
 						endif
 						multithread tmpstim[p0,p1][]=dacdata[p+FIFOBegin][q]; AbortOnRTE
+						multithread dacbufrecord[DACBufRecordPointer+p0, DACBufRecordPointer+p1][]=dacdata[p-DACBufRecordPointer+FIFOBegin][q]; AbortOnRTE
+						
+						DACBufRecordPointer+=p1-p0+1
+						
+						if(DACBufRecordPointer<RecordingSize)
+							multithread dacdata_for_user[][]=dacbufrecord[p+RecordingSize][q]
+						else
+							multithread dacdata_for_user[][]=dacbufrecord[p][q]
+						endif
+						
+						if(DACBufRecordPointer>=2*RecordingSize)
+							DACBufRecordPointer=0
+						endif
 					else
 						FIFOBegin=0
 					endif
@@ -3056,6 +3086,19 @@ Function itc_bgTask(s)
 					endif
 					
 					multithread tmpstim[p0,p1][]=dacdata[p-p0][q]; AbortOnRTE
+					
+					if(DACBufRecordPointer<RecordingSize)
+						multithread dacdata_for_user[][]=dacbufrecord[p][q]
+					else
+						multithread dacdata_for_user[][]=dacbufrecord[p+RecordingSize][q]
+					endif
+						
+					multithread dacbufrecord[DACBufRecordPointer, DACBufRecordPointer+p1-p0+1][]=dacdata[p-DACBufRecordPointer][q]; AbortOnRTE
+					DACBufRecordPointer+=p1-p0+1
+					
+					if(DACBufRecordPointer>=2*RecordingSize)
+						DACBufRecordPointer=0
+					endif
 				endif
 				
 #if defined(ITCDEBUG)
@@ -3095,7 +3138,7 @@ Function itc_bgTask(s)
 						if(strlen(UserFunc)>0)
 							FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 							if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-								userfunc_ret=refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
+								userfunc_ret=refFunc(adcdata, dacdata_for_user, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_CYCLESYNC); AbortOnRTE
 								if(userfunc_ret!=0) //user function returned non-zero code, will stop the recording
 									sprintf tmpstr, "Error: User function returned code %d. Recording is terminated.", userfunc_ret
 									itc_updatenb(tmpstr, r=32768, g=0, b=0)
@@ -3167,7 +3210,7 @@ Function itc_bgTask(s)
 			if(strlen(UserFunc)>0)
 				FUNCREF prototype_userdataprocessfunc refFunc=$UserFunc
 				if(str2num(StringByKey("ISPROTO", FuncRefInfo(refFunc)))==0) //not prototype func
-					refFunc(adcdata, dacdata, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
+					refFunc(adcdata, dacdata_for_user, total_count, cycle_count, RecordingSize, selectedadc_number, selecteddac_number, SamplingRate, ITCUSERFUNC_STOP); AbortOnRTE
 				endif
 			endif
 			Status=4
