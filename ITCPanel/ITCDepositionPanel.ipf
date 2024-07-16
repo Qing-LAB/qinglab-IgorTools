@@ -1619,18 +1619,20 @@ Function DP_inspect_data_panel_init()
 	PopupMenu DP_folder,pos={0,0},size={250,20},bodywidth=150
 	String s=StringFromList(0, DP_get_deposition_folder(), ";")
 	String sl="\""+DP_get_dimlabels(s, s+"_history", 1)+"\""
-	PopupMenu DP_trace,title="Signal",value=#sl
-	PopupMenu DP_trace,pos={0,20},size={250,20},bodywidth=150,proc=DP_pm_update_signal
-	Checkbox DP_errorbar,title="Show error bar",pos={10,40},size={250,20}
+	PopupMenu DP_traceA,title="CursorA Signal",value=#sl
+	PopupMenu DP_traceA,pos={0,20},size={250,20},bodywidth=150,proc=DP_pm_update_signal
+	PopupMenu DP_traceB,title="CursorB Signal",value=#sl
+	PopupMenu DP_traceB,pos={0,40},size={250,20},bodywidth=150,proc=DP_pm_update_signal
+	
 	Button DP_update_hist_trace,title="update trace",pos={0,60},size={250,20},proc=DP_btn_update_trace
 	
-	GroupBox grpbox_cursorA, title="CursorA", size={140,100},pos={260,0}
-	GroupBox grpbox_cursorB, title="CursorB", size={140,100},pos={410,0}
+	GroupBox grpbox_info, title="Info", size={330,100},pos={260,0}
 	
-	TitleBox DP_title_cursorA title="cursor A\nInformation ",pos={265,15},fixedSize=1,size={130,60}
-	TitleBox DP_title_cursorB title="cursor B\nInformation ",pos={415,15},fixedSize=1,size={130,60}
-	Button DP_save_cursorA title="Load Data", pos={280,75},size={100,20}
-	Button DP_save_cursorB title="Load Data", pos={430,75},size={100,20}
+	TitleBox DP_title_infoA title=" ",pos={265,15},fixedSize=1,size={320,30},fSize=9
+	TitleBox DP_title_infoB title=" ",pos={265,46},fixedSize=1,size={320,30},fSize=9
+	
+	Button DP_save_cursorA title="Load Cursor A Data", pos={270,78},size={120,20}
+	Button DP_save_cursorB title="Load all data between A and B", pos={400,78},size={180,20}
 	
 	NewPanel /HOST=$hist_disp_name /N=$(hist_disp_name+"_RAW") /EXT=0 /k=2 /W=(0,0,480,270)
 	
@@ -1649,21 +1651,18 @@ End
 
 Function DP_pm_update_signal(pa) : PopupMenuControl
 	STRUCT WMPopupAction &pa
-	String panelname=pa.win
+	String panel_name=pa.win
 	
 	switch( pa.eventCode )
 		case 2: // mouse up
 			Variable popNum = pa.popNum
 			String popStr = pa.popStr
-			
-			ControlInfo /W=$panelname DP_folder
+			String disp_name=GetUserData(panel_name, "", "DP_RAW_DISP")
+			ControlInfo /W=$panel_name DP_folder
 			String foldername = S_Value
+
+			update_raw_disp(panel_name, disp_name, foldername)
 			
-			Wave w = $("root:"+foldername+":"+foldername+"_history")
-			
-			Variable idx = FindDimLabel(w, 1, popStr)
-			
-			DP_update_hist_view(panelname, w, idx)
 			break
 		case -1: // control being killed
 			break
@@ -1704,7 +1703,7 @@ Function /T DP_update_file_record_flag(wave hw, wave /T rw, Variable ptidx, [Var
 		flag = hw[%FLAGS][0][ptidx]
 	endif
 	
-	if(flag>0)
+	if(flag>=0)
 		return rw[flag]
 	else
 		return ""
@@ -1739,6 +1738,8 @@ Function DP_hist_hook(s)
 			Variable idx = FindDimLabel(hw, 1, signal)
 			
 			String cursor_flag=GetUserData(disp_name, "", "CURSOR_STATUS")
+			String cursor_fileinfo=GetUserData(disp_name, "", "CURSOR_FILEINFO")
+			
 			if(strlen(cursor_flag)==0)
 				cursor_flag="0;0;"
 			endif
@@ -1754,26 +1755,32 @@ Function DP_hist_hook(s)
 				
 				if(numtype(ptidx)==0)
 					String filename=DP_update_file_record_flag(hw, rw, ptidx)
+					String infostr=filename
+					
 					String home_folder=""
 					PathInfo home
 					String experiment_path = S_path
 					String save_data_folder = ParseFilePath(2, experiment_path, ":", 0, 0)
 					save_data_folder += foldername
-					//GetUserData("ITCPanel", "", "DEPOSIT_DATAFOLDER")
 					
-					if(strlen(filename)>0)
+					if(strlen(filename)>0)											
 						filename = save_data_folder+":"+filename+".ibw"
 						LoadWave /O/Q/N filename; AbortOnRTE
 						String wn=StringFromList(0, S_WaveNames)
 						Duplicate /O $wn, $("RAW_DISP_CURSOR_"+s.cursorName); AbortOnRTE
 						KillWaves /Z $wn; AbortOnRTE
 						flag = 1
+						
+						GetFileFolderInfo filename
+						String modified_time = Secs2Date(V_modificationDate, -2) + "," + Secs2Time(V_modificationDate, 3)
+						
+						infostr+=" M: "+modified_time
 					else
 						Wave w=$("RAW_DISP_CURSOR_"+s.cursorName)
 						if(WaveExists(w))
 							w=NaN
 						endif
-						
+						infostr+= " No raw data recorded."
 					endif				
 				endif
 				
@@ -1787,7 +1794,14 @@ Function DP_hist_hook(s)
 					default:
 						break
 				endswitch
-					
+			
+				cursor_fileinfo=ReplaceStringByKey("CURSOR_"+s.cursorName, cursor_fileinfo, infostr)
+				SetWindow $disp_name, userdata(CURSOR_FILEINFO)=cursor_fileinfo
+				
+				infostr=StringByKey("CURSOR_A", cursor_fileinfo)
+				TitleBox DP_title_infoA win=$panel_name,title="CURSOR_A: "+infostr
+				infostr=StringByKey("CURSOR_B", cursor_fileinfo)
+				TitleBox DP_title_infoB win=$panel_name,title="CURSOR_B: "+infostr
 			catch
 				Variable err = GetRTError(1)
 				print "error when loading file", filename
@@ -1795,17 +1809,12 @@ Function DP_hist_hook(s)
 				print GetErrMessage(err)
 			endtry
 			String cursor_list=""
-			if(cursor_A)
-				cursor_list+="A;"
-			endif
-			if(cursor_B)
-				cursor_list+="B;"
-			endif
+			
 			sprintf cursor_flag, "%d;%d;", cursor_A, cursor_B
 			SetWindow $disp_name, userdata(CURSOR_STATUS)=cursor_flag
 			
 			SetDataFolder dfr
-			update_raw_disp(disp_name, foldername, cursor_list, idx)
+			update_raw_disp(panel_name, disp_name, foldername)
 			hookResult = 1	// We handled keystroke
 			break
 
@@ -1814,10 +1823,25 @@ Function DP_hist_hook(s)
 	return hookResult		// If non-zero, we handled event and Igor will ignore it.
 End
 
-Function update_raw_disp(String disp_name, String foldername, String cursor_list, Variable idx)
+Function update_raw_disp(String panel_name, String disp_name, String foldername)
 	string trlist = TraceNameList(disp_name, ";", 1)
 	variable i
 	i=ItemsInList(trlist, ";")
+	String cursor_status=GetUserData(disp_name, "", "CURSOR_STATUS")
+	if(strlen(cursor_status)==0)
+		cursor_status="0;0;"
+	endif
+	Variable cursor_A=str2num(StringFromList(0, cursor_status))
+	Variable cursor_B=str2num(StringFromList(1, cursor_status))
+	String cursor_list=""
+	if(cursor_A==1)
+		cursor_list+="A;"
+	endif
+	if(cursor_B==1)
+		cursor_list+="B;"
+	endif
+	ControlInfo /W=$panel_name DP_traceA //TODO
+	ControlInfo /W=$panel_name DP_traceB
 	do
 		if(i>0)
 			RemoveFromGraph /W=$disp_name $(StringFromList(i-1, trlist))
@@ -1837,6 +1861,9 @@ Function update_raw_disp(String disp_name, String foldername, String cursor_list
 		
 		if(numtraces>0)
 			for(i=0; i<numtraces; i+=1)
+				
+				Variable idx=0 //TODO
+				
 				String axisname="left"+num2istr(i)
 				Wave w=$(raw_name+StringFromList(i, cursor_list))
 				if(numtraces>1)
@@ -1918,14 +1945,6 @@ Function DP_update_hist_view(String panelname, Wave w, Variable idx)
 	ModifyGraph /W=$dispname zColor={w[%FLAGS][idx][*],0,1,BlueBlackRed,0}
 	//ModifyGraph /W=$dispname zmrkSize={w[%FLAGS][idx][*],-1,1,1,5}
 	ModifyGraph /W=$dispname mrkThick=2
-	
-	ControlInfo /W=$panelname DP_errorbar
-	Variable errbar=V_value
-	
-	trlist = StringFromList(0, TraceNameList(dispname, ";", 1), ";")
-	if(errbar)
-		ErrorBars /W=$dispname $trlist SHADE={0,0,(0,0,0,0),(0,0,0,0)},wave=(w[%SDEV][idx][*],w[%SDEV][idx][*])
-	endif
 	
 	ShowInfo /W=$dispname
 End
