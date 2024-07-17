@@ -23,10 +23,13 @@ Constant MIN_POST_PULSE_DELAY=10
 Constant MAX_POST_PULSE_DELAY=50
 Constant MIN_POST_PULSE_SAMPLELEN=10
 
-Constant ITCDEP_REST = 1
-Constant ITCDEP_REST_TARGET_COND_REACHED = 2
-Constant ITCDEP_CLOSE = 3
-Constant ITCDEP_OPEN = 4
+Constant ITCDEP_REST = 0
+Constant ITCDEP_REST_TARGET_COND_REACHED = 1
+Constant ITCDEP_CLOSE = 2
+Constant ITCDEP_OPEN = 3
+StrConstant ITCDEP_PULSETYPELIST="REST;REST_TARGET_COND_REACHED;CLOSING;OPENING;"
+
+Constant HISTORY_RECORD_DIMSIZE=16
 
 StrConstant ITCDEP_STATE_STR = "REST;REST_TARGET_COND_REACHED;CLOSE;OPEN"
 
@@ -68,7 +71,7 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Make /O/N=(len, chnnum+1)/D $raw_record_name=NaN //rawwave has one more colume for time stamp
 		Wave rawwave=$raw_record_name
 		
-		Make /O/N=(15, chnnum, max_cycle_count)/D $history_record_name = NaN, $history_view_name = NaN
+		Make /O/N=(HISTORY_RECORD_DIMSIZE, chnnum, max_cycle_count)/D $history_record_name = NaN, $history_view_name = NaN
 		Make /O/N=(len)/T=(strlen("raw_")+8+strlen("_")+8+strlen(".ibw")) $raw_record_file_idx
 
 		Wave historywave=$history_record_name
@@ -93,6 +96,7 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		SetDimLabel 0, 12, PULSE_WIDTH, historywave, hist_view
 		SetDimLabel 0, 13, PULSE_HEIGHT, historywave, hist_view
 		SetDimLabel 0, 14, FLAGS, historywave, hist_view
+		SetDimLabel 0, 15, PULSE_TYPE, historywave, hist_view
 		
 		Variable i
 		for(i=0; i<adc_chnnum; i+=1)
@@ -883,7 +887,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 		
 		deposition_exec_status = str2num(GetUserData("ITCPanel", "", "DepositRecord_DEPOSIT_EXEC"))
 		if(deposition_exec_status == 0)
-			deposition_indicator = 0
+			deposition_indicator = ITCDEP_REST
 		endif
 		
 		total_cycle_time=length/samplingrate
@@ -1039,6 +1043,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			DepositionPanelInit(length)
 			ret_val=0
 			hist_view=NaN
+			// DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
 			deposition_action_record=ITCDEP_REST
 			DepositionPanel_update_exec_button(0)
 			DepositePanel_GeneratePulse(deposit_folder_name, pulse_method, samplingrate)
@@ -1091,8 +1096,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			//timestamp
 			rawwave[][adc_chnnum+dac_chnnum+2] = total_count*length/samplingrate+p/samplingrate; AbortOnRTE
 			
-			Variable timestamp_ticks = ticks
-			
+			Variable timestamp_ticks = ticks			
 		
 			WaveStats /Q /PCST /Z tmp_stat
 			Wave M_WaveStats
@@ -1107,6 +1111,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			historywave[%SKEWNESS][][hist_endidx]=M_WaveStats[%skew][q];AbortOnRTE
 			historywave[%KURTOSIS][][hist_endidx]=M_WaveStats[%kurt][q];AbortOnRTE
 			historywave[%FLAGS][][hist_endidx]=-1; AbortOnRTE
+			historywave[%PULSE_TYPE][][hist_endidx]=-1; AbortOnRTE
 			
 			Variable t_cond=historywave[%MEANVALUE][%TUNNELING_COND][hist_endidx]*1e9
 			Variable i_cond=historywave[%MEANVALUE][%IONIC_COND][hist_endidx]*1e9
@@ -1135,13 +1140,27 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			historywave[%PULSE_HIGH][][hist_endidx]=V_max;AbortOnRTE
 			historywave[%PULSE_LOW][][hist_endidx]=V_min;AbortOnRTE
 			
-			if(V_max-V_avg > V_avg-V_min)
-				historywave[%PULSE_HEIGHT][][hist_endidx] = V_max-V_min
-			else
-				historywave[%PULSE_HEIGHT][][hist_endidx] = V_min-V_max
-			endif
+			Variable pulse_height
 			
+			if(V_max-V_avg > V_avg-V_min)
+				pulse_height = V_max-V_min
+			else
+				pulse_height = V_min-V_max
+			endif
+			historywave[%PULSE_HEIGHT][][hist_endidx] = pulse_height; AbortOnRTE
 			historywave[%PULSE_WIDTH][][hist_endidx]=pulse_width;AbortOnRTE
+			print(pulse_height)
+			if(pulse_height > 3 * V_sdev)
+				deposition_indicator=ITCDEP_OPEN
+			elseif(pulse_height < -3 * V_sdev)
+				deposition_indicator=ITCDEP_CLOSE
+			else
+				if(deposition_action_record == ITCDEP_REST_TARGET_COND_REACHED)
+					deposition_indicator = ITCDEP_REST_TARGET_COND_REACHED
+				else
+					deposition_indicator = ITCDEP_REST
+				endif
+			endif
 			
 			hist_idx_record = hist_endidx
 			cycle_record = cycle_count
@@ -1175,7 +1194,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 				raw_file_name_record = save_data_folder+":"+tmpstr
 				
 				historywave[%FLAGS][][hist_endidx]=fileidx_last
-				sprintf cali_str, "Raw data file saved as: [%s]", tmpstr
+				sprintf cali_str, "Raw data file saved as: [%s] with pulse type of [%s]", tmpstr, StringFromList(deposition_indicator, ITCDEP_PULSETYPELIST)
 				itc_updatenb(cali_str)
 			endif
 			
@@ -1197,15 +1216,11 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			
 			if(deposition_exec_status)
 				if(rest_cycle_countdown >= rest_cycle_number)
-					if(deposition_indicator==0)
-						deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, exec_mode, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
-					endif
+					DepositPanel_SendPulse(deposit_folder_name, exec_mode, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
 					rest_cycle_countdown -= 1				
 				else
 					//always make sure to send rest potential/wave to the electrodes during resting cycles
-					deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
-					deposition_indicator=0
-					
+					DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
 					rest_cycle_countdown -= 1
 					if(rest_cycle_countdown <0)
 						rest_cycle_countdown = rest_cycle_number						
@@ -1220,12 +1235,9 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 				endif				
 			else
 				//force rest potential when not in deposition execution mode
-				deposition_indicator=DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
-				if(deposition_indicator!=0 || rest_cycle_countdown!=rest_cycle_number)
-					//make sure these are reset
-					deposition_indicator=0
-					rest_cycle_countdown=rest_cycle_number
-				endif
+				DepositPanel_SendPulse(deposit_folder_name, -1, target_cond, target_err_ratio, src_cond, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, PID_CV)
+				deposition_indicator=ITCDEP_REST
+				rest_cycle_countdown=rest_cycle_number
 			endif
 			
 			ret_val=0 //if need to stop recording by the user function, return a non-zero value
@@ -1237,12 +1249,12 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			historywave[][][hist_endidx]=NaN
 			historywave[%FLAGS][][hist_endidx] = -99
 			note /k historywave, num2str(hist_endidx) //this is a mark to flag the stop operation
+			DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
 			DepositionPanel_update_exec_button(0)
 			deposition_action_record=ITCDEP_REST
 			break //ret_val is not checked for this call
 		
 		case ITCUSERFUNC_DISABLE: //called when the user unchecked the USER_FUNC
-			
 			SetWindow ITCPanel, userdata(DepositRecord_SAVE_FOLDER_READY)="0"
 			DepositionPanel_update_exec_button(0)
 			deposition_action_record=ITCDEP_REST
@@ -1350,7 +1362,8 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 			duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
 			duplicate /O idacw0_rest, idacw0; AbortOnRTE
 			duplicate /O idacw1_rest, idacw1; AbortOnRTE
-			nbstr="sending rest potential..."
+//			nbstr="sending rest potential..."
+			new_deposition_action = ITCDEP_REST
 			break
 		case 2: //close
 			if((abs(src_cond) < abs(target_cond))  && (deltaC > abs(target_cond)*target_err_ratio/100))
@@ -1359,7 +1372,7 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 				duplicate /O tdacw1_dp, tdacw1; AbortOnRTE
 				duplicate /O idacw0_dp, idacw0; AbortOnRTE
 				duplicate /O idacw1_dp, idacw1; AbortOnRTE
-				nbstr="sending CLOSING potential..."
+//				nbstr="sending CLOSING potential..."
 				new_deposition_action = ITCDEP_CLOSE
 				retVal = -1
 			else
@@ -1379,7 +1392,7 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 				duplicate /O tdacw1_rm, tdacw1; AbortOnRTE
 				duplicate /O idacw0_rm, idacw0; AbortOnRTE
 				duplicate /O idacw1_rm, idacw1; AbortOnRTE
-				nbstr="sending OPENING potential..."
+//				nbstr="sending OPENING potential..."
 				new_deposition_action = ITCDEP_OPEN
 				retVal = 1
 			else
@@ -1388,7 +1401,7 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 				duplicate /O idacw0_rest, idacw0; AbortOnRTE
 				duplicate /O idacw1_rest, idacw1; AbortOnRTE
 				new_deposition_action = ITCDEP_REST_TARGET_COND_REACHED
-				nbstr="sending rest potential..."
+//				nbstr="sending rest potential..."
 			endif
 			
 			break
@@ -1397,7 +1410,7 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 			duplicate /O tdacw1_dp, tdacw1; AbortOnRTE
 			duplicate /O idacw0_dp, idacw0; AbortOnRTE
 			duplicate /O idacw1_dp, idacw1; AbortOnRTE
-			nbstr="sending CLOSING potential..."
+//			nbstr="sending CLOSING potential..."
 			new_deposition_action = ITCDEP_CLOSE
 			retVal = -1
 			break
@@ -1406,7 +1419,7 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 			duplicate /O tdacw1_rm, tdacw1; AbortOnRTE
 			duplicate /O idacw0_rm, idacw0; AbortOnRTE
 			duplicate /O idacw1_rm, idacw1; AbortOnRTE
-			nbstr="sending OPENING potential..."
+//			nbstr="sending OPENING potential..."
 			new_deposition_action = ITCDEP_OPEN
 			retVal = 1
 			break
@@ -1426,21 +1439,21 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 				duplicate /O tdacw1_rm, tdacw1; AbortOnRTE
 				duplicate /O idacw0_rm, idacw0; AbortOnRTE
 				duplicate /O idacw1_rm, idacw1; AbortOnRTE
-				nbstr="sending OPENING potential..."
+//				nbstr="sending OPENING potential..."
 				new_deposition_action = ITCDEP_OPEN
 			elseif(retVal<0)
 				duplicate /O tdacw0_dp, tdacw0; AbortOnRTE
 				duplicate /O tdacw1_dp, tdacw1; AbortOnRTE
 				duplicate /O idacw0_dp, idacw0; AbortOnRTE
 				duplicate /O idacw1_dp, idacw1; AbortOnRTE
-				nbstr="sending CLOSING potential..."
+//				nbstr="sending CLOSING potential..."
 				new_deposition_action = ITCDEP_CLOSE
 			else
 				duplicate /O tdacw0_rest, tdacw0; AbortOnRTE
 				duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
 				duplicate /O idacw0_rest, idacw0; AbortOnRTE
 				duplicate /O idacw1_rest, idacw1; AbortOnRTE
-				nbstr="sending rest potential..."
+//				nbstr="sending rest potential..."
 				new_deposition_action = ITCDEP_REST_TARGET_COND_REACHED
 			endif
 				
@@ -1450,16 +1463,15 @@ Function DepositPanel_SendPulse(String deposit_folder_name, Variable deposition_
 			duplicate /O tdacw1_rest, tdacw1; AbortOnRTE
 			duplicate /O idacw0_rest, idacw0; AbortOnRTE
 			duplicate /O idacw1_rest, idacw1; AbortOnRTE
-			nbstr="sending rest potential..."
+//			nbstr="sending rest potential..."
+			new_deposition_action = ITCDEP_REST
 			break
 		endswitch
 		
 		if(deposition_exec_status)
-			itc_updatenb(nbstr)
-			
+//			itc_updatenb(nbstr)			
 			if(deposition_mode >= 0 && new_deposition_action != deposition_action_record)
-				deposition_action_record = new_deposition_action
-				
+				deposition_action_record = new_deposition_action				
 				switch(new_deposition_action)
 					case ITCDEP_REST:
 						DepositPanel_nb_record_status("Deposition state change: Switching to rest")
