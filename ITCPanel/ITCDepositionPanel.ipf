@@ -484,7 +484,8 @@ Function DepositionPanelInit(variable length)
 		tvalstr="root:"+deposit_folder_name+":rest_cycle_countdown"
 		Valdisplay depositpanel_pulsedelaycount, title="Rest cycle countdown:", value=#(tvalstr),size={180,20},pos={210,380}
 		tvalstr="root:"+deposit_folder_name+":deposition_indicator"
-		ValDisplay depositpanel_pulse_indicator,title="",pos={390,380},size={15,15},zeroColor=(0,65535,0),mode=1,barmisc={0,0},limits={-1,1,0},value=#(tvalstr)
+		ValDisplay depositpanel_pulse_indicator,title="",pos={390,380},size={15,15},zeroColor=(0,65535,0),mode=1,barmisc={0,0},value=#(tvalstr)
+		ValDisplay depositpanel_pulse_indicator limits={1,3,2},lowColor= (0,65535,0),zeroColor= (0,0,65535)
 		
 		Button depositpanel_exec,title="Execute",size={80,20},pos={205,400},fColor=(0,32768,0),proc=DepositionPanel_Btn_exec
 		PopupMenu depositpanel_depmode,title="mode",size={100,20},pos={290,400},value=DEPOSIT_MODE_POPMENU_STR,mode=exec_mode
