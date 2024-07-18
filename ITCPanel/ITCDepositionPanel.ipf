@@ -9,10 +9,16 @@ End
 
 Constant MaxDepositionRawRecordingLength = 600 // sec
 
-Function DepositPanel_PostSlackChannel(String token, String channel, String message, String notify_person)
-	String URL = "https://slack.com/api/chat.postMessage"
-	String postData = "channel="+URLEncode(channel)+"&text=@"+URLEncode(notify_person)+"%20"+URLEncode(message)+"&pretty=1"
-	URLRequest /DSTR = postData url=URL, method = post, headers = token
+Function DepositPanel_PostSlackChannel(String URL, String message, String notify_person, [Variable quiet])
+	//String URL = "https://slack.com/api/chat.postMessage"
+	//String URL = ""
+	//String postData = "channel="+URLEncode(channel)+"&text=@"+URLEncode(notify_person)+"%20"+URLEncode(message)+"&pretty=1"
+	String headers = "Content-type: application/json"
+	String postData = "{\"text\":\""+message+" \n<@" + notify_person+">\"}"
+	URLRequest /DSTR = postData /TIME=0.01 /Z url=URL, method = post, headers = headers
+	if(quiet==0)
+		print V_flag, V_responseCode, S_serverResponse, S_headers
+	endif
 End
 
 Constant MIN_PULSE_WIDTH=1
@@ -27,7 +33,6 @@ Constant ITCDEP_REST = 0
 Constant ITCDEP_REST_TARGET_COND_REACHED = 1
 Constant ITCDEP_CLOSE = 2
 Constant ITCDEP_OPEN = 3
-StrConstant ITCDEP_PULSETYPELIST="REST;REST_TARGET_COND_REACHED;CLOSING;OPENING;"
 
 Constant HISTORY_RECORD_DIMSIZE=16
 
@@ -41,8 +46,7 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 	WAVE /T chnlist=$WBPkgGetName(fPath, WBPkgDFWave, "ADC_Channel"); AbortOnRTE
 	WAVE /T dacchnlist=$WBPkgGetName(fPath, WBPkgDFWave, "DAC_Channel"); AbortONRTE
 	WAVE selectedchn=$WBPkgGetName(fPath, WBPkgDFWave, "selectedadcchn"); AbortOnRTE
-	WAVE selecteddacchn=$WBPkgGetName(fPath, WBPkgDFWave, "selecteddacchn"); AbortOnRTE
-	
+	WAVE selecteddacchn=$WBPkgGetName(fPath, WBPkgDFWave, "selecteddacchn"); AbortOnRTE	
 
 	if(DimSize(selectedchn, 0)<2)
 		print "at least two adc channels are needed"
@@ -181,6 +185,21 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 		Variable /G cycle_record=0
 		String /G raw_file_name_record=""
 		
+		String /G slack_message=""
+		String /G slack_user=""
+		Variable /G slack_post_variable=0
+		String /G slack_post_url=""
+		String url=""
+		String user=""
+		
+		Prompt url, "Slack URL"
+		Prompt user, "notify person"
+		DoPrompt "Please provide slack configuration:", url, user
+		if(V_flag==0)
+			slack_post_url=url
+			slack_user=user
+			CtrlNamedBackground $deposit_folder_name, burst=0, dialogsOK=0, period=30, proc=slack_background_task, start
+		endif
 	catch
 		Variable err = GetRTError(1)		// Gets error code and clears error
 		String errMessage = GetErrMessage(err)
@@ -192,6 +211,37 @@ Function DepositionPanelPrepareDataFolder(variable len, variable samplingrate, v
 	return retVal
 End
 
+Function slack_background_task(s)
+	STRUCT WMBackgroundStruct &s
+	
+	DFREF dfr=GetDataFolderDFR()
+	try
+		SetDataFolder $("root:"+s.name); AbortOnRTE
+		SVAR slack_message; AbortOnRTE
+		NVAR slack_post_variable; AbortOnRTE
+		SVAR slack_post_url; AbortOnRTE
+		SVAR slack_user; AbortOnRTE
+		
+		if(NVAR_Exists(slack_post_variable) && SVAR_Exists(slack_message) && SVAR_Exists(slack_post_url) && SVAR_Exists(slack_user))
+			if(slack_post_variable == 1 && strlen(slack_post_url)>0 && strlen(slack_message)>0)
+				slack_message=ReplaceString("\r", slack_message, "\n")
+				
+				DepositPanel_PostSlackChannel(slack_post_url, slack_message, slack_user, quiet=1); AbortOnRTE
+				slack_post_variable = 0; AbortOnRTE
+				slack_message=""; AbortOnRTE
+			endif
+		endif				
+	catch
+		Variable err=GetRTError(1)
+		print "Error found for Slack background task."
+		print GetErrMessage(err)
+		print "root:"+s.name
+		CtrlNamedBackground $s.name stop
+	endtry
+	SetDataFolder dfr
+	
+	return 0
+End
 
 StrConstant DEPOSIT_MODE_POPMENU_STR="Rest;Close;Open;ForcedClose;ForcedOpen;PID;"
 
@@ -875,6 +925,11 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 		NVAR cycle_record; AbortOnRTE
 		SVAR raw_file_name_record; AbortOnRTE
 		
+		SVAR slack_message; AbortOnRTE
+		NVAR slack_post_variable; AbortOnRTE
+		SVAR slack_post_url; AbortOnRTE
+		SVAR slack_user; AbortOnRTE
+		
 		ControlInfo /W=$(panel_name) depositpanel_depmode
 		exec_mode = V_value
 		
@@ -1149,7 +1204,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			endif
 			historywave[%PULSE_HEIGHT][][hist_endidx] = pulse_height; AbortOnRTE
 			historywave[%PULSE_WIDTH][][hist_endidx]=pulse_width;AbortOnRTE
-			print(pulse_height)
+			
 			if(pulse_height > 3 * V_sdev)
 				deposition_indicator=ITCDEP_OPEN
 			elseif(pulse_height < -3 * V_sdev)
@@ -1194,7 +1249,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 				raw_file_name_record = save_data_folder+":"+tmpstr
 				
 				historywave[%FLAGS][][hist_endidx]=fileidx_last
-				sprintf cali_str, "Raw data file saved as: [%s] with pulse type of [%s]", tmpstr, StringFromList(deposition_indicator, ITCDEP_PULSETYPELIST)
+				sprintf cali_str, "Raw data file saved as: [%s] with pulse type of [%s]", tmpstr, StringFromList(deposition_indicator, ITCDEP_STATE_STR)
 				itc_updatenb(cali_str)
 			endif
 			
@@ -1249,7 +1304,9 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			historywave[][][hist_endidx]=NaN
 			historywave[%FLAGS][][hist_endidx] = -99
 			note /k historywave, num2str(hist_endidx) //this is a mark to flag the stop operation
-			DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
+			if(deposition_exec_status)
+				DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
+			endif
 			DepositionPanel_update_exec_button(0)
 			deposition_action_record=ITCDEP_REST
 			break //ret_val is not checked for this call
@@ -1259,6 +1316,10 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			DepositionPanel_update_exec_button(0)
 			deposition_action_record=ITCDEP_REST
 			DepositionPanelExit()
+			CtrlNamedBackground $deposit_folder_name stop
+			slack_post_url=""
+			slack_user=""
+			slack_message=""
 			break
 		case ITCUSERFUNC_CUSTOMDISPLAY: //called by GUI controller where user can use the ITCPanel#rtgraph to display customized content
 			AppendToGraph /W=ITCPanel#rtgraph /L=left1 /B hist_view[%MEANVALUE][%TUNNELING_COND][0,hist_len-1] /TN='TUNNELING_COND' //vs hist_view[%TIMESTAMP][%TUNNELING_COND][]
@@ -1286,8 +1347,7 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left1
 			SetAxis /W=ITCPanel#rtgraph /A=2/N=2 left2
 			SetAxis /W=ITCPanel#rtgraph right1 -2,2
-			ModifyGraph lblPosMode(right1)=1
-
+			ModifyGraph /W=ITCPanel#rtgraph lblPosMode(right1)=1
 
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left1)={0.52,1}
 			ModifyGraph /W=ITCPanel#rtgraph axisEnab(left2)={0,0.48}
@@ -1547,6 +1607,11 @@ Function DepositPanel_nb_record_status(String msg)
 		NVAR ionic_DAC0_offset; AbortOnRTE
 		NVAR ionic_DAC1_offset; AbortOnRTE
 		
+		SVAR slack_message; AbortOnRTE
+		NVAR slack_post_variable; AbortOnRTE
+		//SVAR slack_post_url; AbortOnRTE
+		//SVAR slack_user; AbortOnRTE
+		
 		string nbstr="", tmpstr=""
 		sprintf tmpstr, "Deposition state record: HistoryIDX [%d], CycleIDX [%d]\r", hist_idx_record, cycle_record
 		nbstr+=tmpstr
@@ -1556,7 +1621,7 @@ Function DepositPanel_nb_record_status(String msg)
 		endif
 		sprintf tmpstr, "Exec mode: %s\r", StringFromList(exec_mode-1, DEPOSIT_MODE_POPMENU_STR)
 		nbstr+=tmpstr
-		sprintf tmpstr, "Current Deposition State: %s\r", StringFromList(deposition_action_record-1, ITCDEP_STATE_STR)
+		sprintf tmpstr, "Current Deposition State: %s\r", StringFromList(deposition_action_record, ITCDEP_STATE_STR)
 		nbstr+=tmpstr
 		nbstr+="ADC/DAC settings:\r"
 		sprintf tmpstr, "Offset_TDAC0 [%.4f]V, Offset_TDAC1 [%.4f]V, Offset_IDAC0[%.4f]V, Offset_IDAC1[%.4f]V\r", tunneling_DAC0_offset, tunneling_DAC1_offset, ionic_DAC0_offset, ionic_DAC1_offset
@@ -1579,6 +1644,8 @@ Function DepositPanel_nb_record_status(String msg)
 		nbstr+=tmpstr
 		
 		itc_updatenb(nbstr, r=0, g=0, b=65535)
+		slack_message=msg+"\r"+nbstr
+		slacK_post_variable=1
 	catch
 	endtry
 End
