@@ -420,7 +420,7 @@ Function DepositionPanelInit(variable length)
 		Valdisplay depositpanel_t_cond_stdev,valueBackColor=(3,52428,1)
 		
 		tvalstr="root:"+deposit_folder_name+":ionic_current"
-		Valdisplay depositpanel_i_current,title="I_i (nS):",value=#(tvalstr),size={140,20},pos={210,290},format="%+0.3f"
+		Valdisplay depositpanel_i_current,title="I_i (nA):",value=#(tvalstr),size={140,20},pos={210,290},format="%+0.3f"
 		Valdisplay depositpanel_i_current,valueBackColor=(3,52428,1)
 		Valdisplay depositpanel_i_current,help={"Cross-ionic channels current"}
 		tvalstr="root:"+deposit_folder_name+":ionic_current_stdev"
@@ -1243,8 +1243,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 				KillWaves /Z $tmpstr
 				
 				rawwaveidx[fileidx_last] = tmpstr
-				
-				note /k rawwaveidx, num2istr(fileidx_last)
+				sprintf tmpstr, "%08d", fileidx_last
+				note /k rawwaveidx, tmpstr
 				
 				raw_data_file_idx_record = fileidx_last
 				raw_file_name_record = save_data_folder+":"+tmpstr
