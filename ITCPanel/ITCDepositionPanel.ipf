@@ -1035,6 +1035,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			InsertPoints /M=0 DimSize(rawwaveidx, 0), max_cycle_count, rawwaveidx
 		endif
 		
+		String tmpstr=""
+		
 		//start of the operation	
 		switch(flag)
 		case ITCUSERFUNC_FIRSTCALL: //called when user function is first selected, user can prepare tools/dialogs for the function
@@ -1229,8 +1231,6 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			
 			//check if need to save data
 			if(save_folder_ready ==1 && deposit_recording == 1)
-				
-				String tmpstr=""
 				sprintf tmpstr, "raw_%08d_%08d", hist_endidx, cycle_count
 				String cali_str=""
 				sprintf cali_str, "TADCOFFSET=%.6e;TDAC0_OFFSET=%.6e;TDAC1_OFFSET=%.6e;TADC_SCALE=%.6e;IADCOFFSET=%.6e;IDAC0_OFFSET=%.6e;IDAC1_OFFSET=%.6e;IADC_SCALE=%.6e;", tunneling_ADC_offset, tunneling_DAC0_offset, tunneling_DAC1_offset, tunneling_scale,ionic_ADC_offset, ionic_DAC0_offset, ionic_DAC1_offset, ionic_scale
@@ -1254,7 +1254,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 				itc_updatenb(cali_str)
 			endif
 			
-			note /k historywave, num2str(hist_endidx) //this will always give the correct index to work with.
+			sprintf tmpstr, "%08d", hist_endidx
+			note /k historywave, tmpstr //this will always give the correct index to work with.
 			
 			//calculate PID
 			if(cycle_count==0 || PID_enabled==0)
@@ -1304,7 +1305,8 @@ Function ITCUSERFUNC_DepositionDataProcFunc(wave adcdata_raw, wave dacdata_raw, 
 			/////////////////////////////
 			historywave[][][hist_endidx]=NaN
 			historywave[%FLAGS][][hist_endidx] = -99
-			note /k historywave, num2str(hist_endidx) //this is a mark to flag the stop operation
+			sprintf tmpstr, "%08d", hist_endidx
+			note /k historywave, tmpstr //this is a mark to flag the stop operation
 			if(deposition_exec_status)
 				DepositPanel_SendPulse(deposit_folder_name, -1, 0, 0, 0, tunneling_bias_chn, tunneling_bias_counter_chn, ionic_bias_chn, ionic_bias_counter_chn, 0)
 			endif
