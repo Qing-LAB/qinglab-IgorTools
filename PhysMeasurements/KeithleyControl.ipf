@@ -649,7 +649,7 @@ Function kcontrol_switch(state)
 #ifndef DEBUGONLY
 			viClear(session)
 #endif
-			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?", response=statusDesc, clearOutputQueue=1, clearQueueCmd=KeithleyDefaultClearQueueCmd)
+			visaComm_SyncedWriteAndRead(session, 0, cmd="*IDN?\n", response=statusDesc, clearOutputQueue=1, clearQueueCmd=KeithleyDefaultClearQueueCmd)
 			print "Identification query returned: "+statusDesc
 			if(GrepString(UpperStr(statusDesc), "KEITHLEY INSTRUMENTS.*MODEL 26[0-9]{2}[AB]?.*")==1)
 				if(strlen(statusDesc)>38)

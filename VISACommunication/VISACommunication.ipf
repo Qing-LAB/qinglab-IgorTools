@@ -26,7 +26,7 @@
 //ChangeLog
 //Last updated 2015/10/20
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
-#include "VISA"
+//#include "VISA"
 #include "WaveBrowser"
 
 Constant visaComm_ReadWaitTime=50 // in milliseconds
@@ -340,18 +340,18 @@ Function visaComm_ReadStr(instr, str, len, [wait, set_attrs, termChar]) //read s
 			elapsed_time=ticks-start_time
 			if(status!=VI_ERROR_TMO)
 				//print "ticks passed without TMO detected:", elapsed_time
-				status=viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
-				AbortOnValue status!=VI_SUCCESS, -6	
-				
-				if(byte_at_port==0)
-					if(elapsed_time>=wait)
+				//status=viGetAttribute(instr, VI_ATTR_ASRL_AVAIL_NUM, byte_at_port)
+				//AbortOnValue status!=VI_SUCCESS, -6	
+				//
+				//if(byte_at_port==0)
+				//	if(elapsed_time>=wait)
 						//print "timeout with no bytes waiting at the port."
 						//print "elapsed time:", elapsed_time
 						//print "set waiting time:", wait
 						//print "rflag, rlen, terminal_detection:", rflag, rlen, termchar_detected
-						break // time out, no char at the port
-					endif
-				else
+				//		break // time out, no char at the port
+				//	endif
+				//else
 					packetSize=byte_at_port
 					if(len>0 && packetSize>(len-rlen))
 						packetSize=len-rlen
@@ -374,7 +374,7 @@ Function visaComm_ReadStr(instr, str, len, [wait, set_attrs, termChar]) //read s
 							endif //len is set to zero
 						endif //something has been read
 					endif //packetSize is reasonable
-				endif //byte_at_port
+				//endif //byte_at_port
 				
 				if(len>0 && rlen>=len) //full length reached
 					rflag=0

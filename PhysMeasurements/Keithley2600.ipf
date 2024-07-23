@@ -2,6 +2,19 @@
 #pragma rtGlobals=3		// Use modern global access method and strict wave access.
 #pragma IgorVersion=7
 
+
+#ifdef DEBUG_LEVEL_1
+#define DEBUG_QDLVISA_1
+#endif
+
+#ifdef DEBUG_LEVEL_2
+#define DEBUG_QDLVISA_2
+#endif
+
+#ifdef DEBUG_LEVEL_3
+#define DEBUG_QDLVISA_3
+#endif
+
 #ifndef WAVEBROWSER
 #include "WaveBrowser"
 #endif
@@ -325,7 +338,7 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 				print "invalid filter count value in the condition string for "+smuName+"."
 				break
 			case -200:
-				print "SMU not used. Blank script with only resetting will be generated."
+				print "SMU "+smuName+" not used. Blank script with only resetting will be generated."
 			default:
 				break
 			endswitch
@@ -335,6 +348,7 @@ Function KeithleyGenerateInitScript(String configStr, String & nbName)
 		Variable frequency=1000+500*smu
 		script+="beeper.beep(0.2, "+num2istr(frequency)+")\r"
 		script+="endscript\r"
+		print "SMU "+smuName+" initialization script generated."
 	endfor
 	
 	script+="loadscript IgorKeithleyInit_all()\r"
@@ -1104,11 +1118,15 @@ Function KeithleyGetLastSMUReading(WAVE w)
 	endif
 End
 
-Function KeithleySMUMeasure(String & cmd, Variable smua_srctype, Variable smua_src, Variable smub_srctype, Variable smub_src, Variable initial_take, Variable record_counter, WAVE kwave)
+Function KeithleySMUMeasure(String & cmd, Variable smua_srctype, Variable smua_src, Variable smub_srctype, Variable smub_src, Variable initial_take, Variable record_counter, WAVE kwave, [variable display_panel])
 	Variable retVal=-1
 	Variable status=str2num(StringByKey("SOURCE_MEASURE_STATUS", cmd))
 	if(numtype(status)!=0)
 		status=0
+	endif
+	
+	if(ParamIsDefault(display_panel))
+		display_panel=1
 	endif
 	
 	if(status==0)
@@ -1118,8 +1136,10 @@ Function KeithleySMUMeasure(String & cmd, Variable smua_srctype, Variable smua_s
 			smu_cmd="timer.reset() format.data=format.ASCII format.asciiprecision=10 "
 		endif
 		
-		sprintf line, "beeper.beep(0.2,1000) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") ", record_counter
-		smu_cmd+=line
+		if(display_panel>0)
+			sprintf line, "beeper.beep(0.2,1000) display.clear() display.setcursor(1,1) display.settext(\"DataPnt#%d\") ", record_counter
+			smu_cmd+=line
+		endif
 			
 		switch(smua_srctype)
 		case 1: //V-source
@@ -1173,7 +1193,9 @@ Function KeithleySMUMeasure(String & cmd, Variable smua_srctype, Variable smua_s
 		smu_cmd+=smub_meas_str
 		
 		smu_cmd+="print(\"DATA_UPDATE:1;SMUA_I:\",i0,\";SMUA_V:\",v0,\";SMUA_t:\",t0,\";SMUB_I:\",i1,\";SMUB_V:\",v1,\";SMUB_t:\",t1) "
-		smu_cmd+="display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
+		if(display_panel>0)
+			smu_cmd+="display.setcursor(2,1) display.settext(\"done!\") beeper.beep(0.2, 1500)"
+		endif
 		
 		//print smu_cmd
 		SVAR Ecmd=root:S_KeithleyCMD

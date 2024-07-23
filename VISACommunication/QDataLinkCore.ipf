@@ -3,6 +3,8 @@
 #pragma IgorVersion=7.0
 #pragma IndependentModule=QDataLinkCore
 
+#define QDATALINK_CORE
+
 #if exists("ReportVISAError")!=3
 #include "VISA"
 #endif
@@ -1704,8 +1706,13 @@ Function /T QDLInitSerialPort(String instrDesc, String initParam, Variable & ins
 			inbox=""
 			outbox=""
 			
-			cp.DEBUG_LEVEL=dbg_lvl
-			
+			NVAR dbg_lvl=root:DEBUG_LEVEL
+			if(NVAR_Exists(dbg_lvl) && dbg_lvl>0)
+				cp.DEBUG_LEVEL=dbg_lvl
+			else
+				cp.DEBUG_LEVEL=0
+			endif
+
 			StructPut /S cp, param_str //update the parameter stored in the instance string folder
 			retStr=param_str
 
@@ -1858,13 +1865,23 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 			status=viDiscardEvents(instr, VI_ALL_ENABLED_EVENTS, VI_QUEUE)
 			if(status!=VI_SUCCESS && status!=VI_SUCCESS_QUEUE_EMPTY)
 				if(dbg_lvl>=3)
+
 					qdl_log_towave("[DBL3] viDiscardEvents returned status: "+num2istr(status))
+
+					print "DEBUG_MSG_LEVEL: 3"
+					print "viDiscardEvents returned status: "+num2istr(status)
+
 				endif
 			endif
 			status=viClear(instr)
 			req[slot] = req[slot] & (~ QDL_REQUEST_CLEAR_BUFFER)
 			if(dbg_lvl>=3)
+
 				qdl_log_towave("[DBL3] viClear status:"+num2istr(status))
+
+				print "DEBUG_MSG_LEVEL: 3"
+				print "viClear status:", num2istr(status)
+
 			endif
 			AbortOnValue status!=VI_SUCCESS, -1
 		endif
@@ -1895,7 +1912,13 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 												| QDL_REQUEST_WRITE_COMPLETE | QDL_REQUEST_WRITE_ERROR | QDL_REQUEST_TIMEOUT
 							endif
 							if(dbg_lvl>=1)
+
 								qdl_log_towave("[DBL1] viWrite error. status:"+num2istr(status))
+
+								print "DEBUG_MSG_LEVEL: 1"
+								print "viWrite error."
+								print "viWrite status:", num2istr(status)
+
 							endif
 							AbortOnValue -1, -4
 						else
@@ -1903,8 +1926,15 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 							req[slot] = (req[slot] & (~(QDL_REQUEST_WRITE | QDL_REQUEST_WRITE_BUSY))) \
 											| QDL_REQUEST_WRITE_COMPLETE
 							if(dbg_lvl>=3)
+
 								qdl_log_towave("[DBL3] viWrite sent length:"+num2istr(retCnt)+", status:"+num2istr(status))
 								qdl_log_towave("[DBL3] viWrite sent :"+outbox[slot])
+
+								print "DEBUG_MSG_LEVEL: 3"
+								print "viWrite sent :"+outbox[slot]
+								print "viWrite sent length:", retCnt
+								print "viWrite status:", num2istr(status)
+
 							endif
 						endif
 					else //zero length writing will be marked finished immediately without actual writing
@@ -1918,6 +1948,11 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 		Variable read_complete_flag=0
 		
 		if((req[slot] & QDL_REQUEST_READ) && !(req[slot] & QDL_REQUEST_WRITE_BUSY))
+			if(dbg_lvl>=3)
+				print "DEBUG_MSG_LEVEL: 3"
+				print "Response is expected. Waiting to receive message."
+				printf "req[slot] flag: 0x%x\n", req[slot]
+			endif
 			if(!(req[slot] & QDL_REQUEST_READ_BUSY)) //first time receiving something
 				req[slot] = req[slot] | QDL_REQUEST_READ_BUSY
 				if(cp.inbox_request_len<=0)
@@ -1932,7 +1967,12 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 						req[slot] = (req[slot] & (~ (QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 								| QDL_REQUEST_TIMEOUT | QDL_REQUEST_READ_COMPLETE
 						if(dbg_lvl>=2)
+
 							qdl_log_towave("[DBL2] VISA read timed out:"+num2istr(current_time-cp.starttime_ms)+", threshold: "+num2istr(cp.timeout_ms))
+
+							print "DEBUG_MSG_LEVEL: 2"
+							print "VISA read timed out:", current_time-cp.starttime_ms, cp.timeout_ms
+
 						endif
 					endif
 				endif
@@ -1963,14 +2003,24 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 				else
 					if(status==VI_SUCCESS || status==VI_SUCCESS_QUEUE_NEMPTY)
 						if(dbg_lvl>=3)
+
 							qdl_log_towave("[DBL3] viWaitOnEvent returned success:"+num2istr(outEventType))
+
+							print "DEBUG_MSG_LEVEL: 3"
+							print "viWaitOnEvent returned success:"+num2istr(outEventType)
+
 						endif
 						bytes_at_port=QDL_MAX_BUFFER_LEN
 					elseif(status==VI_ERROR_TMO)
 						bytes_at_port=0
 					else
 						if(dbg_lvl>=1)
+
 							qdl_log_towave("[DBL1] viWaitOnEvent returned unknown status: "+num2istr(status))
+
+							print "DEBUG_MSG_LEVEL: 1"
+							print "viWaitOnEvent returned unknown status: ", num2istr(status)
+
 						endif
 						bytes_at_port=0
 					endif
@@ -2002,8 +2052,15 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 						status=viRead(instr, receivedStr, packetSize, retCnt)	
 						if(retCnt>0)
 							if(dbg_lvl>=3)
+
 								qdl_log_towave("[DBL3] viRead length:"+num2istr(retCnt)+", status:"+num2istr(status))
 								qdl_log_towave("[DBL3] viRead get message: "+receivedStr)
+
+								print "DEBUG_MSG_LEVEL: 3"
+								print "viRead get message: ", receivedStr
+								print "viRead length:", retCnt
+								print "viRead status:", num2istr(status)
+
 							endif
 							Variable i, termflag=0
 							for(i=0; i<retCnt; i+=1)
@@ -2036,12 +2093,23 @@ ThreadSafe Function qdl_thread_serialport_req(STRUCT QDLConnectionparam & cp, Va
 						req[slot] = (req[slot] & (~(QDL_REQUEST_READ | QDL_REQUEST_READ_BUSY))) \
 										 | QDL_REQUEST_READ_COMPLETE
 						if(dbg_lvl>=3)
+
 							qdl_log_towave("[DBL3] read request completed. status:"+num2istr(req[slot]))
+
+							print "DEBUG_MSG_LEVEL: 3"
+							print "read request completed."
+							print "request status:", num2istr(req[slot])
+
 						endif
 					endif
 					
 				endif //event arrived
 			endif //read not complete?
+		else
+			if(dbg_lvl>=3)
+				print "DEBUG_MSG_LEVEL: 3"
+				print "Response is not expected."
+			endif
 		endif
 		if(qdl_is_connection_callable(connection_type, slot))
 			if((req[slot] & QDL_REQUEST_READ_COMPLETE) || (req[slot] & QDL_REQUEST_WRITE_COMPLETE))

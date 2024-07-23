@@ -5,6 +5,8 @@
 #include "QDataLinkconstants"
 #include "QDataLinkCore"
 
+#define QDATALINK
+
 ///////////////////////////////////////////////////////////
 //QDataLink data folder structure
 //

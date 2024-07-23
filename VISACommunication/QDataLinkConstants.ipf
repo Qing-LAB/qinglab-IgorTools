@@ -101,7 +101,7 @@ Structure QDLConnectionParam
 	
 	uint32 instance
 	uint32 status
-	
+
 	uint32 DEBUG_LEVEL
 EndStructure
 

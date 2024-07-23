@@ -30,6 +30,8 @@
 #include <WaveSelectorWidget>
 #include <PopupWaveSelector>
 
+#define WAVEBROWSER
+
 Constant WB_FOLDER_MUST_EXIST=0x01
 Constant WB_WAVE_MUST_EXIST=0x02
 

@@ -22,7 +22,7 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 	
 	//all optional parameters will be properly defined, by design, from the caller in the worker thread
 	try
-		NVAR LAST_USERCMD_STATUS=:LAST_USERCMD_STATUS; AbortOnRTE
+		  NVAR LAST_USERCMD_STATUS=:LAST_USERCMD_STATUS; AbortOnRTE
 		if(!NVAR_Exists(LAST_USERCMD_STATUS))
 			Variable /G :LAST_USERCMD_STATUS; AbortOnRTE
 			NVAR LAST_USERCMD_STATUS=:LAST_USERCMD_STATUS; AbortOnRTE
@@ -66,8 +66,8 @@ ThreadSafe Function Keithley2600_rtfunc(Variable inittest, [Variable slot, STRUC
 		
 		if(dfr_flag==1)
 			msg=inbox[slot]
-			//print "message received: ", msg
-			//print "request status: ", request[slot]
+			print "message received: ", msg
+			print "request status: ", request[slot]
 			//need to send message back to background post-process function
 			NewDataFolder :dfr; AbortOnRTE
 			Variable /G :dfr:instance; AbortOnRTE
